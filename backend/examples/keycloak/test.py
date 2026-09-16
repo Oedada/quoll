@@ -1,6 +1,6 @@
-from dataclasses import dataclass
 import json
 import secrets
+from dataclasses import dataclass
 
 import requests
 from fastapi import FastAPI, Request
@@ -12,19 +12,31 @@ REALM_URL = f"{KEYCLOAK_URL}/realms/{REALM}"
 BASE_URL = f"{REALM_URL}/protocol/openid-connect"
 CLIENT_ID = "demo-site"
 REDIRECT_URI = "http://localhost:8000/callback"
-sessions = {}
 print("http://localhost:8000/auth")
 app = FastAPI()
+
 
 @dataclass
 class Tokens:
     access: str
     refresh: str
 
+sessions: dict[str, Tokens] = {}
+
+def get_pbk():
+    resp = requests.get(f'{BASE_URL}/certs')
+    print(resp.content)
 
 @app.get("/")
 def root(req: Request):
-    print(sessions.get(req.cookies.get('session')))
+    session_id = req.cookies.get("session")
+    if session_id is None:
+        return RedirectResponse("/auth")
+    tokens  = sessions.get(session_id)
+    if tokens is None:
+        return RedirectResponse("/auth")
+    
+    get_pbk()
     return "Main page"
 
 
