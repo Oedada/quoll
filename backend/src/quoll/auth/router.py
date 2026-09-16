@@ -6,12 +6,6 @@ import requests
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
-KEYCLOAK_URL = "http://localhost:8081"
-REALM = "demo"
-REALM_URL = f"{KEYCLOAK_URL}/realms/{REALM}"
-BASE_URL = f"{REALM_URL}/protocol/openid-connect"
-CLIENT_ID = "demo-site"
-REDIRECT_URI = "http://localhost:8000/callback"
 print("http://localhost:8000/auth")
 
 router = APIRouter()
