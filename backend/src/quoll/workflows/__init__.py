@@ -5,6 +5,11 @@ from quoll.workflows.repository import (
     WorkflowRepository,
     WorkflowTransitionRepository,
 )
+from quoll.workflows.router import (
+    stages_router,
+    transitions_router,
+    workflows_router,
+)
 from quoll.workflows.schemas import (
     AttachmentCreate,
     AttachmentRead,
@@ -15,6 +20,7 @@ from quoll.workflows.schemas import (
     WorkflowDetailRead,
     WorkflowRead,
     WorkflowTransitionCreate,
+    WorkflowTransitionDetailRead,
     WorkflowTransitionRead,
     WorkflowTransitionUpdate,
     WorkflowUpdate,
@@ -37,8 +43,12 @@ __all__ = [
     "WorkflowRepository",
     "WorkflowTransition",
     "WorkflowTransitionCreate",
+    "WorkflowTransitionDetailRead",
     "WorkflowTransitionRead",
     "WorkflowTransitionRepository",
     "WorkflowTransitionUpdate",
     "WorkflowUpdate",
+    "stages_router",
+    "transitions_router",
+    "workflows_router",
 ]

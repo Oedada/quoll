@@ -48,6 +48,7 @@ class BaseRepository[ModelType: Base]:
         self.session.add(instance)
         await self.session.flush()
         logger.info(f"{self.model.__name__} created")
+        await self.session.refresh(instance)
         return instance
 
     async def update(
@@ -64,6 +65,7 @@ class BaseRepository[ModelType: Base]:
             setattr(existing, k, v)
         await self.session.flush()
         logger.info(f"{self.model.__name__} with id={id_} updated")
+        await self.session.refresh(existing)
         return existing
 
     async def delete(self, id_: str) -> bool:

@@ -28,7 +28,7 @@ class UniversityRead(UniversityBase):
     updated_at: datetime
 
 
-# Vendor 
+# Vendor
 class VendorBase(AppBaseModel):
     name: str
     contacts: dict[str, Any] = Field(default_factory=dict)
@@ -49,7 +49,7 @@ class VendorRead(VendorBase):
     updated_at: datetime
 
 
-#Interaction 
+# Interaction
 class InteractionBase(AppBaseModel):
     university_id: int
     vendor_id: int

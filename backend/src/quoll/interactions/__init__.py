@@ -4,6 +4,11 @@ from quoll.interactions.repository import (
     UniversityRepository,
     VendorRepository,
 )
+from quoll.interactions.router import (
+    interactions_router,
+    universities_router,
+    vendors_router,
+)
 from quoll.interactions.schemas import (
     InteractionCreate,
     InteractionDetailRead,
@@ -34,4 +39,7 @@ __all__ = [
     "VendorRead",
     "VendorRepository",
     "VendorUpdate",
+    "interactions_router",
+    "universities_router",
+    "vendors_router",
 ]
