@@ -48,6 +48,7 @@ class BaseRepository[ModelType: Base]:
 
         self.session.add(instance)
         await self.session.flush()
+        await self.session.refresh(instance)
         return instance
 
     async def update(
@@ -63,7 +64,8 @@ class BaseRepository[ModelType: Base]:
 
         for k, v in update_data.items():
             setattr(existing, k, v)
-        await self.session.flush()  # после изменения и flush, данные в existing обновляются сами, повторный get можно не надо
+        await self.session.flush()
+        await self.session.refresh(existing)
         return existing
 
     async def delete(self, id_: int) -> bool:

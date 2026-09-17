@@ -41,6 +41,7 @@ async def get_db_session(req: Request) -> AsyncGenerator[AsyncSession]:
             await session.rollback()
             raise
 
+
 class Base(DeclarativeBase):
     # спасибо добрым людям со SO за сей прекрасный переименоватор
     @declared_attr.directive
@@ -55,7 +56,7 @@ class Base(DeclarativeBase):
     # красоты ради
     def __repr__(self) -> str:
         cols = [
-            f"{col}={getattr(self, col)!r}"
+            f"{col}={self.__dict__.get(col, '...')!r}"
             for col in self.__table__.columns.keys()[:4]
         ]
         return f"<{self.__class__.__name__}({', '.join(cols)})>"

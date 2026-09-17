@@ -1,5 +1,7 @@
 from datetime import datetime
+
 from pydantic import Field
+
 from quoll.core.schemas import AppBaseModel
 
 
@@ -21,7 +23,7 @@ class AttachmentRead(AttachmentBase):
     updated_at: datetime
 
 
-# Stage 
+# Stage
 class StageBase(AppBaseModel):
     name: str
     description: str | None = None
@@ -73,6 +75,9 @@ class WorkflowTransitionRead(WorkflowTransitionBase):
     id: int
     created_at: datetime
     updated_at: datetime
+
+
+class WorkflowTransitionDetailRead(WorkflowTransitionRead):
     attachments: list[AttachmentRead] = Field(default_factory=list)
 
 
@@ -99,4 +104,4 @@ class WorkflowRead(WorkflowBase):
 
 class WorkflowDetailRead(WorkflowRead):
     stages: list[StageRead] = Field(default_factory=list)
-    transitions: list[WorkflowTransitionRead] = Field(default_factory=list)
+    transitions: list[WorkflowTransitionDetailRead] = Field(default_factory=list)
