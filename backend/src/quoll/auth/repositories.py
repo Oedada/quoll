@@ -1,9 +1,7 @@
-from sqlalchemy.ext.asyncio import AsyncSession
-from quoll.core import BaseRepository
+from quoll.auth.models import User
 
-class UserRepositories(BaseRepository[None]):
 
-    def __init__(self, session: AsyncSession):
-        self.s = session
+class UserRepositories():
 
-    def 
+    async def get(self, id_: str) -> User:
+        

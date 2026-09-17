@@ -14,6 +14,8 @@ from quoll.core.storage import write_storage
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
+for logger_name in ["httpcore", "httpx"]:
+    logging.getLogger(logger_name).setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
 
 
@@ -29,7 +31,7 @@ async def lifespan(app: FastAPI):
     storage = read_storage()
     logger.debug("Initializing KeyCloakData from storage")
     app.state.keycloak = await KeyCloakData.from_storage(
-        storage, AsyncClient(base_url="http://127.0.0.1:8081", timeout=10)
+        storage, 
     )
     logger.info("Application started")
 

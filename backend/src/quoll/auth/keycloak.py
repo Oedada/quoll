@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import logging
+import time
+import typing
 
-from httpx import AsyncClient
+import httpx
+from httpx import AsyncClient, Request, Response
 from pydantic import BaseModel
 
 from quoll.config import settings
@@ -52,24 +56,88 @@ async def check_client(secret: str, http_client: AsyncClient) -> bool:
     return False
 
 
+class TokenManager:
+    def __init__(self, client_id: str, client_secret: str):
+        self.token_url = f"{settings.keycloak_root_url}/realms/{settings.keycloak_realm_name}/protocol/openid-connect/token"
+        self.client_id = client_id
+        self.client_secret = client_secret
+        self._token: str | None = None
+        self._expires_at: float = 0
+        self._lock = asyncio.Lock()
+
+    def _is_expired(self) -> bool:
+        return self._token is None or time.time() >= self._expires_at - 5
+
+    async def get_token(self) -> str:
+        if not self._is_expired():
+            return self._token
+        async with self._lock:
+            if (
+                self._is_expired()
+            ):  # double-check: пока ждали лок, кто-то мог уже обновить
+                await self._refresh()
+        return self._token
+
+    async def refresh(self) -> str:
+        async with self._lock:
+            await self._refresh()
+        return self._token
+
+    async def _refresh(self):
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.post(
+                self.token_url,
+                data={
+                    "grant_type": "client_credentials",
+                    "client_id": self.client_id,
+                    "client_secret": self.client_secret,
+                },
+            )
+            resp.raise_for_status()
+            data = resp.json()
+        self._token = data["access_token"]
+        self._expires_at = time.time() + data["expires_in"]
+
+
+class RefreshableAuth(httpx.Auth):
+    def __init__(self, token_manager: TokenManager):
+        self.token_manager = token_manager
+
+    async def async_auth_flow(
+        self, request: httpx.Request
+    ) -> typing.AsyncGenerator[Request, Response]:
+        token = await self.token_manager.get_token()
+        request.headers["Authorization"] = f"Bearer {token}"
+        response = yield request
+
+        if response.status_code == 401:
+            token = await self.token_manager.refresh()
+            request.headers["Authorization"] = f"Bearer {token}"
+            yield request
+
+
 class KeyCloakData:
-    def __init__(self, client_secret: str, http_client: AsyncClient):
+    def __init__(self, client_secret: str):
         self.realm: str = settings.keycloak_realm_name
         self.client_id: str = settings.keycloak_client_id
         self.client_secret: str = client_secret
-        self.http_client: AsyncClient = http_client
+        self.token_manager = TokenManager(self.client_id, client_secret)
+        self.http_client: AsyncClient = AsyncClient(
+            base_url=settings.keycloak_root_url, timeout=10, auth=RefreshableAuth(self.token_manager)
+        )
 
     @classmethod
-    async def from_storage(
-        cls, storage: Storage, http_client: AsyncClient
-    ) -> KeyCloakData:
+    async def from_storage(cls, storage: Storage) -> KeyCloakData:
+        http_client: AsyncClient = AsyncClient(
+            base_url=settings.keycloak_root_url, timeout=10
+        )
         logger.debug("Loading KeyCloakData from storage")
         secret = storage.keycloak_client_secret
         if secret is None or not await check_client(secret, http_client):
             logger.debug("Keycloak secret missing or invalid, initializing new client")
             secret = await init_keycloak_client(http_client)
         storage.keycloak_client_secret = secret
-        return KeyCloakData(secret, http_client)
+        return KeyCloakData(secret)
 
     def write_to_storage(self, storage: Storage) -> None:
         storage.keycloak_client_secret = self.client_secret
