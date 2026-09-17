@@ -6,9 +6,13 @@ import requests
 from fastapi import APIRouter, Request
 from fastapi.responses import RedirectResponse
 
-print("http://localhost:8000/auth")
+from quoll.config import settings
 
 router = APIRouter()
+
+BASE_URL = f"{settings.keycloak_root_url}/realms/{settings.keycloak_realm_name}/protocol/openid-connect"
+CLIENT_ID = settings.keycloak_client_id
+REDIRECT_URI = settings.keycloak_redirect_uri
 
 
 @dataclass

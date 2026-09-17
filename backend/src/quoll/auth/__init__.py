@@ -1,4 +1,4 @@
-from quoll.auth.keycloak import init_admin_account
+from quoll.auth.keycloak import KeyCloakData, init_keycloak_client
 from quoll.auth.router import router as auth_router
 
-__all__ = ["auth_router", "init_admin_account"]
+__all__ = ["KeyCloakData", "auth_router", "init_keycloak_client"]
