@@ -12,33 +12,31 @@ from quoll.db import Base
 logger = logging.getLogger(__name__)
 
 
-# с python 3.12 синтаксис теперь такой, всё можно указывать напрямую
-# по мнению ruff, использовать typing.Type тут - deprecated
 class BaseRepository[ModelType: Base]:
-    model: type[ModelType]  # переопределяется в наследнике
+    model: type[ModelType]
 
     def __init__(self, session: AsyncSession):
         self.session = session
 
-    async def get(self, id_: int) -> ModelType:
+    async def get(self, id_: str) -> ModelType:
         logger.debug(f"Getting {self.model.__name__} with id={id_}")
         obj = await self.session.get(self.model, id_)
         if obj is None:
-            logger.warning(f"{self.model.__name__} with id={id_} not found")
             raise IdNotExistsException(self.model.__name__)
         logger.debug(f"{self.model.__name__} with id={id_} found")
         return obj
 
-    # по-идее должно выводить списки
     async def get_all(self, limit: int = 100, offset: int = 0) -> list[ModelType]:
+        logger.debug(f"Getting all {self.model.__name__} with limit={limit}, offset={offset}")
         stmt = select(self.model).limit(limit).offset(offset)
         result = await self.session.execute(stmt)
-        return list(result.scalars().all())
+        items = list(result.scalars().all())
+        logger.debug(f"Found {len(items)} {self.model.__name__}")
+        return items
 
     async def create(
         self, schema_or_data: BaseModel | dict[str, Any] | ModelType
     ) -> ModelType:
-        # я не хочу разбирать pydantic ручками каждый раз, поэтому пусть оно будет здесь
         if isinstance(schema_or_data, self.model):
             instance = schema_or_data
         elif isinstance(schema_or_data, BaseModel):
@@ -46,28 +44,34 @@ class BaseRepository[ModelType: Base]:
         else:
             instance = self.model(**schema_or_data)
 
+        logger.debug(f"Creating {self.model.__name__}")
         self.session.add(instance)
         await self.session.flush()
+        logger.info(f"{self.model.__name__} created")
         return instance
 
     async def update(
-        self, id_: int, schema_or_data: BaseModel | dict[str, Any]
+        self, id_: str, schema_or_data: BaseModel | dict[str, Any]
     ) -> ModelType:
-        # Юзать kwargs тут оказалось bad practice
+        logger.debug(f"Updating {self.model.__name__} with id={id_}")
         existing = await self.get(id_)
         if isinstance(schema_or_data, BaseModel):
-            # exclude_unset=True - чтоб не затирал неуказанные поля, ибо иначе из pydantic у них будет none по дефолту
             update_data = schema_or_data.model_dump(exclude_unset=True)
         else:
             update_data = schema_or_data
 
         for k, v in update_data.items():
             setattr(existing, k, v)
-        await self.session.flush()  # после изменения и flush, данные в existing обновляются сами, повторный get можно не надо
+        await self.session.flush()
+        logger.info(f"{self.model.__name__} with id={id_} updated")
         return existing
 
-    async def delete(self, id_: int) -> bool:
-        stmt = sa_delete(self.model).where(self.model.id == id_)  # type: ignore[attr-defined]
+    async def delete(self, id_: str) -> bool:
+        logger.debug(f"Deleting {self.model.__name__} with id={id_}")
+        stmt = sa_delete(self.model).where(self.model.id == id_)
         result = await self.session.execute(stmt)
         await self.session.flush()
-        return (result.rowcount or 0) > 0
+        deleted = (result.rowcount or 0) > 0
+        if deleted:
+            logger.info(f"{self.model.__name__} with id={id_} deleted")
+        return deleted

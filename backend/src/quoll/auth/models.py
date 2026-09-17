@@ -14,15 +14,17 @@ class Role(Enum):
 
 # В этой таблице все данные пользователя кроме авторизации
 class Session(Base):
-    id: Mapped[int] = mapped_column(primary_key=True)
+    id: Mapped[str] = mapped_column(primary_key=True)
     user_id: Mapped[str]
     session_key: Mapped[str]
-    access_key: Mapped[str]
-    refresh_key: Mapped[str]
+    access_token: Mapped[str]
+    refresh_token: Mapped[str]
 
 
 class User(BaseModel):
     id: str
     role: Role
+    username: str
+    email: str
     first_name: str
     last_name: str

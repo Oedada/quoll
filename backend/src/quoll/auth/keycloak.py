@@ -1,7 +1,9 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
+import secrets
 import time
 import typing
 
@@ -9,6 +11,7 @@ import httpx
 from httpx import AsyncClient, Request, Response
 from pydantic import BaseModel
 
+from quoll.auth.models import Session
 from quoll.config import settings
 from quoll.core import Storage
 
@@ -123,7 +126,9 @@ class KeyCloakData:
         self.client_secret: str = client_secret
         self.token_manager = TokenManager(self.client_id, client_secret)
         self.http_client: AsyncClient = AsyncClient(
-            base_url=settings.keycloak_root_url, timeout=10, auth=RefreshableAuth(self.token_manager)
+            base_url=settings.keycloak_root_url,
+            timeout=10,
+            auth=RefreshableAuth(self.token_manager),
         )
 
     @classmethod
@@ -358,3 +363,45 @@ async def init_keycloak_client(http_client: AsyncClient) -> str:
         f"Keycloak client initialized successfully, client_secret length: {len(client_secret)}"
     )
     return client_secret
+
+
+def _decode_jwt_sub(token: str) -> str:
+    """Extracts user_id (sub claim) from JWT token."""
+    import base64
+
+    payload = token.split(".")[1]
+    padded = payload + "=" * (4 - len(payload) % 4)
+    decoded = base64.urlsafe_b64decode(padded)
+    return json.loads(decoded)["sub"]
+
+
+async def get_session_for_code(
+    code: str, redirect_uri: str, kcdata: KeyCloakData
+) -> Session:
+    logger.debug("Exchanging authorization code for tokens")
+    auth_resp = await kcdata.http_client.post(
+        f"{settings.keycloak_root_url}/realms/{kcdata.realm}/protocol/openid-connect/token",
+        headers={"content-type": "application/x-www-form-urlencoded"},
+        data={
+            "grant_type": "authorization_code",
+            "code": code,
+            "redirect_uri": redirect_uri,
+            "client_id": kcdata.client_id,
+            "client_secret": kcdata.client_secret,
+        },
+    )
+    auth_resp.raise_for_status()
+    auth_data = auth_resp.json()
+
+    access_token = auth_data["access_token"]
+    refresh_token = auth_data["refresh_token"]
+    user_id = _decode_jwt_sub(access_token)
+
+    session_key = secrets.token_urlsafe(64)
+    logger.debug(f"Tokens obtained for user_id={user_id}")
+    return Session(
+        user_id=user_id,
+        session_key=session_key,
+        access_key=access_token,
+        refresh_key=refresh_token,
+    )

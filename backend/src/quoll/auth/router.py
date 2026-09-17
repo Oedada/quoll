@@ -1,18 +1,17 @@
-import json
-import secrets
 from dataclasses import dataclass
 
-import requests
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 from fastapi.responses import RedirectResponse
+from sqlalchemy.ext.asyncio import AsyncSession
 
+from quoll.auth.keycloak import KeyCloakData, get_session_for_code
+from quoll.auth.models import Session, User
+from quoll.auth.repositories import SessionRepository, UserRepository
 from quoll.config import settings
+from quoll.core import UserNotFoundException
+from quoll.db import get_db_session
 
 router = APIRouter()
-
-BASE_URL = f"{settings.keycloak_root_url}/realms/{settings.keycloak_realm_name}/protocol/openid-connect"
-CLIENT_ID = settings.keycloak_client_id
-REDIRECT_URI = settings.keycloak_redirect_uri
 
 
 @dataclass
@@ -24,30 +23,49 @@ class Tokens:
 sessions: dict[str, Tokens] = {}
 
 
-def get_pbk():
-    resp = requests.get(f"{BASE_URL}/certs")
-    print(resp.content)
+async def get_session_repo(
+    db_session: AsyncSession = Depends(get_db_session),
+) -> SessionRepository:
+    return SessionRepository(db_session)
+
+
+async def get_user_repo(req: Request) -> UserRepository:
+    return UserRepository(req.app.state.keycloak)
+
+
+async def get_kcdata(req: Request) -> KeyCloakData:
+    return req.app.state.keycloak
+
+
+async def get_user(
+    req: Request,
+    session_repo: SessionRepository = Depends(get_session_repo),
+    user_repo: UserRepository = Depends(get_user_repo),
+) -> User | None:
+    session_id = req.cookies.get("session")
+    if session_id is None:
+        return None
+    try:
+        session: Session = await session_repo.get(session_id)
+        return await user_repo.get(session.user_id)
+    except UserNotFoundException:
+        return None
 
 
 @router.get("/")
-def root(req: Request):
-    session_id = req.cookies.get("session")
-    if session_id is None:
-        return RedirectResponse("/auth")
-    tokens = sessions.get(session_id)
-    if tokens is None:
-        return RedirectResponse("/auth")
-
-    get_pbk()
+def root(req: Request, user: User | None = Depends(get_user)):
+    if user is None:
+        return RedirectResponse("/auth/auth")
     return "Main page"
 
 
+# скорее высего проблема в том, что тут сервисный клиент айди, а нужен публичный
 @router.get("/auth")
 def auth():
     url = (
-        f"{BASE_URL}/auth"
-        f"?client_id={CLIENT_ID}"
-        f"&redirect_uri={REDIRECT_URI}"
+        f"{settings.keycloak_root_url}/auth"
+        f"?client_id={settings.keycloak_client_id}"
+        f"&redirect_uri={settings.keycloak_redirect_uri}"
         f"&response_type=code"
         f"&scope=openid"
     )
@@ -55,25 +73,14 @@ def auth():
 
 
 @router.get("/callback")
-def callback(code: str):
-    auth_resp = requests.post(
-        f"{BASE_URL}/token",
-        headers={"content-type": "application/x-www-form-urlencoded"},
-        data={
-            "grant_type": "authorization_code",
-            "code": code,
-            "redirect_uri": REDIRECT_URI,
-            "client_id": CLIENT_ID,
-        },
+async def callback(
+    code: str,
+    kcdata: KeyCloakData = Depends(get_kcdata),
+    session_repo: SessionRepository = Depends(get_session_repo),
+):
+    session = await session_repo.create(
+        await get_session_for_code(code, settings.keycloak_redirect_uri, kcdata)
     )
-    auth_data = json.loads(auth_resp.content)
-    session_id = secrets.token_urlsafe(64)
-    sessions[session_id] = Tokens(auth_data["access_token"], auth_data["refresh_token"])
-    resp = requests.get(
-        f"{BASE_URL}/userinfo",
-        headers={"Authorization": f"Bearer {auth_data['access_token']}"},
-    )
-    print("\n".join([f"{k}: {v}" for k, v in json.loads(resp.content).items()]))
     response = RedirectResponse("/")
-    response.set_cookie("session", session_id, httponly=True)
+    response.set_cookie("session", session.id, httponly=True)
     return response

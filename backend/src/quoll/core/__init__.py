@@ -8,6 +8,7 @@ from quoll.core.exceptions import (
     InvalidSessionId,
     UnknowAuthError,
     UserAlreadyExistsAuthError,
+    UserNotFoundException,
 )
 from quoll.core.mixins import IdMixin, TimestampMixin
 from quoll.core.schemas import AppBaseModel
@@ -27,6 +28,7 @@ __all__ = [
     "TimestampMixin",
     "UnknowAuthError",
     "UserAlreadyExistsAuthError",
+    "UserNotFoundException",
     "read_storage",
     "write_storage",
 ]
