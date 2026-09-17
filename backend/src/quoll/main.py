@@ -1,15 +1,25 @@
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from httpx import AsyncClient
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from quoll.auth import KeyCloakData, auth_router
 from quoll.config import settings
-from quoll.core import read_storage
+from quoll.core import AppException, read_storage
 from quoll.core.storage import write_storage
+from quoll.interactions import (
+    interactions_router,
+    universities_router,
+    vendors_router,
+)
+from quoll.workflows import (
+    stages_router,
+    transitions_router,
+    workflows_router,
+)
 
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -26,7 +36,9 @@ async def lifespan(app: FastAPI):
         f"postgresql+asyncpg://postgres:{settings.postgres_password}@{settings.postgres_host}:{settings.postgres_port}/{settings.postgres_path}"
     )
     logger.debug("Creating async session maker")
-    app.state.db_session_maker = async_sessionmaker(bind=app.state.db_engine)
+    app.state.db_session_maker = async_sessionmaker(
+        bind=app.state.db_engine, expire_on_commit=False
+    )
     logger.debug("Reading storage")
     storage = read_storage()
     logger.debug("Initializing KeyCloakData from storage")
@@ -47,10 +59,45 @@ async def lifespan(app: FastAPI):
     logger.info("Application stopped")
 
 
-app = FastAPI(lifespan=lifespan)
+app = FastAPI(
+    title="Quoll API",
+    version="0.1.0",
+    lifespan=lifespan,
+)
+
+
+@app.exception_handler(AppException)
+async def app_exception_handler(request: Request, exc: AppException):
+    logger.warning(
+        f"Domain exception on {request.method} {request.url.path}: {exc.message} (HTTP {exc.status_code})"
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": exc.message},
+    )
+
+
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    logger.exception(
+        f"Unhandled server error on {request.method} {request.url.path}: {exc}"
+    )
+    return JSONResponse(
+        status_code=500,
+        content={"detail": "Internal server error"},
+    )
+
+
+# Routers
 app.include_router(auth_router, prefix="/auth")
+app.include_router(workflows_router)
+app.include_router(stages_router)
+app.include_router(transitions_router)
+app.include_router(universities_router)
+app.include_router(vendors_router)
+app.include_router(interactions_router)
 
 
-@app.get("/")
+@app.get("/", tags=["Health"])
 async def root():
     return JSONResponse(content={"ok": True})
