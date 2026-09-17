@@ -21,9 +21,7 @@ class Vendor(Base, IdMixin, TimestampMixin):
     name: Mapped[str_255] = mapped_column(unique=True, index=True)
     contacts: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
 
-    interactions: Mapped[list["Interaction"]] = relationship(
-        back_populates="vendor"
-    )
+    interactions: Mapped[list["Interaction"]] = relationship(back_populates="vendor")
 
 
 class Interaction(Base, IdMixin, TimestampMixin):
