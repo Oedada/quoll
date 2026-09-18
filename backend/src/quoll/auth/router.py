@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 
-from fastapi import APIRouter, Depends, Request, Response, status
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
 from fastapi.responses import RedirectResponse
 
 from quoll.auth.dependencies import (
@@ -53,7 +53,6 @@ async def logout(
     response.delete_cookie("session", path="/")
 
 
-# скорее высего проблема в том, что тут сервисный клиент айди, а нужен публичный
 @router.get("/auth")
 def auth():
     url = (
@@ -201,6 +200,12 @@ async def update_user(
 async def delete_user(
     user_id: str,
     admin_user: AdminUser,
+    user: CurrentUser,
     user_repo: UserRepository = Depends(get_user_repo),  # noqa: B008
 ) -> None:
+    if user.id == user_id:
+        raise HTTPException(
+            status_code=418,
+            detail="The server refuses to delete the admin. It is a teapot."
+        )
     await user_repo.delete(user_id)
