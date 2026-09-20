@@ -28,8 +28,17 @@ sessions: dict[str, Tokens] = {}
 
 
 @router.get("/")
-def root(req: Request, user: CurrentUser):
-    return user.__dict__
+def root():
+    print("lol")
+    url = (
+        f"{settings.keycloak_root_url}/realms/{keycloak_client.realm}/protocol/openid-connect/auth"
+        f"?client_id={settings.keycloak_client_id}"
+        f"&redirect_uri={settings.keycloak_redirect_uri}"
+        f"&client_secret={keycloak_client.secret}"
+        f"&response_type=code"
+        f"&scope=openid"
+    )
+    return RedirectResponse(url)
 
 
 @router.post("/logout", status_code=status.HTTP_204_NO_CONTENT)
@@ -53,19 +62,6 @@ async def logout(
     response.delete_cookie("session", path="/")
 
 
-@router.get("/auth")
-def auth():
-    url = (
-        f"{settings.keycloak_root_url}/realms/{keycloak_client.realm}/protocol/openid-connect/auth"
-        f"?client_id={settings.keycloak_client_id}"
-        f"&redirect_uri={settings.keycloak_redirect_uri}"
-        f"&client_secret={keycloak_client.secret}"
-        f"&response_type=code"
-        f"&scope=openid"
-    )
-    return RedirectResponse(url)
-
-
 @router.get("/callback")
 async def callback(
     code: str,
@@ -76,8 +72,9 @@ async def callback(
             code, settings.keycloak_redirect_uri
         )
     )
-    response = RedirectResponse("http://localhost:3000")
+    response = RedirectResponse("http://127.0.0.1:8000/front")
     response.set_cookie("session", session.id, httponly=True)
+    print("cookie set")
     return response
 
 
@@ -206,6 +203,6 @@ async def delete_user(
     if user.id == user_id:
         raise HTTPException(
             status_code=418,
-            detail="The server refuses to delete the admin. It is a teapot."
+            detail="The server refuses to delete the admin. It is a teapot.",
         )
     await user_repo.delete(user_id)

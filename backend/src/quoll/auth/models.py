@@ -5,18 +5,18 @@ import logging
 import secrets
 from enum import Enum
 
-from pydantic import BaseModel
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy import ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from quoll.auth.keycloak_client import keycloak_client
 from quoll.config import settings
-from quoll.db import Base
+from quoll.db import Base, RawBase
 
 logger = logging.getLogger(__name__)
 
 
 class UserRole(Enum):
-    USER = "common"
+    MANAGER = "manager"
     SUPERVISER = "superviser"
     ADMIN = "admin"
 
@@ -69,10 +69,66 @@ class Session(Base):
         )
 
 
-class User(BaseModel):
-    id: str
-    role: UserRole
-    username: str
-    email: str
-    first_name: str
-    last_name: str
+class User(RawBase):
+    __tablename__ = "users"
+    __allow_unmapped__ = True
+
+    id: Mapped[str] = mapped_column(primary_key=True)
+    role: Mapped[UserRole]
+    username: str | None = None
+    email: str | None = None
+    first_name: Mapped[str]
+    last_name: Mapped[str]
+
+    __mapper_args__ = {"polymorphic_on": "role"}  # noqa: RUF012
+
+
+class Superviser(User):
+    __tablename__ = "supervisers"
+
+    id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    __mapper_args__ = {  # noqa: RUF012
+        "polymorphic_identity": UserRole.SUPERVISER,
+        "polymorphic_load": "selectin",
+    }
+
+    managers: Mapped[list[Manager]] = relationship(
+        back_populates="superviser",
+        foreign_keys="Manager.superviser_id",
+        passive_deletes=True
+    )
+
+
+class Manager(User):
+    __tablename__ = "managers"
+
+    id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+    superviser_id: Mapped[str | None] = mapped_column(ForeignKey("supervisers.id", ondelete="SET NULL"))
+
+    __mapper_args__ = {  # noqa: RUF012
+        "polymorphic_identity": UserRole.MANAGER,
+        "polymorphic_load": "selectin",
+    }
+
+    superviser: Mapped[Superviser] = relationship(
+        back_populates="managers",
+        foreign_keys=[superviser_id],
+    )
+
+
+class Admin(User):
+    __tablename__ = "admins"
+
+    id: Mapped[str] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), primary_key=True
+    )
+
+    __mapper_args__ = {  # noqa: RUF012
+        "polymorphic_identity": UserRole.ADMIN,
+        "polymorphic_load": "selectin",
+    }

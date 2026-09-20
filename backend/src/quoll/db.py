@@ -60,3 +60,6 @@ class Base(DeclarativeBase):
             for col in self.__table__.columns.keys()[:4]
         ]
         return f"<{self.__class__.__name__}({', '.join(cols)})>"
+
+class RawBase(DeclarativeBase):
+    pass

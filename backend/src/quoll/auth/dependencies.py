@@ -15,8 +15,10 @@ async def get_session_repo(
     return SessionRepository(db_session)
 
 
-async def get_user_repo(req: Request) -> UserRepository:
-    return UserRepository()
+async def get_user_repo(
+    req: Request, session: AsyncSession = Depends(get_db_session)
+) -> UserRepository:
+    return UserRepository(session)
 
 
 async def get_current_user(

@@ -1,5 +1,8 @@
 import logging
 
+from sqlalchemy import delete
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from quoll.auth.keycloak_client import keycloak_client
 from quoll.auth.models import Session, User, UserRole
 from quoll.config import settings
@@ -18,7 +21,8 @@ class SessionRepository(BaseRepository[Session]):
 
 
 class UserRepository:
-    def __init__(self):
+    def __init__(self, session: AsyncSession):
+        self.s = session
         self.client = keycloak_client.http_client
         self.base_url = (
             f"{settings.keycloak_root_url}/admin/realms/{keycloak_client.realm}"
@@ -44,8 +48,6 @@ class UserRepository:
                 "email": user.email,
                 "enabled": True,
                 "emailVerified": False,
-                "firstName": user.first_name,
-                "lastName": user.last_name,
                 "credentials": [
                     {"type": "password", "value": password, "temporary": False}
                 ],
@@ -60,6 +62,9 @@ class UserRepository:
         if location is None:
             raise UnknowAuthError("no Location header in response")
         user_id = location.rstrip("/").rsplit("/", 1)[1]
+        user.id = user_id
+        self.s.add(user)
+        await self.s.flush()
         logger.info(f"User {user.username} created with id={user_id}")
         await self.assign_role(user_id, user.role)
         logger.debug(f"Role {user.role.value} assigned to user {user_id}")
@@ -75,26 +80,12 @@ class UserRepository:
         resp.raise_for_status()
         data = resp.json()
         logger.debug(f"User with id={user_id} found")
-
-        roles_resp = await self.client.get(
-            f"{self.base_url}/users/{user_id}/role-mappings/realm"
-        )
-        roles = [r["name"] for r in roles_resp.json()]
-        if "admin" in roles:
-            role = UserRole.ADMIN
-        elif "superviser" in roles:
-            role = UserRole.SUPERVISER
-        else:
-            role = UserRole.USER
-
-        return User(
-            id=data["id"],
-            username=data["username"],
-            email=data["email"],
-            first_name=data.get("firstName", ""),
-            last_name=data.get("lastName", ""),
-            role=role,
-        )
+        user = await self.s.get(User, user_id)
+        if user is None:
+            raise UserNotFoundException(user_id)
+        user.username = data["username"]
+        user.email = data["email"]
+        return user
 
     async def get_all(self, limit: int = 100, offset: int = 0) -> list[User]:
         logger.debug(f"Getting all users with limit={limit}, offset={offset}")
@@ -109,56 +100,46 @@ class UserRepository:
         users: list[User] = []
         for data in resp.json():
             user_id = data["id"]
-            roles_resp = await self.client.get(
-                f"{self.base_url}/users/{user_id}/role-mappings/realm"
-            )
-            roles = [r["name"] for r in roles_resp.json()]
-            if "admin" in roles:
-                role = UserRole.ADMIN
-            elif "superviser" in roles:
-                role = UserRole.SUPERVISER
-            else:
-                role = UserRole.USER
+            user = await self.s.get(User, user_id)
+            if user is None:
+                raise UserNotFoundException(user_id)
+            user.email = data["email"]
+            user.username = data["username"]
 
-            users.append(
-                User(
-                    id=user_id,
-                    username=data["username"],
-                    email=data["email"],
-                    first_name=data.get("firstName", ""),
-                    last_name=data.get("lastName", ""),
-                    role=role,
-                )
-            )
+            users.append(user)
         logger.debug(f"Found {len(users)} users")
         return users
 
-    async def update(self, user_id: str, user: User) -> User:
-        logger.debug(f"Updating user with id={user_id}")
+    async def update(self, updated_user: User) -> User:
+        logger.debug(f"Updating user with id={updated_user.id}")
         resp = await self.client.put(
-            url=f"{self.base_url}/users/{user_id}",
+            url=f"{self.base_url}/users/{updated_user.id}",
             json={
-                "username": user.username,
-                "email": user.email,
-                "firstName": user.first_name,
-                "lastName": user.last_name,
+                "username": updated_user.username,
+                "email": updated_user.email,
             },
         )
         if resp.status_code == 404:
-            raise UserNotFoundException(user_id)
+            raise UserNotFoundException(updated_user.id)
         if resp.status_code >= 400:
             raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
+        user = await self.s.get(User, updated_user.id)
+        if user is None:
+            raise UserNotFoundException(updated_user.id)
+        user.first_name = updated_user.first_name
+        user.last_name = updated_user.last_name
+        await self.s.flush()
         resp.raise_for_status()
-        logger.info(f"User with id={user_id} updated")
-        return await self.get(user_id)
+        logger.info(f"User with id={updated_user.id} updated")
+        return await self.get(updated_user.id)
 
-    async def delete(self, user_id: str) -> bool:
+    async def delete(self, user_id: str) -> None:
+        result = await self.s.execute(delete(User).where(User.id == user_id))
         logger.debug(f"Deleting user with id={user_id}")
         resp = await self.client.delete(url=f"{self.base_url}/users/{user_id}")
-        if resp.status_code == 404:
+        if resp.status_code == 404 or not (result.rowcount or 0):
             raise UserNotFoundException(user_id)
         if resp.status_code >= 400:
             raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
         resp.raise_for_status()
         logger.info(f"User with id={user_id} deleted")
-        return True

@@ -11,7 +11,7 @@ class UserBase(AppBaseModel):
 
 class UserCreate(UserBase):
     password: str
-    role: UserRole = UserRole.USER
+    role: UserRole = UserRole.MANAGER
 
 
 class UserUpdate(AppBaseModel):
