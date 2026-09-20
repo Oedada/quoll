@@ -37,9 +37,9 @@ def read_storage() -> Storage:
     except json.JSONDecodeError:
         return Storage()
 
+
 def write_storage(storage: Storage) -> None:
     try:
-        _write_secure(Path(settings.storage_path), storage.model_dump_json(indent=2)) 
+        _write_secure(Path(settings.storage_path), storage.model_dump_json(indent=2))
     except OSError:
         logger.error(f"Os error while writing file {settings.storage_path}")
-

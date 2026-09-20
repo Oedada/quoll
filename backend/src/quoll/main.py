@@ -3,12 +3,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from quoll.attachments import S3StorageService, attachments_router
 from quoll.auth import KeyCloakData, auth_router
 from quoll.config import settings
-from quoll.core import AppException, read_storage
-from quoll.core.storage import write_storage
+from quoll.core import AppException, read_storage, write_storage
 from quoll.interactions import (
     interactions_router,
     universities_router,
@@ -42,8 +43,17 @@ async def lifespan(app: FastAPI):
     storage = read_storage()
     logger.debug("Initializing KeyCloakData from storage")
     app.state.keycloak = await KeyCloakData.from_storage(
-        storage, 
+        storage,
     )
+    logger.debug("Initializing S3 storage service")
+    app.state.s3 = S3StorageService(
+        endpoint_url=settings.s3_endpoint_url,
+        access_key=settings.s3_access_key,
+        secret_key=settings.s3_secret_key,
+        bucket_name=settings.s3_bucket_name,
+        region_name=settings.s3_region_name,
+    )
+    await app.state.s3.ensure_bucket()
     logger.info("Application started")
 
     yield
@@ -76,6 +86,19 @@ async def app_exception_handler(request: Request, exc: AppException):
     )
 
 
+@app.exception_handler(IntegrityError)
+async def integrity_error_handler(request: Request, exc: IntegrityError):
+    logger.warning(
+        f"Database integrity conflict on {request.method} {request.url.path}: {exc.orig}"
+    )
+    return JSONResponse(
+        status_code=409,
+        content={
+            "detail": "Resource conflict: a record with these unique attributes already exists"
+        },
+    )
+
+
 @app.exception_handler(Exception)
 async def unhandled_exception_handler(request: Request, exc: Exception):
     logger.exception(
@@ -92,6 +115,7 @@ app.include_router(auth_router, prefix="/auth")
 app.include_router(workflows_router)
 app.include_router(stages_router)
 app.include_router(transitions_router)
+app.include_router(attachments_router)
 app.include_router(universities_router)
 app.include_router(vendors_router)
 app.include_router(interactions_router)

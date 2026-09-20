@@ -60,3 +60,15 @@ class UserAlreadyExistsAuthError(AuthError):
     def __init__(self):
         super().__init__(409, "User already exists")
         logger.warning(self.message)
+
+
+class FileTooLargeException(AppException):
+    def __init__(self, max_mb: int):
+        super().__init__(413, f"File size exceeds maximum allowed limit of {max_mb} MB")
+        logger.warning(self.message)
+
+
+class StorageException(AppException):
+    def __init__(self, detail: str = "Storage operation failed"):
+        super().__init__(500, detail)
+        logger.error(self.message)
