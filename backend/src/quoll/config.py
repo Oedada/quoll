@@ -5,13 +5,18 @@ class Settings(BaseSettings):
     keycloak_root_url: str
     keycloak_realm_name: str
     keycloak_client_id: str
+    keycloak_client_secret: str
     keycloak_admin_password: str
     keycloak_redirect_uri: str
     postgres_password: str
     postgres_port: int
     postgres_path: str
     postgres_host: str
+    postgres_user: str
     storage_path: str
+    app_admin_username: str
+    app_admin_email: str
+    app_admin_password: str
     s3_endpoint_url: str
     s3_access_key: str
     s3_secret_key: str

@@ -1,7 +1,7 @@
 import logging
 
-from quoll.auth.keycloak import KeyCloakData
-from quoll.auth.models import Session, User
+from quoll.auth.keycloak_client import keycloak_client
+from quoll.auth.models import Session, User, UserRole
 from quoll.config import settings
 from quoll.core import (
     BaseRepository,
@@ -14,13 +14,26 @@ logger = logging.getLogger(__name__)
 
 
 class SessionRepository(BaseRepository[Session]):
-    pass
+    model = Session
 
 
 class UserRepository:
-    def __init__(self, kcdata: KeyCloakData):
-        self.client = kcdata.http_client
-        self.base_url = f"{settings.keycloak_root_url}/admin/realms/{kcdata.realm}"
+    def __init__(self):
+        self.client = keycloak_client.http_client
+        self.base_url = (
+            f"{settings.keycloak_root_url}/admin/realms/{keycloak_client.realm}"
+        )
+
+    async def assign_role(self, user_id: str, role: UserRole):
+        role_resp = (
+            await self.client.get(f"{self.base_url}/roles/{role.value}")
+        ).json()
+        (
+            await self.client.post(
+                f"{self.base_url}/users/{user_id}/role-mappings/realm",
+                json=[{"id": role_resp["id"], "name": role_resp["name"]}],
+            )
+        ).raise_for_status()
 
     async def create(self, user: User, password: str) -> str:
         logger.debug(f"Creating user with username={user.username}")
@@ -48,6 +61,8 @@ class UserRepository:
             raise UnknowAuthError("no Location header in response")
         user_id = location.rstrip("/").rsplit("/", 1)[1]
         logger.info(f"User {user.username} created with id={user_id}")
+        await self.assign_role(user_id, user.role)
+        logger.debug(f"Role {user.role.value} assigned to user {user_id}")
         return user_id
 
     async def get(self, user_id: str) -> User:
@@ -60,13 +75,25 @@ class UserRepository:
         resp.raise_for_status()
         data = resp.json()
         logger.debug(f"User with id={user_id} found")
+
+        roles_resp = await self.client.get(
+            f"{self.base_url}/users/{user_id}/role-mappings/realm"
+        )
+        roles = [r["name"] for r in roles_resp.json()]
+        if "admin" in roles:
+            role = UserRole.ADMIN
+        elif "superviser" in roles:
+            role = UserRole.SUPERVISER
+        else:
+            role = UserRole.USER
+
         return User(
             id=data["id"],
             username=data["username"],
             email=data["email"],
             first_name=data.get("firstName", ""),
             last_name=data.get("lastName", ""),
-            role=data.get("role", "common"),
+            role=role,
         )
 
     async def get_all(self, limit: int = 100, offset: int = 0) -> list[User]:
@@ -78,16 +105,29 @@ class UserRepository:
         if resp.status_code >= 400:
             raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
         resp.raise_for_status()
+
         users: list[User] = []
         for data in resp.json():
+            user_id = data["id"]
+            roles_resp = await self.client.get(
+                f"{self.base_url}/users/{user_id}/role-mappings/realm"
+            )
+            roles = [r["name"] for r in roles_resp.json()]
+            if "admin" in roles:
+                role = UserRole.ADMIN
+            elif "superviser" in roles:
+                role = UserRole.SUPERVISER
+            else:
+                role = UserRole.USER
+
             users.append(
                 User(
-                    id=data["id"],
+                    id=user_id,
                     username=data["username"],
                     email=data["email"],
                     first_name=data.get("firstName", ""),
                     last_name=data.get("lastName", ""),
-                    role=data.get("role", "common"),
+                    role=role,
                 )
             )
         logger.debug(f"Found {len(users)} users")

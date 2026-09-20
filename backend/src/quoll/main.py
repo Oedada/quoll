@@ -7,9 +7,10 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from quoll.attachments import S3StorageService, attachments_router
-from quoll.auth import KeyCloakData, auth_router
+from quoll.auth import auth_router
 from quoll.config import settings
-from quoll.core import AppException, read_storage, write_storage
+from quoll.core import AppException
+from quoll.db import Base
 from quoll.interactions import (
     interactions_router,
     universities_router,
@@ -33,18 +34,15 @@ logger = logging.getLogger(__name__)
 async def lifespan(app: FastAPI):
     logger.debug("Creating database engine")
     app.state.db_engine = create_async_engine(
-        f"postgresql+asyncpg://postgres:{settings.postgres_password}@{settings.postgres_host}:{settings.postgres_port}/{settings.postgres_path}"
+        f"postgresql+asyncpg://{settings.postgres_user}:{settings.postgres_password}@{settings.postgres_host}:{settings.postgres_port}/{settings.postgres_path}"
     )
     logger.debug("Creating async session maker")
     app.state.db_session_maker = async_sessionmaker(
         bind=app.state.db_engine, expire_on_commit=False
     )
-    logger.debug("Reading storage")
-    storage = read_storage()
-    logger.debug("Initializing KeyCloakData from storage")
-    app.state.keycloak = await KeyCloakData.from_storage(
-        storage,
-    )
+    logger.debug("Creating database tables")
+    async with app.state.db_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.create_all)
     logger.debug("Initializing S3 storage service")
     app.state.s3 = S3StorageService(
         endpoint_url=settings.s3_endpoint_url,
@@ -60,11 +58,6 @@ async def lifespan(app: FastAPI):
 
     logger.debug("Disposing database engine")
     await app.state.db_engine.dispose()
-    logger.debug("Closing Keycloak HTTP client")
-    await app.state.keycloak.http_client.aclose()
-    logger.debug("Writing storage")
-    app.state.keycloak.write_to_storage(storage)
-    write_storage(storage)
     logger.info("Application stopped")
 
 
