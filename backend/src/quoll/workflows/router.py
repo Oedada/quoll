@@ -13,7 +13,6 @@ from quoll.workflows.schemas import (
     WorkflowDetailRead,
     WorkflowRead,
     WorkflowTransitionCreate,
-    WorkflowTransitionDetailRead,
     WorkflowTransitionRead,
     WorkflowTransitionUpdate,
     WorkflowUpdate,
@@ -27,6 +26,7 @@ transitions_router = APIRouter(
 
 
 # Workflows Endpoints
+
 
 @workflows_router.post(
     "/",
@@ -94,6 +94,7 @@ async def delete_workflow(
 
 # Stages Endpoints
 
+
 @stages_router.post(
     "/",
     response_model=StageRead,
@@ -159,6 +160,7 @@ async def delete_stage(
 
 # Transitions Endpoints
 
+
 @transitions_router.post(
     "/",
     response_model=WorkflowTransitionRead,
@@ -174,7 +176,7 @@ async def create_transition(
 
 @transitions_router.get(
     "/available",
-    response_model=list[WorkflowTransitionDetailRead],
+    response_model=list[WorkflowTransitionRead],
     summary="Get available active transitions from a given stage",
 )
 async def get_available_transitions(
@@ -192,7 +194,7 @@ async def get_available_transitions(
 @transitions_router.get(
     "/{id}",
     response_model=WorkflowTransitionRead,
-    summary="Get a transition by ID",
+    summary="Get a transition by ID with its attachments",
 )
 async def get_transition(
     repo: TransitionRepoDep,
@@ -212,6 +214,36 @@ async def update_transition(
     id: int = Path(..., ge=1, description="Transition ID"),
 ):
     return await repo.update(id, schema)
+
+
+@transitions_router.post(
+    "/{id}/attachments/{attachment_id}",
+    status_code=status.HTTP_201_CREATED,
+    summary="Link an attachment to a transition",
+)
+async def link_attachment(
+    repo: TransitionRepoDep,
+    id: int = Path(..., ge=1, description="Transition ID"),
+    attachment_id: int = Path(..., ge=1, description="Attachment ID"),
+):
+    await repo.get(id)
+    await repo.link_attachment(id, attachment_id)
+    return Response(status_code=status.HTTP_201_CREATED)
+
+
+@transitions_router.delete(
+    "/{id}/attachments/{attachment_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Unlink an attachment from a transition",
+)
+async def unlink_attachment(
+    repo: TransitionRepoDep,
+    id: int = Path(..., ge=1, description="Transition ID"),
+    attachment_id: int = Path(..., ge=1, description="Attachment ID"),
+):
+    await repo.get(id)
+    await repo.unlink_attachment(id, attachment_id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 @transitions_router.delete(

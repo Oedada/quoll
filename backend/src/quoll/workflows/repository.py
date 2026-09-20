@@ -1,11 +1,17 @@
 import logging
 
+from sqlalchemy import delete as sa_delete
 from sqlalchemy import select
 from sqlalchemy.orm import selectinload
 
 from quoll.core.base_repository import BaseRepository
 from quoll.core.exceptions import IdNotExistsException
-from quoll.workflows.models import Attachment, Stage, Workflow, WorkflowTransition
+from quoll.workflows.models import (
+    Stage,
+    TransitionAttachment,
+    Workflow,
+    WorkflowTransition,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -20,9 +26,7 @@ class WorkflowRepository(BaseRepository[Workflow]):
             .where(Workflow.id == workflow_id)
             .options(
                 selectinload(Workflow.stages),
-                selectinload(Workflow.transitions).selectinload(
-                    WorkflowTransition.attachments
-                ),
+                selectinload(Workflow.transitions),
             )
         )
         res = await self.session.execute(stmt)
@@ -57,24 +61,32 @@ class WorkflowTransitionRepository(BaseRepository[WorkflowTransition]):
         logger.debug(
             f"Getting transitions for workflow_id={workflow_id}, from_stage_id={from_stage_id}"
         )
-        stmt = (
-            select(WorkflowTransition)
-            .where(
-                WorkflowTransition.workflow_id == workflow_id,
-                WorkflowTransition.from_stage_id == from_stage_id,
-                WorkflowTransition.is_active.is_(True),
-            )
-            .options(selectinload(WorkflowTransition.attachments))
+        stmt = select(WorkflowTransition).where(
+            WorkflowTransition.workflow_id == workflow_id,
+            WorkflowTransition.from_stage_id == from_stage_id,
+            WorkflowTransition.is_active.is_(True),
         )
         res = await self.session.execute(stmt)
         return list(res.scalars().all())
 
+    async def link_attachment(self, transition_id: int, attachment_id: int) -> None:
+        logger.debug(
+            f"Linking attachment_id={attachment_id} to transition_id={transition_id}"
+        )
+        link = TransitionAttachment(
+            transition_id=transition_id, attachment_id=attachment_id
+        )
+        self.session.add(link)
+        await self.session.flush()
 
-class AttachmentRepository(BaseRepository[Attachment]):
-    model = Attachment
-
-    async def get_by_transition_id(self, transition_id: int) -> list[Attachment]:
-        logger.debug(f"Getting attachments for transition_id={transition_id}")
-        stmt = select(Attachment).where(Attachment.transition_id == transition_id)
+    async def unlink_attachment(self, transition_id: int, attachment_id: int) -> bool:
+        logger.debug(
+            f"Unlinking attachment_id={attachment_id} from transition_id={transition_id}"
+        )
+        stmt = sa_delete(TransitionAttachment).where(
+            TransitionAttachment.transition_id == transition_id,
+            TransitionAttachment.attachment_id == attachment_id,
+        )
         res = await self.session.execute(stmt)
-        return list(res.scalars().all())
+        await self.session.flush()
+        return (res.rowcount or 0) > 0

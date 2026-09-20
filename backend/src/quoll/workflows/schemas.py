@@ -2,25 +2,8 @@ from datetime import datetime
 
 from pydantic import Field
 
+from quoll.attachments.schemas import AttachmentRead
 from quoll.core.schemas import AppBaseModel
-
-
-# Attachment
-class AttachmentBase(AppBaseModel):
-    filename: str
-    mime_type: str
-    preview: str | None = None
-    transition_id: int | None = None
-
-
-class AttachmentCreate(AttachmentBase):
-    pass
-
-
-class AttachmentRead(AttachmentBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
 
 
 # Stage
@@ -75,10 +58,10 @@ class WorkflowTransitionRead(WorkflowTransitionBase):
     id: int
     created_at: datetime
     updated_at: datetime
-
-
-class WorkflowTransitionDetailRead(WorkflowTransitionRead):
     attachments: list[AttachmentRead] = Field(default_factory=list)
+
+
+WorkflowTransitionDetailRead = WorkflowTransitionRead
 
 
 # Workflow
@@ -104,4 +87,4 @@ class WorkflowRead(WorkflowBase):
 
 class WorkflowDetailRead(WorkflowRead):
     stages: list[StageRead] = Field(default_factory=list)
-    transitions: list[WorkflowTransitionDetailRead] = Field(default_factory=list)
+    transitions: list[WorkflowTransitionRead] = Field(default_factory=list)

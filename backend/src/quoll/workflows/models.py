@@ -1,8 +1,13 @@
-from sqlalchemy import JSON, Boolean, ForeignKey, Integer, String, Text
+from typing import TYPE_CHECKING
+
+from sqlalchemy import JSON, Boolean, ForeignKey, Integer, Text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from quoll.core.mixins import IdMixin, TimestampMixin
 from quoll.db import Base, str_255
+
+if TYPE_CHECKING:
+    from quoll.attachments.models import Attachment
 
 
 class Workflow(Base, IdMixin, TimestampMixin):
@@ -31,6 +36,15 @@ class Stage(Base, IdMixin, TimestampMixin):
     workflow: Mapped[Workflow] = relationship(back_populates="stages")
 
 
+class TransitionAttachment(Base):
+    transition_id: Mapped[int] = mapped_column(
+        ForeignKey("workflow_transitions.id", ondelete="CASCADE"), primary_key=True
+    )
+    attachment_id: Mapped[int] = mapped_column(
+        ForeignKey("attachments.id", ondelete="CASCADE"), primary_key=True, index=True
+    )
+
+
 class WorkflowTransition(Base, IdMixin, TimestampMixin):
     workflow_id: Mapped[int] = mapped_column(
         ForeignKey("workflows.id", ondelete="CASCADE"), index=True
@@ -50,20 +64,7 @@ class WorkflowTransition(Base, IdMixin, TimestampMixin):
     from_stage: Mapped["Stage | None"] = relationship(foreign_keys=[from_stage_id])
     to_stage: Mapped[Stage] = relationship(foreign_keys=[to_stage_id])
     attachments: Mapped[list["Attachment"]] = relationship(
-        back_populates="transition", cascade="all, delete-orphan"
-    )
-
-
-class Attachment(Base, IdMixin, TimestampMixin):
-    transition_id: Mapped[int | None] = mapped_column(
-        ForeignKey("workflow_transitions.id", ondelete="CASCADE"),
-        nullable=True,
-        index=True,
-    )
-    filename: Mapped[str_255]
-    mime_type: Mapped[str] = mapped_column(String(100))
-    preview: Mapped[str | None] = mapped_column(Text, nullable=True)
-
-    transition: Mapped["WorkflowTransition | None"] = relationship(
-        back_populates="attachments"
+        "Attachment",
+        secondary="transition_attachments",
+        lazy="selectin",
     )
