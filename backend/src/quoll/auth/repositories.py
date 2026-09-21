@@ -4,7 +4,7 @@ from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.keycloak_client import keycloak_client
-from quoll.auth.models import Session, User, UserRole
+from quoll.auth.models import Admin, Manager, Session, Superviser, User, UserRole
 from quoll.config import settings
 from quoll.core import (
     BaseRepository,
@@ -12,6 +12,7 @@ from quoll.core import (
     UserAlreadyExistsAuthError,
     UserNotFoundException,
 )
+from quoll.core.exceptions import InvalidUserRoleException
 
 logger = logging.getLogger(__name__)
 
@@ -28,6 +29,18 @@ class UserRepository:
             f"{settings.keycloak_root_url}/admin/realms/{keycloak_client.realm}"
         )
 
+    async def set_superviser(self, manager_id: str, superviser_id: str) -> None:
+        manager = await self.get(manager_id)
+        superviser = await self.get(superviser_id)
+        if isinstance(manager, Manager):
+            if isinstance(superviser, Superviser):
+                manager.superviser_id = superviser_id
+                await self.s.flush()
+            else:
+                raise InvalidUserRoleException(manager_id)
+        else:
+            raise InvalidUserRoleException(manager_id)
+
     async def assign_role(self, user_id: str, role: UserRole):
         role_resp = (
             await self.client.get(f"{self.base_url}/roles/{role.value}")
@@ -41,6 +54,17 @@ class UserRepository:
 
     async def create(self, user: User, password: str) -> str:
         logger.debug(f"Creating user with username={user.username}")
+        role_to_model = {
+            UserRole.MANAGER: Manager,
+            UserRole.SUPERVISER: Superviser,
+            UserRole.ADMIN: Admin,
+        }
+        expected_model = role_to_model.get(user.role)
+        if expected_model and not isinstance(user, expected_model):
+            raise ValueError(
+                f"Role {user.role} requires {expected_model.__name__} instance, "
+                f"got {type(user).__name__}"
+            )
         resp = await self.client.post(
             url=f"{self.base_url}/users",
             json={

@@ -24,6 +24,7 @@ class UserUpdate(AppBaseModel):
 class UserRead(UserBase):
     id: str
     role: UserRole
+    superviser_id: str | None = None
 
 
 class UserListRead(AppBaseModel):

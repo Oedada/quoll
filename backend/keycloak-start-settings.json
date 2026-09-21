@@ -63,23 +63,6 @@
           "view-realm"
         ]
       }
-    },
-    {
-      "id": "${APP_ADMIN_ID}",
-      "username": "${APP_ADMIN_USERNAME}",
-      "email": "${APP_ADMIN_EMAIL}",
-      "emailVerified": true,
-      "enabled": true,
-      "credentials": [
-        {
-          "type": "password",
-          "value": "${APP_ADMIN_PASSWORD}",
-          "temporary": false
-        }
-      ],
-      "realmRoles": [
-        "admin"
-      ]
     }
   ]
 }

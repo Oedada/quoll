@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from quoll.attachments import S3StorageService, attachments_router
 from quoll.auth import auth_router
-from quoll.auth.models import User, UserRole
+from quoll.auth.models import Admin, UserRole
+from quoll.auth.repositories import UserRepository
 from quoll.config import settings
 from quoll.core import AppException
+from quoll.core.exceptions import UserAlreadyExistsAuthError
 from quoll.db import Base, RawBase
 from quoll.interactions import (
     interactions_router,
@@ -55,16 +57,23 @@ async def lifespan(app: FastAPI):
         region_name=settings.s3_region_name,
     )
     async with app.state.db_session_maker() as session:
-        if session.get(User, settings.app_admin_id) is None:
-            session.add(
-                User(
+        user_repo = UserRepository(session)
+        try:
+            await user_repo.create(
+                Admin(
                     id=settings.app_admin_id,
                     role=UserRole.ADMIN,
+                    username=settings.app_admin_username,
+                    email=settings.app_admin_email,
                     first_name="admin",
                     last_name="admin",
-                )
+                ),
+                password=settings.app_admin_password,
             )
-            await session.commit()
+            logger.debug("Admin created")
+        except UserAlreadyExistsAuthError:
+            pass
+        await session.commit()
     await app.state.s3.ensure_bucket()
     logger.info("Application started")
 

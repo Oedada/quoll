@@ -75,12 +75,17 @@ class User(RawBase):
 
     id: Mapped[str] = mapped_column(primary_key=True)
     role: Mapped[UserRole]
-    username: str | None = None
-    email: str | None = None
+    username: str
+    email: str
     first_name: Mapped[str]
     last_name: Mapped[str]
 
     __mapper_args__ = {"polymorphic_on": "role"}  # noqa: RUF012
+
+    def __init__(self, *, username: str, email: str, **kwargs):
+        super().__init__(**kwargs)
+        self.username = username
+        self.email = email
 
 
 class Superviser(User):

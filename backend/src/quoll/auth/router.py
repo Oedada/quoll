@@ -9,8 +9,10 @@ from quoll.auth.dependencies import (
     get_session_repo,
     get_user_repo,
 )
+
+from quoll.core.exceptions import InvalidUserRoleException
 from quoll.auth.keycloak_client import keycloak_client
-from quoll.auth.models import Session, User
+from quoll.auth.models import Admin, Manager, Session, Superviser, User, UserRole
 from quoll.auth.repositories import SessionRepository, UserRepository
 from quoll.auth.schemas import UserCreate, UserListRead, UserRead, UserUpdate
 from quoll.config import settings
@@ -87,6 +89,7 @@ async def get_me(user: CurrentUser) -> UserRead:
         first_name=user.first_name,
         last_name=user.last_name,
         role=user.role,
+        superviser_id=getattr(user, "superviser_id", None),
     )
 
 
@@ -129,6 +132,7 @@ async def get_user(
         first_name=user.first_name,
         last_name=user.last_name,
         role=user.role,
+        superviser_id=getattr(user, "superviser_id", None),
     )
 
 
@@ -138,14 +142,39 @@ async def create_user(
     admin_user: AdminUser,
     user_repo: UserRepository = Depends(get_user_repo),  # noqa: B008
 ) -> UserRead:
-    user = User(
-        id="",
-        username=user_data.username,
-        email=user_data.email,
-        first_name=user_data.first_name,
-        last_name=user_data.last_name,
-        role=user_data.role,
-    )
+    match user_data.role:
+        case UserRole.MANAGER:
+            user = Manager(
+                id="",
+                username=user_data.username,
+                email=user_data.email,
+                first_name=user_data.first_name,
+                last_name=user_data.last_name,
+                role=user_data.role,
+            )
+        case UserRole.SUPERVISER:
+            user = Superviser(
+                id="",
+                username=user_data.username,
+                email=user_data.email,
+                first_name=user_data.first_name,
+                last_name=user_data.last_name,
+                role=user_data.role,
+            )
+        case UserRole.ADMIN:
+            user = Admin(
+                id="",
+                username=user_data.username,
+                email=user_data.email,
+                first_name=user_data.first_name,
+                last_name=user_data.last_name,
+                role=user_data.role,
+            )
+        case _:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Unknown role: {user_data.role}",
+            )
     user_id = await user_repo.create(user, user_data.password)
     created_user = await user_repo.get(user_id)
     return UserRead(
@@ -155,7 +184,20 @@ async def create_user(
         first_name=created_user.first_name,
         last_name=created_user.last_name,
         role=created_user.role,
+        superviser_id=getattr(created_user, "superviser_id", None),
     )
+
+
+@router.post(
+    "/users/connections/{superviser_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def set_connection(
+    superviser_id: str,
+    manager_id: str,
+    admin_user: AdminUser,
+    user_repo: UserRepository = Depends(get_user_repo),  # noqa: B008
+):
+    await user_repo.set_superviser(manager_id, superviser_id)
 
 
 @router.patch("/users/{user_id}", response_model=UserRead)
@@ -167,7 +209,6 @@ async def update_user(
 ) -> UserRead:
     current_user = await user_repo.get(user_id)
     updated_user = await user_repo.update(
-        user_id,
         User(
             id=current_user.id,
             username=current_user.username,
@@ -190,6 +231,7 @@ async def update_user(
         first_name=updated_user.first_name,
         last_name=updated_user.last_name,
         role=updated_user.role,
+        superviser_id=getattr(updated_user, "superviser_id", None),
     )
 
 

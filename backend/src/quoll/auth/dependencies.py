@@ -16,7 +16,7 @@ async def get_session_repo(
 
 
 async def get_user_repo(
-    req: Request, session: AsyncSession = Depends(get_db_session)
+    req: Request, session: AsyncSession = Depends(get_db_session)  # noqa: B008
 ) -> UserRepository:
     return UserRepository(session)
 

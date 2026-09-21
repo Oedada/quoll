@@ -24,6 +24,10 @@ class UserNotFoundException(AppException):
         super().__init__(404, f"User with identifier '{identifier}' not found")
         logger.warning(self.message)
 
+class InvalidUserRoleException(AppException):
+    def __init__(self, id: str):
+        super().__init__(400, f'User with id {id} has invalid role for this operation')
+        logger.warning(self.message)
 
 class AuthError(AppException):
     pass
