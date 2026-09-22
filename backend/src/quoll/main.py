@@ -25,6 +25,8 @@ from quoll.workflows import (
     transitions_router,
     workflows_router,
 )
+from quoll.notifications import router as notifications_router, ws_router as notifications_ws_router
+from quoll.notifications.connection_storage import ConnectionStorage
 
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -75,6 +77,8 @@ async def lifespan(app: FastAPI):
             pass
         await session.commit()
     await app.state.s3.ensure_bucket()
+    logger.debug("Initializing connection storage")
+    app.state.connection_storage = ConnectionStorage()
     logger.info("Application started")
 
     yield
@@ -143,6 +147,7 @@ app.include_router(attachments_router)
 app.include_router(universities_router)
 app.include_router(vendors_router)
 app.include_router(interactions_router)
+app.include_router(notifications_router)
 
 
 @app.get("/", tags=["Health"])
