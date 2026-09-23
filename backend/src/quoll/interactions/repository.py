@@ -1,11 +1,16 @@
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import func, or_, select
 from sqlalchemy.orm import selectinload
 
 from quoll.core.base_repository import BaseRepository
 from quoll.core.exceptions import IdNotExistsException
+from quoll.interactions.capacity_policy import (
+    capacity_count_stmt,
+    open_projects_filter_expression,
+)
 from quoll.interactions.models import Interaction, University, Vendor
+from quoll.workflows.models import Stage
 
 logger = logging.getLogger(__name__)
 
@@ -72,3 +77,35 @@ class InteractionRepository(BaseRepository[Interaction]):
         )
         res = await self.session.execute(stmt)
         return list(res.scalars().all())
+
+    async def count_capacity_projects(self, manager_id: str) -> int:
+        """сколько слотов занято прямо сейчас"""
+        return await self.session.scalar(capacity_count_stmt(manager_id)) or 0
+
+    async def count_open_projects(self, manager_id: str) -> int:
+        """незакрытые заявки, включая поставленные на паузу"""
+        stmt = (
+            select(func.count())
+            .select_from(Interaction)
+            .join(Stage, Interaction.state_id == Stage.id)
+            .where(
+                Interaction.owner_id == manager_id, open_projects_filter_expression()
+            )
+        )
+        return await self.session.scalar(stmt) or 0
+
+    async def count_owned_nonterminal_interactions(self, manager_id: str) -> int:
+        """всё, что мешает отпустить менеджера: незакрытые заявки и черновики.
+
+        пока не ноль - нельзя ни открепить от руководителя, ни сменить роль
+        """
+        stmt = (
+            select(func.count())
+            .select_from(Interaction)
+            .outerjoin(Stage, Interaction.state_id == Stage.id)
+            .where(
+                Interaction.owner_id == manager_id,
+                or_(Interaction.state_id.is_(None), Stage.is_terminal.is_(False)),
+            )
+        )
+        return await self.session.scalar(stmt) or 0

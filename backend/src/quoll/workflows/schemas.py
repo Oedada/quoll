@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from pydantic import Field
+from pydantic import ConfigDict, Field, model_validator
 
 from quoll.attachments.schemas import AttachmentRead
 from quoll.core.schemas import AppBaseModel
@@ -12,6 +12,18 @@ class StageBase(AppBaseModel):
     description: str | None = None
     position: int = 0
     workflow_id: int
+    # без дефолтов: иначе черновая стадия случайно начнёт занимать слот
+    is_terminal: bool
+    consumes_capacity: bool
+
+    @model_validator(mode="after")
+    def check_terminal_semantics(self):
+        if self.is_terminal and self.consumes_capacity:
+            raise ValueError(
+                "Terminal stage cannot consume capacity: "
+                "consumes_capacity must be False when is_terminal is True"
+            )
+        return self
 
 
 class StageCreate(StageBase):
@@ -19,6 +31,9 @@ class StageCreate(StageBase):
 
 
 class StageUpdate(AppBaseModel):
+    # флаги стадии после создания не меняются, поэтому их тут нет вовсе
+    model_config = ConfigDict(extra="forbid")
+
     name: str | None = None
     description: str | None = None
     position: int | None = None
@@ -81,6 +96,7 @@ class WorkflowUpdate(AppBaseModel):
 
 class WorkflowRead(WorkflowBase):
     id: int
+    is_published: bool
     created_at: datetime
     updated_at: datetime
 
