@@ -721,11 +721,11 @@ wheels = [
 
 [[package]]
 name = "idna"
-version = "3.19"
+version = "3.20"
 source = { registry = "https://pypi-mirror.gitverse.ru/simple/" }
-sdist = { url = "https://pypi-mirror.gitverse.ru/packages/idna/3.19/idna-3.19.tar.gz", hash = "sha256:5e0811a4383b21dc5838069f801c4fb62113b7447663d2530d2bd6e77b49bf15" }
+sdist = { url = "https://pypi-mirror.gitverse.ru/packages/idna/3.20/idna-3.20.tar.gz", hash = "sha256:a7db850025b95ded1eae8a46181a1a6c56c92c96f0e2b005d9ff8dc0210cab44" }
 wheels = [
-    { url = "https://pypi-mirror.gitverse.ru/packages/idna/3.19/idna-3.19-py3-none-any.whl", hash = "sha256:815e7be7a7806d54abb586dc943addc79e8b2ee16915059658cbeff4b1b43bf4" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/idna/3.20/idna-3.20-py3-none-any.whl", hash = "sha256:ab7ae7122974553370f0bdb919e1a960b2cd1bc1ef0276416d896db81c14582c" },
 ]
 
 [[package]]
@@ -748,14 +748,14 @@ wheels = [
 
 [[package]]
 name = "mako"
-version = "1.4.1"
+version = "1.4.3"
 source = { registry = "https://pypi-mirror.gitverse.ru/simple/" }
 dependencies = [
     { name = "markupsafe" },
 ]
-sdist = { url = "https://pypi-mirror.gitverse.ru/packages/mako/1.4.1/mako-1.4.1.tar.gz", hash = "sha256:d7904710b662996425a21627710c4777c45053146942cf8a7aebf757c92b8c27" }
+sdist = { url = "https://pypi-mirror.gitverse.ru/packages/mako/1.4.3/mako-1.4.3.tar.gz", hash = "sha256:cd6537fe88d5fec315c55c2f8529bc4ce7a9a352ad7db3eeaa6a66e2dd4ec37a" }
 wheels = [
-    { url = "https://pypi-mirror.gitverse.ru/packages/mako/1.4.1/mako-1.4.1-py3-none-any.whl", hash = "sha256:a359d9a94a541213958742b2698d0a7757bb83551767bc468a74b9905aba9617" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/mako/1.4.3/mako-1.4.3-py3-none-any.whl", hash = "sha256:723296007c870bfd6b3f0c3230dba7198096e5269297ebf5e4eff9e7ffa39d4f" },
 ]
 
 [[package]]
@@ -812,120 +812,120 @@ wheels = [
 
 [[package]]
 name = "multidict"
-version = "6.8.0"
+version = "6.9.1"
 source = { registry = "https://pypi-mirror.gitverse.ru/simple/" }
-sdist = { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0.tar.gz", hash = "sha256:5cd4637ce76312ba1e05eb9c5193fec231f64fee0944e135fa1e951242355b37" }
+sdist = { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1.tar.gz", hash = "sha256:0f06e60fa190aa7abd0914c2a766736fdc8e9f34878c4346338534b73d1b20e2" }
 wheels = [
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-android_24_x86_64.whl", hash = "sha256:ec0a4d066356054d569a66e0a94691a2058b680be5e710298f61db11a3c4609f" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-ios_13_0_arm64_iphoneos.whl", hash = "sha256:714597cb5d5e15a8a449d2ae23c45b486a9e8fa33c462c7a33d7f35b65d92943" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl", hash = "sha256:e0db3a4d1e264e225037a6023888972c25206a96e016021a5bea41c9a939f2a9" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:27747162712e85c84598d364425dbf1714ff335bdb6ba3171c4e5081196e8916" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:847d6082ae694dc95e548acb201bc100e1cfa96513bc71fdcb86f709dad6c435" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:88a6df88567680504ae28bfa7a1f2f64243d91e79a40b2c92ef42efc531e23da" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:560b211fc3bd4a1e1c6de44f6d38113bf5b410dfc89a4c0d2a3c0edbf1a0dfb8" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:202436df907c15adbb94360296c425ea53cf8968a5d2cff9b5b9790ae1972b33" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:c46a08bf070d6849fed483e9d9833f9d06aecb8382ed985be0b38508b3ae958e" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:2cd560498ae8e1bcc955643c1d78eb8e338226d07a983c656ea8c4443d3eec0f" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:758233648ac47b07c575224c4eadd73c8929c3b4c31e2afcfea935fde1cda735" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:122adc7c46ac1e31ecfc7f81b2530533dccafdba70f5d741649f87e336c63384" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:8125e60f3c70e323ac07dd8b3635f7b3bbc5c3a9ac04ae5988f668ff7ae28a18" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:83ff054b04915be5c15680da6c6012474a2cc2bf534129a0e8c6a99f17ba7238" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-musllinux_1_2_armv7l.whl", hash = "sha256:930c6058047410e3edff445f5a6e4457f2e089042dede00e2d18ce06f3ceae2e" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-musllinux_1_2_i686.whl", hash = "sha256:13e26f59f0eecfc5f67c663ad550ffdaf62c0f657547cde387f6c86af1c9449e" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-musllinux_1_2_ppc64le.whl", hash = "sha256:fd789a294d8e098528be29b2669b83005ce569339f8cef167fc0274c3115c34c" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-musllinux_1_2_riscv64.whl", hash = "sha256:3126f2a96704505aa4e92a72d6e8a5d7f29d40a987ced8bf69e29d71dfc71fbc" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-musllinux_1_2_s390x.whl", hash = "sha256:23c9ee89967b6a9b4048acb3b93b660ed714ce9c8bf3bbe652959bc120dc02dc" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:7a62e302fc8cd6aa8972207e7e951d1fdee7c1dda18568305041d19f0e2c00f5" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-win32.whl", hash = "sha256:093167d22a8c95af30f597b8a5686f20a14512989942d4be804d119899caca20" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-win_amd64.whl", hash = "sha256:f25b61a708bd276e8cbb6afcbbf1b8e793a3be70ba0a842d0b8692020f83b706" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp313-cp313-win_arm64.whl", hash = "sha256:bb36381e1f9f9d06eba2f10bdd438e5d20c07d5b55e1a3eee30b9f44cbf52316" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-android_24_x86_64.whl", hash = "sha256:f8b09b25e0f4dc2ea9e2adbb1cc3ba11a94d6fa3dd978ae659c8743052e1afbc" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-ios_13_0_arm64_iphoneos.whl", hash = "sha256:1f57c414be82490bc0e0305fdb834186229b2d9b6a35fa0afd1eb1a772d125ab" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-ios_13_0_arm64_iphonesimulator.whl", hash = "sha256:00be37bde741bf60871082cd347a093218c44886e99231b7516671c70f2c280d" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:e37b744849fb631bb52e3dadde35ffeee365a6c41cf71257b5b7acc9cd83fd38" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:c2b2a96cf1dd99fe7867be4c013314225f4d5786e6685906e29932d42aca6f11" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:bea7df027015856ba5d0a88e3b4777ff8cb5c66b58fc108050fe79d4dd9d4d2d" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:d3da668e903c934ed0b587ecacfed6901f6ae6384a6e975887592b61845e78bc" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:64eaeda36ee8d88f9e8616a587a8c66a663283cf6e0dcf013c1ddd8c758e4aef" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:ac746cb365bac1c462da9e3e6ab8904a8efe2217a56b0b2e3d9480f41d2b2602" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:18f0e06360c3e451a3ab800355773c8d125a758238d780c800b0ee5e90ee903c" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:69708fecaa88bcb2341397b49fc95057a835b02a3670c551b37f95dd79e64e3a" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9606f583e7acaf61e7b3f56074e14037b9af7cb194590edfc0114b3ae5931ff7" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:1f66fe6a021173d0d47968491791966b9f3e6d61115f2491744aa0c07a6e67af" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:be007d1aee2cbd530347dcafedb400891a3b5f1bd7135f95cf5d5b330b5219ee" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-musllinux_1_2_armv7l.whl", hash = "sha256:8457aff3c12a89a8e1c4674de5c777857fbc429f40fe117a3d29538547cbc364" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-musllinux_1_2_i686.whl", hash = "sha256:95c27b4f3f04320fc44e338573f40c5c956b504a7fcf081a157fd0b02579311c" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-musllinux_1_2_ppc64le.whl", hash = "sha256:d244cf6b52b5ba1c34c3832f4652a668ebb36d95949b96eed9a1c54d916a90dd" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-musllinux_1_2_riscv64.whl", hash = "sha256:5bbbb696c8024475b1877d14ce20d5f1cc05b8f6d786cea0fe3aa7fedc02e891" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-musllinux_1_2_s390x.whl", hash = "sha256:cbd86f9787c5e2f5fd27d8b21458222f107347c6731c4e93dde68f554b466a2d" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:2f8a4b0b4d639d525928c7f30de527bfdf9ead6e44a5e8cb9c50aced5e4590cb" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-win32.whl", hash = "sha256:8890c89d662560e51c55ac1304d6f919b23942abe9ae1127cb1de9aa6132fa52" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-win_amd64.whl", hash = "sha256:45cc39ba50fb0754a4359b90f8229ae08598fe2266abe3521b4e5a9ba916534a" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314-win_arm64.whl", hash = "sha256:d0264f8d5cb0a803f650a6a8572dfa0cd1e099a2234c588dc8fb220b415b865f" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:1969971900b0871530f9b62280dcc2d75688e74d2a69262bc01faf2b96c78f04" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:8180b635290a75af8478f1b3e9810135381ae24833293fe77b85c1c21ff842ab" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:4261863fc8b5ab1b815ede94e592e94c6af5b04616014929057e61859e7382a9" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:0b143d53590e89f43153d81d505a8448d4d57354354385aef8a51d67ffefa27e" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:da1c112c5784ccd9d32cd90be6739fee32644e874eff6ae8f0497cba3e352e58" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:f7eefd0233a7c33ca980a5cfef26f1e9b5e2137839e752a99963696729f12d91" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:348bb85e2038b40c007383616d73f734869063772372519549ebd7da1723d1a4" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:095f62ea4e7a3be2f6c567ab695ce10e950f2adb905c1bec82281593e0b2d2ad" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:be569fff1d85cd29391c431c5641c8772acb75bbdc61e60a8e82fceb9023d385" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:3533a03e4e789baf6a286e7b0b1b6da3f3d7c3eab569686ee29ee1d8b52e2cb4" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:1bdb9b8fba5a9aef673ec90db3f55b1ce743f2fbdea4d37dc04d14ccdfc153ff" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-musllinux_1_2_armv7l.whl", hash = "sha256:f8d7b66c9e09c0bb0add2b5895e646b62a0849e71155066f215523de6b95cbe6" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-musllinux_1_2_i686.whl", hash = "sha256:563d6500ca80dac7bba6f48a78e0ffd87e21a7d4d24642c6503a2ddccd70c110" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-musllinux_1_2_ppc64le.whl", hash = "sha256:346ac52e56bcda320c0dcdfdd081947ed7cada33afea4e2284bef7b0733bff9b" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-musllinux_1_2_riscv64.whl", hash = "sha256:4ee953a5ebaeed38dc21cc032ed17a9d9782802e00042200497ab4b01b0bf7c0" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-musllinux_1_2_s390x.whl", hash = "sha256:2f79cc3e8039a8cf5c77e0811b0807953fd52d0863b9b76970b20d696dc64a78" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:43a4b56555bbcf8af161e7c7682bd93eec10f068c95844511864c018c8e5e13b" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-win32.whl", hash = "sha256:48ea524a25a1cd5972cf293bc95713918cba0bcd6fa9b992d906c857c546abe2" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-win_amd64.whl", hash = "sha256:d0be2b832435001bc623ca7f1499ca1a853d4f082fb61221a80ce71132f50b26" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp314-cp314t-win_arm64.whl", hash = "sha256:62b8e291a4f7edbf7cde7a43d831d893ba443a1b627498b53581943b0e348feb" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-android_24_x86_64.whl", hash = "sha256:e192018b732f7b168e6604cbdf40fa8e05c996693b9eb445a0d8a73f4b77c5d3" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-ios_13_0_arm64_iphoneos.whl", hash = "sha256:b25426f9f6ed402835617c8f23609a47045f91ecff365eb6734817e039a8ed25" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-ios_13_0_arm64_iphonesimulator.whl", hash = "sha256:fa6c2880709c84457de104385b704fc28860f27e442ad13966fc4af8e714fe9c" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-macosx_10_15_universal2.whl", hash = "sha256:eabb03dc3e4ed6333ecd1cc9826ec80e7a98b5506deeb832d7260c8e44166d23" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-macosx_10_15_x86_64.whl", hash = "sha256:59e539c4eb4d3a53b0e630a6ba2b2f2824732b5e73f90e30a280f12fde157b15" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-macosx_11_0_arm64.whl", hash = "sha256:835d5a90b11d1f5f8200ff3cc8316bded76eebebc92436398947a27657e645e7" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:d2d236b8a44ae91536a12ebcb996bdb31cf27425f36b4d05c87f2ba2716050ba" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:bb9a60b7faa5d37c426fa91cf4d6738182a1f2755b9fab7c9c64cd466c4ce51e" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:0ef606c15cac6c90279acf34120784b6f36662cbf382defd3955cd8f1115336b" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:68186a2d4051c8ffd17be33553bea2ec9bbc8ef860fe2980a221d96126296f31" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:2cc66abb85e2108c9ff8a1c0d20fa260bf690bbb33caef4ff3ecb2c2cbdfff5d" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:69b3e519a132bb943b0daae15fc8c2168706b17f826481d32a32a5e784b129e3" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:e41226ecf607f062fe34a2f4cf64ad3a89e3a0180dc800b463b6b14c06dd10dc" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-musllinux_1_2_aarch64.whl", hash = "sha256:610c7637bc36b90f39e6c66f710f93d57018f83d53e1e187caaa218c6892b95f" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-musllinux_1_2_armv7l.whl", hash = "sha256:65c85c79f5a2c04fbbc18f006c014674dc5fdf270cb978d8862c82c6f694e60c" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-musllinux_1_2_i686.whl", hash = "sha256:628ff11e6720f90acd0c305dfa3339f04a783a20de8cda6ac333ba46447261e8" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-musllinux_1_2_ppc64le.whl", hash = "sha256:0935971bffd0b479fc90c4811ca787703e93fcb6afea939a375dfc80285ab368" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-musllinux_1_2_riscv64.whl", hash = "sha256:9442b14eec262a1f74369bbd07e75bc5155105164649a4b9fbc1ebc7b8fb0b14" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-musllinux_1_2_s390x.whl", hash = "sha256:397599503b718f0137f26d3f6532d6955069cd2e5917c47ef581495bc2529ff8" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:9e37024b41d7a7e7e9cce14b248d54707c21c2a2ea30a47b71bdcefcafec00f2" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-win32.whl", hash = "sha256:071da134651b04a8507dfb331ac0988f376337c2aea59486bf20989fb5b5a64e" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-win_amd64.whl", hash = "sha256:3bafff8598f0528017ddc74194e5451d5c22d046c98935f8f86247b0f286e4f8" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315-win_arm64.whl", hash = "sha256:e886ef8c9879105fe4fc99417447b3a5f35d1131412ce839470bd2089fe2043f" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-macosx_10_15_universal2.whl", hash = "sha256:883284137e25318ed9735b742ae46341a864888fae28e8b6314c4f84da080f08" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-macosx_10_15_x86_64.whl", hash = "sha256:ca52b9ec80851366197577154c862c4c4c7036ca76ae94cef5cb59c5cfeab944" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-macosx_11_0_arm64.whl", hash = "sha256:91fa75d0a693832106d98f66c849f034f21c828d14437f1fb97d3784aab89e84" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:307c1acd812fe897e7fbe10c6758822e8c04be4e7c60a9f54901cdf8b5ab8bc3" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:5caf684986a2490628f059a99dd107b566a2d34cf947f8eb8387e0500a1f90c5" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:77745725125d01fd613b6db043362aa7c6bfbfdb23d45dbfc3d92bf58160af62" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:8daafaa0b2eb43f76898ced78b1e0fb91b38c4fa50da516c18067f2a2d578c20" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:c68e0c0649d17c2d0339e3674e86a4aeba4a7e6b21c1e394cf947a95433b31d0" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:d8a5ac357ac283490a8d1899b0383355fd1f8634b14ba0d59e4c0dd97db85556" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:46029e6e27a3ec0dc55b53f58df82d10f04c5e111f78248279b530bedad2c30a" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-musllinux_1_2_aarch64.whl", hash = "sha256:8d1046b5427dcafe6e8a0e07527dd74f1ee694006160162f53f3a17f15aad3b4" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-musllinux_1_2_armv7l.whl", hash = "sha256:f1f4a220db6ed7c8fd16b6d644ffd1f082651693204daf3275e049fadc849e39" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-musllinux_1_2_i686.whl", hash = "sha256:029897732a9c798737457e382bf84e8c64237eff224a90aea2639f4413c45e4e" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-musllinux_1_2_ppc64le.whl", hash = "sha256:29be9fd289e9ab8f480996ea2f686e1654b80242033843cb11691688329423f1" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-musllinux_1_2_riscv64.whl", hash = "sha256:29631224698de1e42abc8fa7658d830e0aed0029785144b5832b695da5adef2f" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-musllinux_1_2_s390x.whl", hash = "sha256:962f18c59a000f30b084ea2e6b8001521bb315efd4e5f10acf9fb36f366b7882" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:c60e50bc5b07faac92fd3a20fa21cc8cf3e3f7204d2867b206c73293ebc19101" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-win32.whl", hash = "sha256:fc5460940f50dff00731b4132366840ba9685286ea88ea104b661899084f3fea" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-win_amd64.whl", hash = "sha256:b367c342327717d644db4c0ddb37ceb655c84822215ea0773a3a36911b74b71d" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-cp315-cp315t-win_arm64.whl", hash = "sha256:0c1c4debad7337627b86837abdf0237ca3cb3d7e17de7eab0177c263878546d4" },
-    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.8.0/multidict-6.8.0-py3-none-any.whl", hash = "sha256:75daa15ca16d6285eb2e104b2f05ee6f8d9836c68da3ce5c85f615a0450eed0e" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-android_24_x86_64.whl", hash = "sha256:d7bf9e43282d69561618e8a0ea33368d532ebef42f15c096f427090521dd74f3" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-ios_13_0_arm64_iphoneos.whl", hash = "sha256:03d47df72f084f757c1cb771188d5f4e3a805e4abc4d67e32509272343ae9382" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-ios_13_0_arm64_iphonesimulator.whl", hash = "sha256:6bc94fe17c3c56e5418f79515b786b101845f70609b0d19d0c1ba13448e5633a" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:8f2973bbd2bebd9d2e0cd6394c1292a1a19ccd56bdcbe1e174059f1a39be5b40" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:de7738b8c0bb74c4cc16bbd7fb49fc2bcf6430dba11b3432cd52768ae40933e8" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:e5ccad4b7bac125722f48d6f862bed3b514d8526deea06316bb72f152cd30a7c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:a49ff5cdb33654cb7d6a3c377aa2a83ddefaa1db31eb10bcf3c180aa84f9af8a" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:b22ff30006a2f28f8bff878fb93413cbe3a4d1fd517c28081d848c90e9cfd2c8" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:3adf06c66041aa21eeb8a71e82379b74773298c8e6d3d839b151aae441a99b94" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:963a8d8f97057082679523d0fd4c53a38f86bc58cabe4556faef682ae53fa2fa" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:b66ccc5c2cdd26e74fa5d4c29ffae424cc6148bf93ce574821783fb3b6d452c5" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:7fd79c521f6290c69125fa2b85fa65d9e657e6a8ffaf722dc881b926bef4aa5c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:1d804e4caf5d5da37d6dac1325da5629ebef1e27a294c2b568b295814aa36c7b" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:bb0d664505f4b112f384cffeee82e91e3f6448d8e574989479db4439b68cba05" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-musllinux_1_2_armv7l.whl", hash = "sha256:9e14d17773b1b3c758ff153659a1824608a0cb562c45f484b5ed8a433428444a" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-musllinux_1_2_i686.whl", hash = "sha256:083735b7f395894e43adb278d5dae901448883a835ff8f1977e285fefdb10418" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-musllinux_1_2_ppc64le.whl", hash = "sha256:b65121091567847a8cb520d364ab22ba90e00d3cc55fa9eb34bb439f0684bcd1" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-musllinux_1_2_riscv64.whl", hash = "sha256:ea999ae6e80e66ad5eea287860951b033d0104ca34d6d87c7b5125ebe0e12721" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-musllinux_1_2_s390x.whl", hash = "sha256:095d900c242e00fbe5f321ee072e7278b4153e78c5ce9c1efde167d62c1e4771" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:6441cc837aea58be7d9baef1b2383eb8311ab9303f500f99ac90b584cd78bb14" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-win32.whl", hash = "sha256:9c4880d017555d70dea367dd49271830842d48e3891c2da97da7ce8c4abcee40" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-win_amd64.whl", hash = "sha256:ac51cd64bae51c462ea58ad2492c9b8209667a4ef60c45c4a304518b67598d5d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp313-cp313-win_arm64.whl", hash = "sha256:37a9ebe00c698279213d56e6c64e1962ab1e092918270649b397cac3dc196ca4" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-android_24_x86_64.whl", hash = "sha256:fc0dcb22fa9aeabfe3fa4e0430099acff985ec5d77a851382f76cc6146e780e5" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-ios_13_0_arm64_iphoneos.whl", hash = "sha256:024123f0ab402ab33828e24eb80fa8f25167d0d3783ba5f287e39ed741e6abf9" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-ios_13_0_arm64_iphonesimulator.whl", hash = "sha256:af1b5a92315048c3e36bbebfa7d4760a9c3e910bc4166f11b20d77d20d6bcfca" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:b2483da477932ad1983d1d33c18bc3771c6fb00cfbaaed70a875fd547ef8e840" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:db4d697b18b6ef5528b1f36bfa25072cd2a421869f5963bc0e92c8a34b9e2800" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:854fd2f1bc6e8a56b89910b5cd7261a8b40f13ebb31572da985ce59c7da0886d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:03731f6fc036180700c9dc2308205a48e5ca6f3ff03087739ab746f294022201" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:989261c5f1735a165f2e4e87cf6d5f17ab734fa18f9ad0383d5adfcdaefce701" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:b4c9e5d05b126b267ac048a89a0e2d9b48b1b648add62d4872906304a8590610" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:9d0a21cf76153de8f2d96a877991d6bc59b9ab5180b949e50db73cc193b4a694" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:e7386aa18d98d6b8af44b92173654ec469237fda35f8e8523e43b581a86f476a" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:b69651732c64afb691e50cdc3387cae305e0eeff8804fe3e3ce203876494932a" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:1fee9a16d88a1c4865610de31ef5c666671020d7a81d1f510eaf3c97d00ebeba" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:7814bbee202acd3bd240204c17d8b87a4c48c81064fd8674dbe527d94d5a4290" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-musllinux_1_2_armv7l.whl", hash = "sha256:95f273bea318a194f656527ee2ed19494327bc500b8e87d9358e3222579aa28d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-musllinux_1_2_i686.whl", hash = "sha256:73bcafa21a78d0776b3ee7cd2a63c66f968eb7db8e8d594e32d7329950f6e828" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-musllinux_1_2_ppc64le.whl", hash = "sha256:1a938761c77e0e6edb0c93d02f4e988d44a69e5195e5a3b893e5553311347132" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-musllinux_1_2_riscv64.whl", hash = "sha256:37245ca4105386194dd1d292a6f2aae09bfe1bd7ac6f9ec25093e3cf8e9b143b" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-musllinux_1_2_s390x.whl", hash = "sha256:f0700527dd5bfa8b7204b08330542f4f388899d3c14d885d8a368992e0eb562d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:6b7e54fd883671d1a8810704851c044b7173287c552b9f5c3d9e0eb9f00ae194" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-win32.whl", hash = "sha256:e81ae656b9935ac4528a71f96bb7a14d949778ed1897c573d3e7ebb9187f8841" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-win_amd64.whl", hash = "sha256:acddcac38adc8342ba48aba98896faa7928854bebb62542362138655b5367ee3" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314-win_arm64.whl", hash = "sha256:32217133dddc58c927805cf6c0731d8144584176b768042ee886d51e71860bc9" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:0b2fb8c349d1103863750b5d8cb5ace766917f4b35f3d883c8f778853eaa9f76" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:56d834b74c993a7d7cb2b8ab33a0d55c3e0d4a3d2f2da2808a4ad3d79189711b" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:783ba7d845d79ce976afd9c1e91a4e5714671defa198ee789e8b23316083a485" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:4d718fa1b5f0d0dd75e86fbbc5b0c93ea3a5d65216c85c61cd5d7cdddfe08455" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:a313bad717dde740959d50850c315b75fd4eb0c5e6b4dc8535db0f1c369be125" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:ef01d29fca550ab871fd99154f82c6472aacf8e7def272dfb07b460123850390" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:0f3bd290711c6e9486173a6ee7cd4e7f00c3971c7908c1ec1b6e5437c5e4c6f9" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:81cdc537e0a42e3c0170752fcadbe450246d5c3b4b7231d6eb9672456605ac94" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:8b193bf7a443c97d81c47052f60c486071a4bdef4a573fa2514f920089414d45" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:7a0c98f6a636adf0d7edd60c61589eaf52d149239af754d0bfeb0effedba53a8" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:6e6b7e3a1520c39a2772f414cd9ddf5995f77e4e823dfa1522af383addd465a3" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-musllinux_1_2_armv7l.whl", hash = "sha256:ca65cced0d67a9039e93bcd98a369920e499bf98296844ff56ead01c9085321f" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-musllinux_1_2_i686.whl", hash = "sha256:372c063f37480f62c1ae32dc3a1a0a5942b180c883f99789075a8a8ec3c4e709" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-musllinux_1_2_ppc64le.whl", hash = "sha256:827c92145b3b976b39430129c89d213b250dacbe5fce678e9a03940e6e848983" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-musllinux_1_2_riscv64.whl", hash = "sha256:9b0124b9c17e9890f0819b2e7a5f65ec9a2f5aabd6c8e7ad090c1675cf70dee6" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-musllinux_1_2_s390x.whl", hash = "sha256:23136f5a564654eb61061ec6d5620a4c1ea32c8f552b65e9982a12b72bff601b" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:f2524ec55b3e65cbe235a8b3c36e2af3b635be02ed05e20c94e70c5c943c009e" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-win32.whl", hash = "sha256:35ba0263bae5dd3ad5aad767cc9afc01a8598c7dae30f1b3b2de98b1b32c28bd" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-win_amd64.whl", hash = "sha256:7c8d5882ba25ac0282258be435d8a05aa0cbcacfce15799154a338f847f159b9" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp314-cp314t-win_arm64.whl", hash = "sha256:ac348379cf4de5538a0a213be1532d289aa801ec5d267c5909446b9ea2f8e2c3" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-android_24_x86_64.whl", hash = "sha256:f04551dce5a7db8c9659f2e4245494c182d0663b83661803e08d46bfcae5eda1" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-ios_13_0_arm64_iphoneos.whl", hash = "sha256:c0c88085affd35c33e124e36930c5ad96aff9294ce195eaa0fd9cec962b64a82" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-ios_13_0_arm64_iphonesimulator.whl", hash = "sha256:a8b75dd3d3638d9a19f23e84af4ffab3b8940422c0df2da2a77005ef5aa3d7ea" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-macosx_10_15_universal2.whl", hash = "sha256:006c4478de0a1876f4834e14255776286f09b9846b505fe63f67f9d173a9487c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-macosx_10_15_x86_64.whl", hash = "sha256:2784090c30a586d5b45197bd9c32f87fb927216cde302f6cfd76d76577e90f08" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-macosx_11_0_arm64.whl", hash = "sha256:7c708566da8014b120a64b1eb6d200c6c0c8cb36296383723cdb6fc82038270b" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:042fb0196047e786936a730bd302de83143950da45f2c16078da8f35e1cf7919" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:a2212a0c842c723d919ea4a22a9296cb6b244b386e4e6ea92adfc7fbf3095519" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:fd882aa29bf402b62bf1fd7c19fd5df4b6528cf468a908864b39368572b662a9" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:c57541034d12b215ab0a2bfa371d1a8a198da18176d0426c27105b9161a6862d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:d73fed4e37158ff00cd271871170b79e40138db51e625fd352fa17c6acb34f67" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:79da2491348b30810728050b4a8ec0416f85884125c2fd44655b3d01150d9c3e" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:b4da208a63434d21a3df64d29758e650fc4aa8cb05848554b76949c296539cca" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-musllinux_1_2_aarch64.whl", hash = "sha256:877ca17fdcfdf5c397493a71e5ff97a87bb181417fe717fdadc77c08c09301ac" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-musllinux_1_2_armv7l.whl", hash = "sha256:40aec5299e1ed71fbb988389059da381c3c1a60e0c649acceb2a35d9b128848e" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-musllinux_1_2_i686.whl", hash = "sha256:4a409ccc42aefec904038695d5d7fd6d8f3af2721b7b6401d55135ec7d6d298e" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-musllinux_1_2_ppc64le.whl", hash = "sha256:0a5769559e3312dd96731fbe15b4abb6033368ac1cad5a98dadd21946a4c7d6c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-musllinux_1_2_riscv64.whl", hash = "sha256:03fac50ddfd8302175b77863a015eccfae76767cda5506eef86df559ba861e1f" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-musllinux_1_2_s390x.whl", hash = "sha256:5ecace251ccfa705bf3d7d35c5032cf750f5c629809740405697bce5c118c4a4" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:ecc89dbd4155b2f8a47f4bbd89242a35ed15e8e0ec581cab5ac65fa38407329d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-win32.whl", hash = "sha256:a3ffe881246d28a862f1985824f484cb7361f44d6b99c4c620436ef56462f38d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-win_amd64.whl", hash = "sha256:59c123d0e948d760a5f930f316cfefa07e8d632ab84327c0693ee6a88171154f" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315-win_arm64.whl", hash = "sha256:31199204b3ced121ff5407a2c342326a5d27e3870abbf94bd80dbd2451b7bc8f" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-macosx_10_15_universal2.whl", hash = "sha256:8879510a76940670517ea1cb589978da44b86e286ec3e50d664ef330817afce7" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-macosx_10_15_x86_64.whl", hash = "sha256:aec65b53a07f580606593f877eefbb29a45939bfc0d3fe6e6d9f42b41b749f68" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-macosx_11_0_arm64.whl", hash = "sha256:14c56f73e78faa1f68bbb826197cd5871994e70e841b8590829c35912ece5c64" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:38c9986f9ce50c459b10de216a05f4bd7ed5ac63887d56e500a52bb464b861ce" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:15db6a102cbaf1949cf028ecf080aac76d20bcd29ad4e092574db6c6b7af78a5" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:bd82c4977196681a499bb6ca9e462afbc5c91c1c15b6a991dfbd72733fea4dd2" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:bb58ba73a3f96f9a3e46b1fab69929d7edbbddb3133ee74b5c3c54074a53c4f1" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:7c6eecfab7ce4cd9487ff8ba936fe38cdfd68c04faf3d5c710363c6a8e695659" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl", hash = "sha256:9c62e71e6289d78c0108d8aeb495f8bd3cad4bc1632fedddc9297ddf287ecc20" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:539c2cd5fed0947c135cd7eabaaac55f48300dfa1de0f3ca4edb5efa6606f471" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-musllinux_1_2_aarch64.whl", hash = "sha256:3100d169ceb7bc8f05f89a6db11d1b21f119975fc26f29dc45a472e3569f0879" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-musllinux_1_2_armv7l.whl", hash = "sha256:696477ad71385c4795e3b8e4cf10b0d2c28c2a1ca6a955e031cb1e62993e9ee3" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-musllinux_1_2_i686.whl", hash = "sha256:f5844e7befc707367807586f550fa97e23dcfef0728f02b98c7bc498a961a5df" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-musllinux_1_2_ppc64le.whl", hash = "sha256:abc7c2e4b47bfe6a9aea434d3fdebb9597ee636e914e92ba352f2068b9142f4c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-musllinux_1_2_riscv64.whl", hash = "sha256:7ab379f95caee071a37cbd8be86d4c65accc651d391f9f97748fef006f38769c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-musllinux_1_2_s390x.whl", hash = "sha256:557a4e1708df428ebe6c3081c83a273d275dad2446ce0d81fc648ac71afdb18d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:475d04d5192eba487a3e2f935976340baa24529046e9c1c9c7a3b7bf80445ae1" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-win32.whl", hash = "sha256:10083a8a0f4e1b26b599889e90b9802504ce5d3f7722f925bbb7ca47dd22a7c1" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-win_amd64.whl", hash = "sha256:e96ca64383efa107262ee3949f047af5ee4f1845ba09463466c04d35a83bd3ec" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-cp315-cp315t-win_arm64.whl", hash = "sha256:501ed8b02a5990c67a91c732843609d43a6be1f7576fcdfc867331239f37fbd3" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/multidict/6.9.1/multidict-6.9.1-py3-none-any.whl", hash = "sha256:7bf6478188f4e47bf5686e8a33da4ae28bf43b1b2528d9ee144d28492bfac60b" },
 ]
 
 [[package]]
@@ -1227,6 +1227,7 @@ dependencies = [
     { name = "requests" },
     { name = "sqlalchemy" },
     { name = "uvicorn" },
+    { name = "websockets" },
 ]
 
 [package.dev-dependencies]
@@ -1250,12 +1251,13 @@ requires-dist = [
     { name = "requests", specifier = ">=2.34.2" },
     { name = "sqlalchemy", specifier = ">=2.0.54" },
     { name = "uvicorn", specifier = ">=0.53.0" },
+    { name = "websockets", specifier = ">=17.1" },
 ]
 
 [package.metadata.requires-dev]
 dev = [
     { name = "aiosqlite", specifier = ">=0.22.1" },
-    { name = "pytest", specifier = ">=8.4.2" },
+    { name = "pytest", specifier = ">=9.1.1" },
     { name = "pytest-asyncio", specifier = ">=1.2.0" },
 ]
 
@@ -1331,14 +1333,14 @@ wheels = [
 
 [[package]]
 name = "starlette"
-version = "1.6.0"
+version = "1.7.0"
 source = { registry = "https://pypi-mirror.gitverse.ru/simple/" }
 dependencies = [
     { name = "anyio" },
 ]
-sdist = { url = "https://pypi-mirror.gitverse.ru/packages/starlette/1.6.0/starlette-1.6.0.tar.gz", hash = "sha256:d4e3ac5e546444960c710297a3c9fc3f7ebae1b7e963f3d36173b49da535be9b" }
+sdist = { url = "https://pypi-mirror.gitverse.ru/packages/starlette/1.7.0/starlette-1.7.0.tar.gz", hash = "sha256:c79f74ea63cff761804fbbfb182f1e0b440c2d07b164d24700c5a1bab5d6ff5d" }
 wheels = [
-    { url = "https://pypi-mirror.gitverse.ru/packages/starlette/1.6.0/starlette-1.6.0-py3-none-any.whl", hash = "sha256:a86dd39d14bb45f85a3d18525215a9ef0cfd1f192ac793220e72598c90335f0c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/starlette/1.7.0/starlette-1.7.0-py3-none-any.whl", hash = "sha256:67f8e99895493dd2911a03f11314af6ceebeae4e704bb9f43dfc6a9db151c93e" },
 ]
 
 [[package]]
@@ -1364,11 +1366,11 @@ wheels = [
 
 [[package]]
 name = "urllib3"
-version = "2.7.0"
+version = "2.8.0"
 source = { registry = "https://pypi-mirror.gitverse.ru/simple/" }
-sdist = { url = "https://pypi-mirror.gitverse.ru/packages/urllib3/2.7.0/urllib3-2.7.0.tar.gz", hash = "sha256:231e0ec3b63ceb14667c67be60f2f2c40a518cb38b03af60abc813da26505f4c" }
+sdist = { url = "https://pypi-mirror.gitverse.ru/packages/urllib3/2.8.0/urllib3-2.8.0.tar.gz", hash = "sha256:63bf2ead4c879426ebf22ef2a781eeb4aa3b4ae798a0435506f8687fd5bb9b63" }
 wheels = [
-    { url = "https://pypi-mirror.gitverse.ru/packages/urllib3/2.7.0/urllib3-2.7.0-py3-none-any.whl", hash = "sha256:9fb4c81ebbb1ce9531cce37674bbc6f1360472bc18ca9a553ede278ef7276897" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/urllib3/2.8.0/urllib3-2.8.0-py3-none-any.whl", hash = "sha256:0cf3cae568d36aa9576b28dfb35f11328f1cb974ca7647d9475ebb86c75ac6e3" },
 ]
 
 [[package]]
@@ -1382,6 +1384,115 @@ dependencies = [
 sdist = { url = "https://pypi-mirror.gitverse.ru/packages/uvicorn/0.53.0/uvicorn-0.53.0.tar.gz", hash = "sha256:a9356f0cb89b3b8621529c5d5eebd69bfe154f4c3f68b4cf2de47e45fa855c2e" }
 wheels = [
     { url = "https://pypi-mirror.gitverse.ru/packages/uvicorn/0.53.0/uvicorn-0.53.0-py3-none-any.whl", hash = "sha256:e8dca71ec86dce5f04e333f0d56cdedf942446e6643b9cea1af0d6d3a02cb03e" },
+]
+
+[[package]]
+name = "websockets"
+version = "17.1"
+source = { registry = "https://pypi-mirror.gitverse.ru/simple/" }
+sdist = { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1.tar.gz", hash = "sha256:acfea4c20bf54384883ea33b1240fc1db4f52e190823a4e2b334bc3e8bfca96a" }
+wheels = [
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-macosx_10_13_universal2.whl", hash = "sha256:2a0162a6372110a5601cb5c9fd826635cedf69f3e110c545dd19774e040b970e" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-macosx_10_13_x86_64.whl", hash = "sha256:829dba1bc049779de9b332088c1a6a9858e96bd67e50b6b644a95e02b67836bc" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-macosx_11_0_arm64.whl", hash = "sha256:fd8f47dbf2e8adb15c847215f83436de3fdb120b51fdae0fbbdf69fd97a3ad80" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:9f4c0377a83e163a303514fdfab501dbe379bdc13e5b9312a91d112658b29dce" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:c3241d684a76eaaef8b2dc789afde4343cd3aad55ea81e4e8ab3605b529bae51" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:e5f5c7a893507d0e83a80b88aefd6522f7e882cd53f9722c6f23f5a020c9557c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:00bf34b64501e3477e81fc281532ff3cbf4da26633c10b63979d5085d46602d3" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:ce0305b702b20d1e1d60a9aaace6bc89970e1753565543f310d549eab22c2435" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:29176d8b429cfa0fa443c473878d37a5c06cfd0cb36b71ba4314accc71e05906" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:3709a1ab30b4b922027d22f68d2b61a0656a91680ac894a537624e6be7dd7f7c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-musllinux_1_2_aarch64.whl", hash = "sha256:43bd0c1ceb924d67f5c1a5254d8361dd9d94246e6331a726064dfa2917880780" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-musllinux_1_2_armv7l.whl", hash = "sha256:1fce0f43e0d41422e0b2cad6561e1970df22f212f4c7e884967df7cf591b031c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-musllinux_1_2_i686.whl", hash = "sha256:4031152769179ab8dcdeafc7b0e58052a49117560a28671700b47b2c7b717aad" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-musllinux_1_2_ppc64le.whl", hash = "sha256:a06f3b5085176763182449559e20391d7ce616a8972a9f7a33deda87ea6d4f3c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-musllinux_1_2_riscv64.whl", hash = "sha256:77b37cceca17291897c3c73bd30a7c7c7909593554b5da574ec852af83c1742a" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-musllinux_1_2_s390x.whl", hash = "sha256:d8e83333385cac6030a5167fd18bf96cc6c58b914c308e683f05b0cf94bc8dd0" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-musllinux_1_2_x86_64.whl", hash = "sha256:073c5c3f7e127041fa9d34a9e29ceefee8c3cafbd267ed2927318f425144380d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-win32.whl", hash = "sha256:2afb58c7ba48b329d56769f8dfd89f394efe587b65ef806bae810a484d6d3608" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-win_amd64.whl", hash = "sha256:0340bbef6bfbe16da888b3983d666a4db4954ac3253c38f13bc7aba0c7db5a2f" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp313-cp313-win_arm64.whl", hash = "sha256:7a72efa3bf4fa3a6669a54420a472ad056da3973d827f10e3a536da463f926c2" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-macosx_10_15_universal2.whl", hash = "sha256:0c9982938980e086da59f70d05f9418cd143401a601a0faac10fa48f7bb1cd3e" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-macosx_10_15_x86_64.whl", hash = "sha256:57b39dc8541cf7ed3f639da82bf7451060483967f9e733da1f8173e4095f0642" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-macosx_11_0_arm64.whl", hash = "sha256:96abdecbaae746851b87c3a36cb4a661df93ca3d92f114270f79228bf1d00de6" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:d9fc873e239c5abeb150bc24dbd1a7af23a9254526383ce0a077f5e20adbeb19" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:6f42912fa9eb4cb7c7ec9fde9b3332ba339eb8a8811981043d4029599f3d950b" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:f98bf378d7a5be047a044a1a27c987a8f355e10e3b5754617dbe756248cbc5ce" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:d334d11398086bb5559606cb42d51c013ea7c061c7db701521392373d3c087f5" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:5c27336b1a0ac56569493e858497870347854372395f50483725f8cdacc5a45c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:67258b00302a5aaf0b267771c7014b13429abd7ea17eebc4c55bd935ff101555" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:455ffeea0879d313205df1e745e5883e1feb7f31ecd26be882f5f0babd3db04f" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-musllinux_1_2_aarch64.whl", hash = "sha256:f7233eaf441a345a5943a929fd4b5ea3278f11aed35a9ed0f3106b8cb3ca846a" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-musllinux_1_2_armv7l.whl", hash = "sha256:c65da239a5ad553619804c1f9d65c1a0b3005381c6158ee14da2c7444cbd0c78" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-musllinux_1_2_i686.whl", hash = "sha256:9fa1ffa08c81a4f809cdab6129f8e55bee4650b9d6d3461019dda73aacd146b6" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-musllinux_1_2_ppc64le.whl", hash = "sha256:406b8107943a43ef4649b1e0cb0cdc052bbf08fe1c8905a623c4af9586e5cebb" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-musllinux_1_2_riscv64.whl", hash = "sha256:4e8ffcb486c8490a34a4cef5e4409d8da5a1cb1681e5bf7d786ce5e84aa8540d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-musllinux_1_2_s390x.whl", hash = "sha256:fb88076df585b69c5761c387c0081aa87d7b9eb1b205a6535ca4777e25650d81" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-musllinux_1_2_x86_64.whl", hash = "sha256:5d4724255fb8398acd9e583b97eb2279cec20e0bd0f9a94bf75f6056ef9f13da" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-win32.whl", hash = "sha256:be3f0129c5654517b2abf07dcb75bb1d9479759a4ccfb569e8293579e9fc029a" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-win_amd64.whl", hash = "sha256:2a4dc6ef83f4559e0d05f313a375cb38f63c986096a9da99fe94fdd779d313e5" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314-win_arm64.whl", hash = "sha256:46c0331c9eaaf73a559f3a9e388466be0df96eb83d40f06f1ca6ab6613b35c82" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-macosx_10_15_universal2.whl", hash = "sha256:d411ea5ca18ac1b12c0c94be88b60c18ca641ac43bcdfdf1c9f79d46cdbe1603" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-macosx_10_15_x86_64.whl", hash = "sha256:07fa3e7c30e2c577928d359b56bf872a3e0cbcc15553eaa0907c1ee86344b56f" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-macosx_11_0_arm64.whl", hash = "sha256:6de9acef07e3a78e9567fcd26c29011a4da8f050b13004bbf880a0fd82a6eea5" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:ea0ed9373b880115911d9d39634bccc95b8ce590c9c42e8589f5cacc3ef3cee2" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:50903d335bfda026c2fa11dd9aed09d8cbee0c451e3a85122a9acb041b7dc69b" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:5a74531ce81af587f906ab42f194032388fcff8fc7938402e5917c9147a39441" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:8fbf28e639544503b7d1c96452a5e5e043e4108d89b1f3fa02910603622d19db" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:f612dc57f00c07cf4aa2673f7cbceabd654ad2457b7e639f061b794d6e11f9fd" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:1c7ac77401227212dc6e849182feee50d57cf456ec6329ffd6979c94bb136c5c" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:32a2a68d989d6e5b74a9d5095415c51189ebae29fceb7cf2b64a1c0318a81256" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-musllinux_1_2_aarch64.whl", hash = "sha256:aec00f018d34c67500ff0438dc314b40277be4a1b983cbacbf53ccf7db63e257" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-musllinux_1_2_armv7l.whl", hash = "sha256:0014eaff8ad5b3b43feda2279f9d34bf2eaae040720b9fbbb55944b10f40b14d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-musllinux_1_2_i686.whl", hash = "sha256:db9d7ee47f3ba531e278be539af39e2c7c7d28fb94897b6cd1120d63b0ef5922" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-musllinux_1_2_ppc64le.whl", hash = "sha256:ff3e2ba7a9f0a110b0555452e9b5a03a34e11662544e01beea15f144b48ba7b7" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-musllinux_1_2_riscv64.whl", hash = "sha256:6da17fc94bd270f5987b10bee113461ac36a36a98b0481ddcc98056e5a90001a" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-musllinux_1_2_s390x.whl", hash = "sha256:e8dc3fa6d6b7ead3f9de57895f41b116a28787548e066365d9d90f7356bcaad2" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-musllinux_1_2_x86_64.whl", hash = "sha256:b65d5fe48219dc2d5e158de9e6514e75600f379cc7e37108d35f31764c155566" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-win32.whl", hash = "sha256:2cce251f3e2469b99b6802b55435bcdd07123b41870f54c87b336183af9d7e68" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-win_amd64.whl", hash = "sha256:8f6c38cdcaf98a911d7acc25577f2f9e710f3a2fc2bde1563556784320196b51" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp314-cp314t-win_arm64.whl", hash = "sha256:d1e2f5fa2b6d01f0d85b4f223fea7ed1d504be282a02a81bd2be4817ef7a2f03" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-macosx_10_15_universal2.whl", hash = "sha256:88381602e379165b66244b2ebc29f9b23ea0851fbe63ae157f91ca324f072d6f" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-macosx_10_15_x86_64.whl", hash = "sha256:88bc5138e53903a85c354e59df7ba73ce306f7b09724cef74dba121e60a88ce2" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-macosx_11_0_arm64.whl", hash = "sha256:3546ef55b3a074494106508bc6505c73825970d2d9505f7bf53882b3e88b0d1e" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:9ae55d24241fc055f22aea3ac924559069848bd0ad4ea065fdd72d2194685fe8" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:d7b349265fad6244013eecd99df8d83c12bf3013943e431f4fadd5bffc37db42" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:dc5789e5ea182b77a38881383ada5347202a6c66f4857d054e075290e80b604b" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:ce13c7d233239e739600a57d4a73c1192ad8259e655a4d55aa1a454242bc809d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:1036189bd34b0bc1b10a4679321e2c7968af317efe6e8e4c1c5141c4254fb5bb" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:e78fd4b7b2c5086a38671c9c882c1e643385eccea360b5b1fda4a105e590087e" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:46e7a10bf04318c7b0c0273791925ae5e1cbe4a11e34aa934d2ef27862058a80" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-musllinux_1_2_aarch64.whl", hash = "sha256:33e45c7ea38428e740a7f233555d71df0b875cef7fc080acebc9654475e35335" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-musllinux_1_2_armv7l.whl", hash = "sha256:6e63c01803be425ff062b7f7fc201a74def1d49fc94a2410dd17375df75936e9" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-musllinux_1_2_i686.whl", hash = "sha256:722ec21717eec6477bce582147a28acdfe034e604239466a6a95daedb863e774" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-musllinux_1_2_ppc64le.whl", hash = "sha256:e74e41f0ad12ff1e8983e349daef79d37cc8280c743ce9d134d6c74c18dab5d6" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-musllinux_1_2_riscv64.whl", hash = "sha256:12fe8984a32dbfd084e0603f1a8d740c0180cb85b3174585c54a80d2455a8394" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-musllinux_1_2_s390x.whl", hash = "sha256:01dcb47deebc40b38fd4a493b9b9f4d0a704b7bec6f35e4d34085b329abce71a" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-musllinux_1_2_x86_64.whl", hash = "sha256:f4c45ee2512d3757b5e6c67c5a34e435143f2ecb7df3324f9fd888688c45c0f4" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-win32.whl", hash = "sha256:0f4f50dfe2cc810fc4e2de979b35e83bf8bb4bccdc6fe472d93762ea7b1d5927" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-win_amd64.whl", hash = "sha256:4af784f3e436f65b355c117c6497320f2b5cf6a559295cb1c4c7338e335d45cc" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315-win_arm64.whl", hash = "sha256:d58159af7835fde09c462394293c0d7aaf8fb4557d8f8e5699f5e722ccae013d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-macosx_10_15_universal2.whl", hash = "sha256:1a5cf4e7bbe3ca499e6a289206cb4fcb7444b09919e129bd517f57d5fa192c13" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-macosx_10_15_x86_64.whl", hash = "sha256:416b4bc8789a1865a3ff643ec4ee073a5f52402d0dbeafd27b1798d5dd6b6a51" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-macosx_11_0_arm64.whl", hash = "sha256:259f45358c76d3b18489e3e80636cdbe807e05ecf1b10fdf1a779106d23d0c8e" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-manylinux1_i686.manylinux_2_28_i686.manylinux_2_5_i686.whl", hash = "sha256:d9d01e8ede41fea4f5a847dad9d628355f74905f437a5b6856d67aa66d193800" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-manylinux1_x86_64.manylinux_2_28_x86_64.manylinux_2_5_x86_64.whl", hash = "sha256:a7b35181a14cbfcae163b4de545d22abfd07d06c2c41ca69cfcd99251d6888ab" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-manylinux2014_aarch64.manylinux_2_17_aarch64.manylinux_2_28_aarch64.whl", hash = "sha256:6a8e768a048c2220697477ce2e67e4345dc9f693d0ee6af53945b5e30227c6a7" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-manylinux2014_armv7l.manylinux_2_17_armv7l.manylinux_2_31_armv7l.whl", hash = "sha256:880069d21cc33a558dcf180924a546d1ecf8ada5be3e4e70acee87019d706a24" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-manylinux2014_ppc64le.manylinux_2_17_ppc64le.manylinux_2_28_ppc64le.whl", hash = "sha256:cec1bb8f22abccc8d20f8ca63df9be41600c26c190f4b97ee86c675fd4a863a6" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-manylinux2014_s390x.manylinux_2_17_s390x.manylinux_2_28_s390x.whl", hash = "sha256:f3a1d577e081667dda7f8e5b4796e6e32f9713c93e2a3d930669519840a3c623" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-manylinux_2_31_riscv64.manylinux_2_39_riscv64.whl", hash = "sha256:dc053f9e95a76213c5eb7ed95779f7daf0d2bf0e4e03073629ebfa43a033f151" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-musllinux_1_2_aarch64.whl", hash = "sha256:bb0efe019480a1c93e168ce96479273aaebd672fc8c350d5eed1e507ababb1b8" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-musllinux_1_2_armv7l.whl", hash = "sha256:615746b12b26a3fd4077bc6fbeb277a1c192a45dd57b531d07ad9ed5c52a9a7a" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-musllinux_1_2_i686.whl", hash = "sha256:1a20136d61f9ca3a31493732762661fafc2c20e8861930214e21afc6a8a692a2" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-musllinux_1_2_ppc64le.whl", hash = "sha256:2786cbd273ab69c22612db8a41229ddf2c158060b17b5928884bf388d07887f3" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-musllinux_1_2_riscv64.whl", hash = "sha256:b1c323fc3be1dc3f87f6c59458cb7d9e13dcbbf971d6c3f3e2bbaf58d3bfcdfe" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-musllinux_1_2_s390x.whl", hash = "sha256:12c8e2b25df59755954a04dfa09c990b96691025aaf7eafd19ed6da24b09c18d" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-musllinux_1_2_x86_64.whl", hash = "sha256:f58f58b4b29bbea2a3635e2c56eff4a3adab011fe383802a9e542e31b97085fc" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-win32.whl", hash = "sha256:f78a3ffb1994304db2c0c4588e4d1a518079b557054fa3bb985a6f5e50ff49a3" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-win_amd64.whl", hash = "sha256:ad68c28a27246fed109a4409393d677b7e1388345cbbd2f5aee5c182d8506110" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-cp315-cp315t-win_arm64.whl", hash = "sha256:e552e0037230ac16e5f568de7012041344d1b18c9feed30ec2891b8eba55af81" },
+    { url = "https://pypi-mirror.gitverse.ru/packages/websockets/17.1/websockets-17.1-py3-none-any.whl", hash = "sha256:f221081107b8c48184d99f7019604486376e7ef826037e70aad6b02540732c23" },
 ]
 
 [[package]]
