@@ -5,9 +5,20 @@ from datetime import datetime
 from typing import Annotated
 
 from fastapi import Request
-from sqlalchemy import DateTime, String, func
+from sqlalchemy import DateTime, MetaData, String, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, declared_attr, mapped_column
+
+# Без конвенции ограничения получают имена от СУБД, и автогенерация миграций
+# выдаёт безымянные drop_constraint. CHECK-и именуем руками, поэтому для них
+# конвенция просто берёт заданное имя как есть
+NAMING_CONVENTION = {
+    "ix": "ix_%(table_name)s_%(column_0_N_name)s",
+    "uq": "uq_%(table_name)s_%(column_0_N_name)s",
+    "ck": "%(constraint_name)s",
+    "fk": "fk_%(table_name)s_%(column_0_N_name)s_%(referred_table_name)s",
+    "pk": "pk_%(table_name)s",
+}
 
 # удобненькие псевдонимы, пример использования см. в mixins
 int_pk = Annotated[int, mapped_column(primary_key=True, autoincrement=True)]
@@ -43,6 +54,8 @@ async def get_db_session(req: Request) -> AsyncGenerator[AsyncSession]:
 
 
 class Base(DeclarativeBase):
+    metadata = MetaData(naming_convention=NAMING_CONVENTION)
+
     # спасибо добрым людям со SO за сей прекрасный переименоватор
     @declared_attr.directive
     def __tablename__(cls) -> str:
@@ -60,6 +73,7 @@ class Base(DeclarativeBase):
             for col in self.__table__.columns.keys()[:4]
         ]
         return f"<{self.__class__.__name__}({', '.join(cols)})>"
+
 
 class RawBase(DeclarativeBase):
     pass

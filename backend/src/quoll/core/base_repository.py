@@ -7,6 +7,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.core.exceptions import IdNotExistsException
+from quoll.core.system_defaults import SystemDefaults
 from quoll.db import Base
 
 logger = logging.getLogger(__name__)
@@ -28,7 +29,9 @@ class BaseRepository[ModelType: Base]:
         logger.debug(f"{self.model.__name__} with id={id_} found")
         return obj
 
-    async def get_all(self, limit: int = 100, offset: int = 0) -> list[ModelType]:
+    async def get_all(
+        self, limit: int = SystemDefaults.DEFAULT_PAGE_SIZE, offset: int = 0
+    ) -> list[ModelType]:
         logger.debug(
             f"Getting all {self.model.__name__} with limit={limit}, offset={offset}"
         )

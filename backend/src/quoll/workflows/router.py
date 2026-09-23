@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Path, Query, Response, status
 
+from quoll.core import SystemDefaults
 from quoll.workflows.dependencies import (
     StageRepoDep,
     TransitionRepoDep,
@@ -48,7 +49,11 @@ async def create_workflow(
 )
 async def list_workflows(
     repo: WorkflowRepoDep,
-    limit: int = Query(default=50, ge=1, le=100),
+    limit: int = Query(
+        default=SystemDefaults.DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=SystemDefaults.MAX_PAGE_SIZE,
+    ),
     offset: int = Query(default=0, ge=0),
 ):
     return await repo.get_all(limit=limit, offset=offset)
