@@ -13,7 +13,6 @@ from quoll.auth.bootstrap import ensure_admin_account
 from quoll.auth.repositories import UserRepository
 from quoll.config import settings
 from quoll.core import AppException
-from quoll.db import Base
 from quoll.interactions import (
     interactions_router,
     universities_router,
@@ -46,9 +45,6 @@ async def lifespan(app: FastAPI):
     app.state.db_session_maker = async_sessionmaker(
         bind=app.state.db_engine, expire_on_commit=False
     )
-    logger.debug("Creating database tables")
-    async with app.state.db_engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     logger.debug("Initializing S3 storage service")
     app.state.s3 = S3StorageService(
         endpoint_url=settings.s3_endpoint_url,
