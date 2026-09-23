@@ -11,10 +11,12 @@ dependencies = [
     "httpx>=0.28.1",
     "pydantic-settings>=2.15.0",
     "pyjwt>=2.14.0",
+    "pytest>=9.1.1",
     "python-multipart>=0.0.32",
     "requests>=2.34.2",
     "sqlalchemy>=2.0.54",
     "uvicorn>=0.53.0",
+    "websockets>=17.1",
 ]
 
 [tool.ruff.lint.per-file-ignores]

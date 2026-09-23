@@ -1,0 +1,1194 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Auth Demo</title>
+    <style>
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f5f5f5;
+            min-height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            padding: 20px;
+        }
+
+        .container {
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            padding: 32px;
+            width: 100%;
+            max-width: 480px;
+        }
+
+        h1 {
+            font-size: 24px;
+            margin-bottom: 24px;
+            color: #333;
+        }
+
+        h2 {
+            font-size: 18px;
+            margin-bottom: 16px;
+            color: #333;
+        }
+
+        .btn {
+            display: inline-block;
+            background: #007bff;
+            color: white;
+            padding: 12px 24px;
+            border: none;
+            border-radius: 4px;
+            font-size: 16px;
+            cursor: pointer;
+            text-decoration: none;
+            text-align: center;
+        }
+
+        .btn:hover {
+            background: #0056b3;
+        }
+
+        .btn-secondary {
+            background: #6c757d;
+        }
+
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+
+        .btn-block {
+            display: block;
+            width: 100%;
+        }
+
+        .card {
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            padding: 16px;
+            margin-bottom: 16px;
+        }
+
+        .card p {
+            margin-bottom: 8px;
+            color: #555;
+        }
+
+        .card p:last-child {
+            margin-bottom: 0;
+        }
+
+        .card strong {
+            color: #333;
+        }
+
+        .form-group {
+            margin-bottom: 16px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 4px;
+            font-weight: 500;
+            color: #333;
+        }
+
+        .form-group input,
+        .form-group select {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .form-group input:focus,
+        .form-group select:focus {
+            outline: none;
+            border-color: #007bff;
+        }
+
+        .form-group input:invalid:not(:placeholder-shown) {
+            border-color: #dc3545;
+        }
+
+        .error {
+            color: #dc3545;
+            font-size: 14px;
+            margin-top: 4px;
+        }
+
+        .section {
+            margin-top: 24px;
+            padding-top: 24px;
+            border-top: 1px solid #e0e0e0;
+        }
+
+        .role-badge {
+            display: inline-block;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 12px;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .role-badge.admin {
+            background: #dc3545;
+            color: white;
+        }
+
+        .role-badge.superviser {
+            background: #fd7e14;
+            color: white;
+        }
+
+        .role-badge.manager {
+            background: #17a2b8;
+            color: white;
+        }
+
+        .role-badge.user {
+            background: #28a745;
+            color: white;
+        }
+
+        .loading {
+            text-align: center;
+            color: #666;
+        }
+
+        .success {
+            background: #d4edda;
+            border: 1px solid #c3e6cb;
+            color: #155724;
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 16px;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .users-panel {
+            margin-top: 24px;
+        }
+
+        .users-filters {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+
+        .users-filters select {
+            padding: 8px 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .users-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 16px;
+        }
+
+        .users-table th,
+        .users-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+
+        .users-table th {
+            font-weight: 600;
+            color: #333;
+            background: #f8f9fa;
+        }
+
+        .users-table tr:hover {
+            background: #f8f9fa;
+        }
+
+        .users-table input {
+            padding: 6px 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+            width: 100%;
+        }
+
+        .users-table input:focus {
+            border-color: #007bff;
+            outline: none;
+        }
+
+        .action-btns {
+            display: flex;
+            gap: 6px;
+        }
+
+        .btn-sm {
+            padding: 6px 12px;
+            font-size: 13px;
+        }
+
+        .btn-danger {
+            background: #dc3545;
+        }
+
+        .btn-danger:hover {
+            background: #c82333;
+        }
+
+        .btn-success {
+            background: #28a745;
+        }
+
+        .btn-success:hover {
+            background: #218838;
+        }
+
+        .pagination {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            justify-content: center;
+        }
+
+        .pagination button {
+            padding: 8px 12px;
+        }
+
+        .pagination span {
+            color: #666;
+        }
+
+        .inline-edit-row input {
+            width: 100%;
+            padding: 6px 8px;
+            border: 1px solid #007bff;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .inline-edit-row select {
+            padding: 6px 8px;
+            border: 1px solid #007bff;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 32px;
+            color: #666;
+        }
+
+        .users-list-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 16px;
+        }
+
+        .users-list-header h2 {
+            margin-bottom: 0;
+        }
+
+        .toggle-btn {
+            background: #17a2b8;
+        }
+
+        .toggle-btn:hover {
+            background: #138496;
+        }
+
+        .toggle-btn.active {
+            background: #138496;
+        }
+
+        .notifications-badge {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            background: #dc3545;
+            color: white;
+            border-radius: 10px;
+            font-size: 12px;
+            font-weight: 600;
+            margin-left: 8px;
+        }
+
+        .notifications-badge.hidden {
+            display: none;
+        }
+
+        .notification-card {
+            border-left: 4px solid #007bff;
+            background: #f8f9fa;
+        }
+
+        .notification-card.unread {
+            border-left-color: #dc3545;
+            background: #fff;
+        }
+
+        .notification-card .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 8px;
+        }
+
+        .notification-card .card-title {
+            font-weight: 600;
+            color: #333;
+            margin: 0;
+        }
+
+        .notification-card .card-meta {
+            font-size: 12px;
+            color: #666;
+        }
+
+        .notification-card .card-body {
+            color: #555;
+        }
+
+        .notification-card .mark-read-btn {
+            font-size: 12px;
+            padding: 4px 8px;
+            background: #6c757d;
+        }
+
+        .notification-card .mark-read-btn:hover {
+            background: #545b62;
+        }
+
+        .test-form {
+            background: #fff3cd;
+            border: 1px solid #ffc107;
+            padding: 16px;
+            border-radius: 4px;
+            margin-top: 16px;
+        }
+
+        .test-form h3 {
+            margin-bottom: 12px;
+            color: #856404;
+            font-size: 16px;
+        }
+
+        .test-form .form-row {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .test-form input {
+            flex: 1;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .test-form .btn {
+            padding: 8px 16px;
+        }
+
+        .ws-status {
+            display: inline-block;
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 6px;
+        }
+
+        .ws-status.connected {
+            background: #28a745;
+        }
+
+        .ws-status.disconnected {
+            background: #dc3545;
+        }
+
+        .ws-status.connecting {
+            background: #ffc107;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div id="login-section">
+            <h1>Auth Demo</h1>
+            <p style="margin-bottom: 24px; color: #666;">Для доступа к приложению необходимо авторизоваться</p>
+            <a href="http://127.0.0.1:8000/auth" class="btn btn-block">Войти</a>
+        </div>
+
+        <div id="user-section" class="hidden">
+            <h1>Личный кабинет</h1>
+            <div id="user-info"></div>
+
+            <div id="notifications-section" class="section">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h2>Уведомления <span id="ws-status" class="ws-status disconnected"></span><span id="notifications-badge" class="notifications-badge hidden">0</span></h2>
+                    <button onclick="toggleNotifications()" class="btn btn-sm toggle-btn" id="toggle-notifications-btn">Показать</button>
+                </div>
+
+                <div id="notifications-content" class="hidden">
+                    <div id="notifications-list"></div>
+                    <div id="notifications-empty" class="empty-state hidden">Уведомлений нет</div>
+                </div>
+
+                <div class="test-form">
+                    <h3>Тестовое уведомление</h3>
+                    <div class="form-row">
+                        <input type="text" id="test-user-id" placeholder="User ID">
+                        <input type="text" id="test-title" placeholder="Заголовок">
+                    </div>
+                    <div class="form-row">
+                        <input type="text" id="test-message" placeholder="Сообщение" style="flex: 2;">
+                        <button onclick="sendTestNotification()" class="btn">Отправить</button>
+                    </div>
+                    <div id="test-result"></div>
+                </div>
+            </div>
+
+            <button onclick="logout()" class="btn btn-secondary btn-block" style="margin-top: 16px;">Выйти</button>
+
+            <div id="admin-section" class="section hidden">
+                <h2>Создание пользователя</h2>
+                <form id="create-user-form" onsubmit="createUser(event)">
+                    <div class="form-group">
+                        <label for="username">Username *</label>
+                        <input type="text" id="username" name="username" required
+                               pattern="[a-zA-Z0-9_]+" placeholder="john_doe">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="email">Email *</label>
+                        <input type="email" id="email" name="email" required placeholder="john@example.com">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="password">Пароль *</label>
+                        <input type="password" id="password" name="password" required
+                               minlength="8" placeholder="Минимум 8 символов">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="first_name">Имя</label>
+                        <input type="text" id="first_name" name="first_name" placeholder="John">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="last_name">Фамилия</label>
+                        <input type="text" id="last_name" name="last_name" placeholder="Doe">
+                    </div>
+
+                    <div class="form-group">
+                        <label for="role">Роль</label>
+                        <select id="role" name="role" onchange="onRoleChange()">
+                            <option value="MANAGER">Менеджер</option>
+                            <option value="SUPERVISER">Руководитель</option>
+                            <option value="ADMIN">Админ</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group hidden" id="superviser-group">
+                        <label for="superviser-select">Руководитель</label>
+                        <select id="superviser-select" name="superviser_id">
+                            <option value="">— Выбрать —</option>
+                        </select>
+                    </div>
+
+                    <button type="submit" class="btn btn-block">Создать пользователя</button>
+                </form>
+                <div id="create-user-result"></div>
+
+                <div id="users-panel" class="users-panel hidden">
+                    <div class="users-list-header">
+                        <h2>Управление пользователями</h2>
+                        <button onclick="toggleUsersPanel()" class="btn btn-sm toggle-btn" id="toggle-users-btn">
+                            Показать
+                        </button>
+                    </div>
+
+                    <div id="users-content" class="hidden">
+                        <div class="users-filters">
+                            <select id="role-filter" onchange="loadUsers()">
+                                <option value="">Все роли</option>
+                                <option value="MANAGER">Менеджер</option>
+                                <option value="SUPERVISER">Руководитель</option>
+                                <option value="ADMIN">Админ</option>
+                            </select>
+                        </div>
+
+                        <div id="users-loading" class="loading hidden">Загрузка...</div>
+                        <div id="users-error" class="error hidden"></div>
+
+                        <div id="users-list"></div>
+
+                        <div class="pagination" id="pagination"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div id="loading" class="loading hidden">Загрузка...</div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://127.0.0.1:8000/auth';
+
+        async function checkAuth() {
+            const loginSection = document.getElementById('login-section');
+            const userSection = document.getElementById('user-section');
+            const loading = document.getElementById('loading');
+
+            loginSection.classList.add('hidden');
+            userSection.classList.add('hidden');
+            loading.classList.remove('hidden');
+
+            try {
+                const response = await fetch(`${API_BASE}/me`, {
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const user = await response.json();
+                    showUserInfo(user);
+                } else {
+                    loginSection.classList.remove('hidden');
+                }
+            } catch (e) {
+                console.error('Auth check failed:', e);
+                loginSection.classList.remove('hidden');
+            } finally {
+                loading.classList.add('hidden');
+            }
+        }
+
+        function getRoleLabel(role) {
+            const labels = {
+                'admin': 'Админ',
+                'manager': 'Менеджер',
+                'superviser': 'Руководитель'
+            };
+            return labels[role.toLowerCase()] || role;
+        }
+
+        function getRoleClass(role) {
+            if (role.toLowerCase() === 'admin') return 'admin';
+            if (role.toLowerCase() === 'superviser') return 'superviser';
+            if (role.toLowerCase() === 'manager') return 'manager';
+            return 'user';
+        }
+
+        async function showUserInfo(user) {
+            const userSection = document.getElementById('user-section');
+            const userInfo = document.getElementById('user-info');
+            const adminSection = document.getElementById('admin-section');
+
+            let superviserLine = '';
+            if (user.role.toLowerCase() === 'manager' && user.superviser_id) {
+                try {
+                    const resp = await fetch(`${API_BASE}/users/${user.superviser_id}`, {
+                        credentials: 'include'
+                    });
+                    if (resp.ok) {
+                        const superviser = await resp.json();
+                        superviserLine = `<p><strong>Руководитель:</strong> ${escapeHtml(superviser.username)}</p>`;
+                    }
+                } catch (e) {
+                    console.error('Failed to load superviser:', e);
+                }
+            }
+
+            userInfo.innerHTML = `
+                <div class="card">
+                    <p><strong>ID:</strong> ${escapeHtml(user.id)}</p>
+                    <p><strong>Username:</strong> ${escapeHtml(user.username)}</p>
+                    <p><strong>Email:</strong> ${escapeHtml(user.email)}</p>
+                    <p><strong>Имя:</strong> ${escapeHtml(user.first_name || '—')} ${escapeHtml(user.last_name || '')}</p>
+                    <p><strong>Роль:</strong> <span class="role-badge ${getRoleClass(user.role)}">${getRoleLabel(user.role)}</span></p>
+                    ${superviserLine}
+                </div>
+            `;
+
+            if (user.role.toLowerCase() === 'admin') {
+                adminSection.classList.remove('hidden');
+                document.getElementById('users-panel').classList.remove('hidden');
+            }
+
+            userSection.classList.remove('hidden');
+        }
+
+        async function createUser(event) {
+            event.preventDefault();
+
+            const form = event.target;
+            const resultDiv = document.getElementById('create-user-result');
+
+            const formData = {
+                username: form.username.value,
+                email: form.email.value,
+                password: form.password.value,
+                first_name: form.first_name.value || '',
+                last_name: form.last_name.value || '',
+                role: form.role.value.toLowerCase()
+            };
+
+            resultDiv.innerHTML = '';
+            form.querySelector('button[type="submit"]').disabled = true;
+
+            try {
+                const response = await fetch(`${API_BASE}/users`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify(formData)
+                });
+
+                if (response.ok) {
+                    const user = await response.json();
+
+                    if (form.role.value === 'MANAGER' && form.superviser_id.value) {
+                        const connResponse = await fetch(`${API_BASE}/users/connections/${form.superviser_id.value}?manager_id=${user.id}`, {
+                            method: 'POST',
+                            credentials: 'include'
+                        });
+
+                        if (!connResponse.ok) {
+                            const connError = await connResponse.json().catch(() => ({}));
+                            resultDiv.innerHTML = `<p class="error">Пользователь создан, но не удалось назначить руководителя: ${escapeHtml(connError.detail || 'Ошибка связи')}</p>`;
+                            form.reset();
+                            onRoleChange();
+                            return;
+                        }
+                    }
+
+                    resultDiv.innerHTML = `
+                        <div class="success">
+                            Пользователь ${escapeHtml(user.username)} успешно создан!
+                        </div>
+                    `;
+                    form.reset();
+                    onRoleChange();
+                } else if (response.status === 401) {
+                    resultDiv.innerHTML = `<p class="error">Ошибка: Не авторизован</p>`;
+                } else if (response.status === 403) {
+                    resultDiv.innerHTML = `<p class="error">Ошибка: Доступ запрещён</p>`;
+                } else {
+                    const error = await response.json();
+                    resultDiv.innerHTML = `<p class="error">Ошибка: ${escapeHtml(error.detail || 'Unknown error')}</p>`;
+                }
+            } catch (e) {
+                resultDiv.innerHTML = `<p class="error">Ошибка сети: ${escapeHtml(e.message)}</p>`;
+            } finally {
+                form.querySelector('button[type="submit"]').disabled = false;
+            }
+        }
+
+        function onRoleChange() {
+            const role = document.getElementById('role').value;
+            const superviserGroup = document.getElementById('superviser-group');
+            const superviserSelect = document.getElementById('superviser-select');
+
+            if (role === 'MANAGER') {
+                superviserGroup.classList.remove('hidden');
+                loadSupervisers();
+            } else {
+                superviserGroup.classList.add('hidden');
+                superviserSelect.value = '';
+            }
+        }
+
+        async function loadSupervisers() {
+            const superviserSelect = document.getElementById('superviser-select');
+            superviserSelect.innerHTML = '<option value="">— Выбрать —</option>';
+
+            try {
+                const response = await fetch(`${API_BASE}/users?limit=100&offset=0`, {
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    const supervisers = data.users.filter(u => u.role.toLowerCase() === 'superviser');
+
+                    supervisers.forEach(s => {
+                        const option = document.createElement('option');
+                        option.value = s.id;
+                        const nameParts = (s.first_name || '') + ' ' + (s.last_name || '');
+                        const fullName = nameParts.trim();
+                        superviserSelect.appendChild(option).textContent = fullName ? `${s.username} (${fullName})` : s.username;
+                    });
+                }
+            } catch (e) {
+                console.error('Failed to load supervisers:', e);
+            }
+        }
+
+        let usersData = [];
+        let currentPage = 0;
+        const pageSize = 10;
+
+        function toggleUsersPanel() {
+            const content = document.getElementById('users-content');
+            const btn = document.getElementById('toggle-users-btn');
+
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                btn.textContent = 'Скрыть';
+                btn.classList.add('active');
+                loadUsers();
+            } else {
+                content.classList.add('hidden');
+                btn.textContent = 'Показать';
+                btn.classList.remove('active');
+            }
+        }
+
+        async function loadUsers() {
+            const listDiv = document.getElementById('users-list');
+            const loadingDiv = document.getElementById('users-loading');
+            const errorDiv = document.getElementById('users-error');
+            const paginationDiv = document.getElementById('pagination');
+
+            listDiv.innerHTML = '';
+            errorDiv.classList.add('hidden');
+            loadingDiv.classList.remove('hidden');
+
+            try {
+                const response = await fetch(`${API_BASE}/users?limit=100&offset=0`, {
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+                    usersData = data.users;
+                    currentPage = 0;
+                    renderUsers();
+                    renderPagination();
+                } else if (response.status === 403) {
+                    errorDiv.textContent = 'Доступ запрещён';
+                    errorDiv.classList.remove('hidden');
+                } else {
+                    errorDiv.textContent = 'Ошибка загрузки';
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (e) {
+                errorDiv.textContent = `Ошибка сети: ${escapeHtml(e.message)}`;
+                errorDiv.classList.remove('hidden');
+            } finally {
+                loadingDiv.classList.add('hidden');
+            }
+        }
+
+        function getFilteredUsers() {
+            const roleFilter = document.getElementById('role-filter').value.toLowerCase();
+            if (!roleFilter) return usersData;
+            return usersData.filter(u => u.role.toLowerCase() === roleFilter);
+        }
+
+        async function renderUsers() {
+            const listDiv = document.getElementById('users-list');
+            const filtered = getFilteredUsers();
+            const start = currentPage * pageSize;
+            const end = start + pageSize;
+            const pageUsers = filtered.slice(start, end);
+
+            if (filtered.length === 0) {
+                listDiv.innerHTML = '<div class="empty-state">Пользователи не найдены</div>';
+                return;
+            }
+
+            if (pageUsers.length === 0) {
+                currentPage = Math.floor((filtered.length - 1) / pageSize);
+                await renderUsers();
+                return;
+            }
+
+            const supervisorMap = {};
+            for (const u of pageUsers) {
+                if (u.role.toLowerCase() === 'manager' && u.superviser_id) {
+                    try {
+                        const resp = await fetch(`${API_BASE}/users/${u.superviser_id}`, {
+                            credentials: 'include'
+                        });
+                        if (resp.ok) {
+                            const sup = await resp.json();
+                            supervisorMap[u.id] = sup.username;
+                        }
+                    } catch (e) {
+                        console.error('Failed to load superviser:', e);
+                    }
+                }
+            }
+
+            listDiv.innerHTML = `
+                <table class="users-table">
+                    <thead>
+                        <tr>
+                            <th>Username</th>
+                            <th>Email</th>
+                            <th>Имя</th>
+                            <th>Роль</th>
+                            <th>Руководитель</th>
+                            <th>Действия</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${pageUsers.map(u => `
+                            <tr id="user-row-${u.id}">
+                                <td>${escapeHtml(u.username)}</td>
+                                <td>${escapeHtml(u.email)}</td>
+                                <td>${escapeHtml(u.first_name || '—')} ${escapeHtml(u.last_name || '')}</td>
+                                <td><span class="role-badge ${getRoleClass(u.role)}">${escapeHtml(u.role)}</span></td>
+                                <td>${u.role.toLowerCase() === 'manager' && supervisorMap[u.id] ? escapeHtml(supervisorMap[u.id]) : ''}</td>
+                                <td class="action-btns">
+                                    <button onclick="editUser('${u.id}')" class="btn btn-sm">Ред.</button>
+                                    <button onclick="deleteUser('${u.id}', '${escapeHtml(u.username)}')" class="btn btn-sm btn-danger">Удал.</button>
+                                </td>
+                            </tr>
+                            <tr id="edit-row-${u.id}" class="hidden inline-edit-row">
+                                <td>${escapeHtml(u.username)}</td>
+                                <td><input type="email" id="edit-email-${u.id}" value="${escapeHtml(u.email)}"></td>
+                                <td>
+                                    <input type="text" id="edit-first-${u.id}" value="${escapeHtml(u.first_name || '')}" placeholder="Имя">
+                                    <input type="text" id="edit-last-${u.id}" value="${escapeHtml(u.last_name || '')}" placeholder="Фамилия" style="margin-top: 4px;">
+                                </td>
+                                <td>
+                                    <select id="edit-role-${u.id}">
+                                        <option value="MANAGER" ${u.role.toLowerCase() === 'manager' ? 'selected' : ''}>Менеджер</option>
+                                        <option value="SUPERVISER" ${u.role.toLowerCase() === 'superviser' ? 'selected' : ''}>Руководитель</option>
+                                        <option value="ADMIN" ${u.role.toLowerCase() === 'admin' ? 'selected' : ''}>Админ</option>
+                                    </select>
+                                </td>
+                                <td></td>
+                                <td class="action-btns">
+                                    <button onclick="saveUser('${u.id}')" class="btn btn-sm btn-success">Сохр.</button>
+                                    <button onclick="cancelEdit('${u.id}')" class="btn btn-sm btn-secondary">Отм.</button>
+                                </td>
+                            </tr>
+                        `).join('')}
+                    </tbody>
+                </table>
+            `;
+        }
+
+        function renderPagination() {
+            const paginationDiv = document.getElementById('pagination');
+            const filtered = getFilteredUsers();
+            const totalPages = Math.ceil(filtered.length / pageSize);
+
+            if (totalPages <= 1) {
+                paginationDiv.innerHTML = '';
+                return;
+            }
+
+            paginationDiv.innerHTML = `
+                <button onclick="changePage(-1)" ${currentPage === 0 ? 'disabled' : ''} class="btn btn-sm btn-secondary">Назад</button>
+                <span>Страница ${currentPage + 1} из ${totalPages}</span>
+                <button onclick="changePage(1)" ${currentPage >= totalPages - 1 ? 'disabled' : ''} class="btn btn-sm btn-secondary">Вперёд</button>
+            `;
+        }
+
+        function changePage(delta) {
+            const filtered = getFilteredUsers();
+            const totalPages = Math.ceil(filtered.length / pageSize);
+            currentPage = Math.max(0, Math.min(totalPages - 1, currentPage + delta));
+            renderUsers();
+            renderPagination();
+        }
+
+        function editUser(id) {
+            document.getElementById(`user-row-${id}`).classList.add('hidden');
+            document.getElementById(`edit-row-${id}`).classList.remove('hidden');
+        }
+
+        function cancelEdit(id) {
+            document.getElementById(`user-row-${id}`).classList.remove('hidden');
+            document.getElementById(`edit-row-${id}`).classList.add('hidden');
+        }
+
+        async function saveUser(id) {
+            const email = document.getElementById(`edit-email-${id}`).value;
+            const first_name = document.getElementById(`edit-first-${id}`).value;
+            const last_name = document.getElementById(`edit-last-${id}`).value;
+            const role = document.getElementById(`edit-role-${id}`).value;
+
+            const errorDiv = document.getElementById('users-error');
+            errorDiv.classList.add('hidden');
+
+            try {
+                const response = await fetch(`${API_BASE}/users/${id}`, {
+                    method: 'PATCH',
+                    headers: { 'Content-Type': 'application/json' },
+                    credentials: 'include',
+                    body: JSON.stringify({ email, first_name, last_name, role: role.toLowerCase() })
+                });
+
+                if (response.ok) {
+                    await loadUsers();
+                } else if (response.status === 403) {
+                    errorDiv.textContent = 'Доступ запрещён';
+                    errorDiv.classList.remove('hidden');
+                } else {
+                    const error = await response.json();
+                    errorDiv.textContent = `Ошибка: ${escapeHtml(error.detail || 'Unknown')}`;
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (e) {
+                errorDiv.textContent = `Ошибка сети: ${escapeHtml(e.message)}`;
+                errorDiv.classList.remove('hidden');
+            }
+        }
+
+        async function deleteUser(id, username) {
+            if (!confirm(`Удалить пользователя ${username}?`)) return;
+
+            const errorDiv = document.getElementById('users-error');
+            errorDiv.classList.add('hidden');
+
+            try {
+                const response = await fetch(`${API_BASE}/users/${id}`, {
+                    method: 'DELETE',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    await loadUsers();
+                } else if (response.status === 403) {
+                    errorDiv.textContent = 'Доступ запрещён';
+                    errorDiv.classList.remove('hidden');
+                } else if (response.status === 418) {
+                    errorDiv.textContent = 'Нельзя удалить себя';
+                    errorDiv.classList.remove('hidden');
+                } else {
+                    const error = await response.json();
+                    errorDiv.textContent = `Ошибка: ${escapeHtml(error.detail || 'Unknown')}`;
+                    errorDiv.classList.remove('hidden');
+                }
+            } catch (e) {
+                errorDiv.textContent = `Ошибка сети: ${escapeHtml(e.message)}`;
+                errorDiv.classList.remove('hidden');
+            }
+        }
+
+        async function logout() {
+            try {
+                await fetch(`${API_BASE}/logout`, {
+                    method: 'POST',
+                    credentials: 'include'
+                });
+            } catch (e) {
+                console.error('Logout failed:', e);
+            }
+
+            window.location.reload();
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        let notificationsWS = null;
+        let notificationsData = [];
+        let notificationsVisible = false;
+
+        function updateWsStatus(status) {
+            const el = document.getElementById('ws-status');
+            el.className = 'ws-status ' + status;
+        }
+
+        function connectNotificationsWS() {
+            console.log('[WS] Connecting...');
+            if (notificationsWS) {
+                notificationsWS.close();
+            }
+            updateWsStatus('connecting');
+            notificationsWS = new WebSocket('ws://127.0.0.1:8000/ws/notifications');
+            console.log('[WS] WebSocket created, state:', notificationsWS.readyState);
+
+            notificationsWS.onopen = () => {
+                console.log('[WS] Connected!');
+                updateWsStatus('connected');
+            };
+
+            notificationsWS.onclose = (event) => {
+                console.log('[WS] Closed:', event.code, event.reason);
+                updateWsStatus('disconnected');
+            };
+
+            notificationsWS.onerror = (error) => {
+                console.error('[WS] Error:', error);
+                updateWsStatus('disconnected');
+            };
+
+            notificationsWS.onmessage = (event) => {
+                console.log('[WS] Message received:', event.data);
+                const data = JSON.parse(event.data);
+                appendNotification(data);
+            };
+        }
+
+        async function loadNotifications() {
+            try {
+                const response = await fetch('http://127.0.0.1:8000/notifications/me', {
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    notificationsData = await response.json();
+                    renderNotifications();
+                }
+            } catch (e) {
+                console.error('Failed to load notifications:', e);
+            }
+        }
+
+        function renderNotifications() {
+            const listDiv = document.getElementById('notifications-list');
+            const emptyDiv = document.getElementById('notifications-empty');
+
+            if (notificationsData.length === 0) {
+                listDiv.innerHTML = '';
+                emptyDiv.classList.remove('hidden');
+                return;
+            }
+
+            emptyDiv.classList.add('hidden');
+            listDiv.innerHTML = notificationsData.map(n => `
+                <div class="card notification-card ${n.is_read ? '' : 'unread'}" id="notify-${n.id}">
+                    <div class="card-header">
+                        <span class="card-title">${escapeHtml(n.title)}</span>
+                        <span class="card-meta">${new Date(n.created_at).toLocaleString()}</span>
+                    </div>
+                    <div class="card-body">
+                        <p>${escapeHtml(n.message)}</p>
+                    </div>
+                    ${!n.is_read ? `<button onclick="markAsRead(${n.id})" class="btn btn-sm mark-read-btn">Прочитано</button>` : ''}
+                </div>
+            `).join('');
+            updateBadge();
+        }
+
+        function appendNotification(notification) {
+            notificationsData.unshift(notification);
+            if (notificationsVisible) {
+                renderNotifications();
+            } else {
+                updateBadge();
+            }
+        }
+
+        function updateBadge() {
+            const badge = document.getElementById('notifications-badge');
+            const unreadCount = notificationsData.filter(n => !n.is_read).length;
+            if (unreadCount > 0) {
+                badge.textContent = unreadCount;
+                badge.classList.remove('hidden');
+            } else {
+                badge.classList.add('hidden');
+            }
+        }
+
+        function toggleNotifications() {
+            const content = document.getElementById('notifications-content');
+            const btn = document.getElementById('toggle-notifications-btn');
+
+            if (content.classList.contains('hidden')) {
+                content.classList.remove('hidden');
+                btn.textContent = 'Скрыть';
+                btn.classList.add('active');
+                notificationsVisible = true;
+                renderNotifications();
+            } else {
+                content.classList.add('hidden');
+                btn.textContent = 'Показать';
+                btn.classList.remove('active');
+                notificationsVisible = false;
+            }
+        }
+
+        async function markAsRead(id) {
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/notifications/${id}/read`, {
+                    method: 'PATCH',
+                    credentials: 'include'
+                });
+                if (response.ok) {
+                    const notification = notificationsData.find(n => n.id === id);
+                    if (notification) {
+                        notification.is_read = true;
+                        renderNotifications();
+                    }
+                }
+            } catch (e) {
+                console.error('Failed to mark as read:', e);
+            }
+        }
+
+        async function sendTestNotification() {
+            const userId = document.getElementById('test-user-id').value.trim();
+            const title = document.getElementById('test-title').value.trim();
+            const message = document.getElementById('test-message').value.trim();
+            const resultDiv = document.getElementById('test-result');
+
+            console.log('[Test] Sending notification:', { userId, title, message });
+
+            if (!userId || !title || !message) {
+                resultDiv.innerHTML = '<p class="error">Заполните все поля</p>';
+                return;
+            }
+
+            resultDiv.innerHTML = '<p class="loading">Отправка...</p>';
+
+            try {
+                const response = await fetch(`http://127.0.0.1:8000/notifications/${encodeURIComponent(userId)}?title=${encodeURIComponent(title)}&message=${encodeURIComponent(message)}`, {
+                    credentials: 'include'
+                });
+
+                console.log('[Test] Response:', response.status);
+
+                if (response.ok) {
+                    resultDiv.innerHTML = '<p class="success">Уведомление отправлено!</p>';
+                    document.getElementById('test-user-id').value = '';
+                    document.getElementById('test-title').value = '';
+                    document.getElementById('test-message').value = '';
+                } else {
+                    const error = await response.json().catch(() => ({ detail: 'Unknown error' }));
+                    resultDiv.innerHTML = `<p class="error">Ошибка: ${escapeHtml(error.detail || 'Unknown')}</p>`;
+                }
+            } catch (e) {
+                console.error('[Test] Network error:', e);
+                resultDiv.innerHTML = `<p class="error">Ошибка сети: ${escapeHtml(e.message)}</p>`;
+            }
+        }
+
+        checkAuth();
+    </script>
+</body>
+</html>
