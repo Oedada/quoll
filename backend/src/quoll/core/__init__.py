@@ -16,6 +16,7 @@ from quoll.core.exceptions import (
     UserAlreadyExistsAuthError,
     UserNotFoundException,
 )
+from quoll.core.locking import lock_row, lock_rows
 from quoll.core.mixins import IdMixin, TimestampMixin
 from quoll.core.schemas import AppBaseModel
 from quoll.core.system_defaults import SystemDefaults
@@ -41,4 +42,6 @@ __all__ = [
     "UnknowAuthError",
     "UserAlreadyExistsAuthError",
     "UserNotFoundException",
+    "lock_row",
+    "lock_rows",
 ]
