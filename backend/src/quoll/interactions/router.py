@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Path, Query, Response, status
 
+from quoll.core import SystemDefaults
 from quoll.interactions.dependencies import (
     InteractionRepoDep,
     UniversityRepoDep,
@@ -25,6 +26,7 @@ interactions_router = APIRouter(prefix="/api/v1/interactions", tags=["Interactio
 
 # Universities Endpoints
 
+
 @universities_router.post(
     "/",
     response_model=UniversityRead,
@@ -45,7 +47,11 @@ async def create_university(
 )
 async def list_universities(
     repo: UniversityRepoDep,
-    limit: int = Query(default=50, ge=1, le=100),
+    limit: int = Query(
+        default=SystemDefaults.DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=SystemDefaults.MAX_PAGE_SIZE,
+    ),
     offset: int = Query(default=0, ge=0),
 ):
     return await repo.get_all(limit=limit, offset=offset)
@@ -91,6 +97,7 @@ async def delete_university(
 
 # Vendors Endpoints
 
+
 @vendors_router.post(
     "/",
     response_model=VendorRead,
@@ -111,7 +118,11 @@ async def create_vendor(
 )
 async def list_vendors(
     repo: VendorRepoDep,
-    limit: int = Query(default=50, ge=1, le=100),
+    limit: int = Query(
+        default=SystemDefaults.DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=SystemDefaults.MAX_PAGE_SIZE,
+    ),
     offset: int = Query(default=0, ge=0),
 ):
     return await repo.get_all(limit=limit, offset=offset)
@@ -157,6 +168,7 @@ async def delete_vendor(
 
 # Interactions Endpoints
 
+
 @interactions_router.post(
     "/",
     response_model=InteractionRead,
@@ -183,7 +195,11 @@ async def list_interactions(
     vendor_id: int | None = Query(
         default=None, ge=1, description="Filter by Vendor ID"
     ),
-    limit: int = Query(default=50, ge=1, le=100),
+    limit: int = Query(
+        default=SystemDefaults.DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=SystemDefaults.MAX_PAGE_SIZE,
+    ),
     offset: int = Query(default=0, ge=0),
 ):
     if university_id is not None:

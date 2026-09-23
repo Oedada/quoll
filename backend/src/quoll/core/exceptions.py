@@ -26,8 +26,9 @@ class UserNotFoundException(AppException):
 
 class InvalidUserRoleException(AppException):
     def __init__(self, id: str):
-        super().__init__(400, f'User with id {id} has invalid role for this operation')
+        super().__init__(400, f"User with id {id} has invalid role for this operation")
         logger.warning(self.message)
+
 
 class AuthError(AppException):
     pass
@@ -76,3 +77,25 @@ class StorageException(AppException):
     def __init__(self, detail: str = "Storage operation failed"):
         super().__init__(500, detail)
         logger.error(self.message)
+
+
+class ManagerNotActiveException(AppException):
+    def __init__(self, manager_id: str):
+        super().__init__(400, f"Manager '{manager_id}' is not active")
+        logger.warning(self.message)
+
+
+class ManagerUnavailableException(AppException):
+    def __init__(self, manager_id: str):
+        super().__init__(400, f"Manager '{manager_id}' is not accepting new projects")
+        logger.warning(self.message)
+
+
+class CapacityExceededException(AppException):
+    def __init__(self, manager_id: str, current: int, requested: int, maximum: int):
+        super().__init__(
+            409,
+            f"Manager '{manager_id}' capacity exhausted: "
+            f"{current}/{maximum} occupied, {requested} more requested",
+        )
+        logger.warning(self.message)

@@ -1,10 +1,11 @@
 import asyncio
-from typing import Any
 from logging import getLogger
+from typing import Any
 
 from fastapi import WebSocket
 
 logger = getLogger(__name__)
+
 
 class ConnectionStorage:
     def __init__(self) -> None:
@@ -34,7 +35,7 @@ class ConnectionStorage:
             try:
                 await ws.send_json(data)
                 sent += 1
-            except Exception as e:
+            except Exception as e:  # noqa: BLE001
                 logger.warning(e)
         return sent
 
@@ -42,15 +43,14 @@ class ConnectionStorage:
         sent = 0
         async with self._lock:
             all_connections = {
-                uid: conns.copy()
-                for uid, conns in self._connections.items()
+                uid: conns.copy() for uid, conns in self._connections.items()
             }
         for connections in all_connections.values():
             for ws in connections:
                 try:
                     await ws.send_json(data)
                     sent += 1
-                except Exception as e:
+                except Exception as e:  # noqa: BLE001
                     logger.warning(e)
         return sent
 

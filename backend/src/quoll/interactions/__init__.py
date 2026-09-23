@@ -1,4 +1,9 @@
-from quoll.interactions.models import Interaction, University, Vendor
+from quoll.interactions.capacity_policy import (
+    counts_toward_capacity,
+    is_open_project,
+    validate_capacity_transition,
+)
+from quoll.interactions.models import Interaction, PauseState, University, Vendor
 from quoll.interactions.repository import (
     InteractionRepository,
     UniversityRepository,
@@ -29,6 +34,7 @@ __all__ = [
     "InteractionRead",
     "InteractionRepository",
     "InteractionUpdate",
+    "PauseState",
     "University",
     "UniversityCreate",
     "UniversityRead",
@@ -39,7 +45,10 @@ __all__ = [
     "VendorRead",
     "VendorRepository",
     "VendorUpdate",
+    "counts_toward_capacity",
     "interactions_router",
+    "is_open_project",
     "universities_router",
+    "validate_capacity_transition",
     "vendors_router",
 ]

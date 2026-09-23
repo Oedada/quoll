@@ -9,10 +9,8 @@ from quoll.auth.dependencies import (
     get_session_repo,
     get_user_repo,
 )
-
-from quoll.core.exceptions import InvalidUserRoleException
 from quoll.auth.keycloak_client import keycloak_client
-from quoll.auth.models import Admin, Manager, Session, Superviser, User, UserRole
+from quoll.auth.models import Session, User, user_class_for_role
 from quoll.auth.repositories import SessionRepository, UserRepository
 from quoll.auth.schemas import UserCreate, UserListRead, UserRead, UserUpdate
 from quoll.config import settings
@@ -142,39 +140,15 @@ async def create_user(
     admin_user: AdminUser,
     user_repo: UserRepository = Depends(get_user_repo),  # noqa: B008
 ) -> UserRead:
-    match user_data.role:
-        case UserRole.MANAGER:
-            user = Manager(
-                id="",
-                username=user_data.username,
-                email=user_data.email,
-                first_name=user_data.first_name,
-                last_name=user_data.last_name,
-                role=user_data.role,
-            )
-        case UserRole.SUPERVISER:
-            user = Superviser(
-                id="",
-                username=user_data.username,
-                email=user_data.email,
-                first_name=user_data.first_name,
-                last_name=user_data.last_name,
-                role=user_data.role,
-            )
-        case UserRole.ADMIN:
-            user = Admin(
-                id="",
-                username=user_data.username,
-                email=user_data.email,
-                first_name=user_data.first_name,
-                last_name=user_data.last_name,
-                role=user_data.role,
-            )
-        case _:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Unknown role: {user_data.role}",
-            )
+    user = user_class_for_role(user_data.role)(
+        id="",
+        username=user_data.username,
+        email=user_data.email,
+        first_name=user_data.first_name,
+        last_name=user_data.last_name,
+        role=user_data.role,
+        is_active=True,
+    )
     user_id = await user_repo.create(user, user_data.password)
     created_user = await user_repo.get(user_id)
     return UserRead(

@@ -23,7 +23,9 @@ NotifyRepoDep = Annotated[NotifyRepository, Depends(get_notify_repo)]
 ConnectionStorageDep = Annotated[ConnectionStorage, Depends(get_connection_storage)]
 
 
-def get_notify_service(repo: NotifyRepoDep, connections: ConnectionStorageDep) -> NotifyService:
+def get_notify_service(
+    repo: NotifyRepoDep, connections: ConnectionStorageDep
+) -> NotifyService:
     return NotifyService(repo, connections)
 
 

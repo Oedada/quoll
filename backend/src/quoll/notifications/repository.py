@@ -7,7 +7,9 @@ from quoll.notifications.models import Notify
 class NotifyRepository(BaseRepository[Notify]):
     model = Notify
 
-    async def get_by_user(self, user_id: str, limit: int = 100, offset: int = 0) -> list[Notify]:
+    async def get_by_user(
+        self, user_id: str, limit: int = 100, offset: int = 0
+    ) -> list[Notify]:
         result = await self.session.execute(
             select(self.model)
             .where(self.model.user_id == user_id)
@@ -21,7 +23,7 @@ class NotifyRepository(BaseRepository[Notify]):
         result = await self.session.execute(
             select(self.model)
             .where(self.model.user_id == user_id)
-            .where(self.model.is_read == False)  # noqa: E712
+            .where(self.model.is_read == False)
             .order_by(self.model.created_at.desc())
         )
         return list(result.scalars().all())

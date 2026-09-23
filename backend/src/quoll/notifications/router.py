@@ -1,6 +1,15 @@
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request, WebSocket, WebSocketDisconnect, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    WebSocket,
+    WebSocketDisconnect,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.dependencies import CurrentUser
@@ -73,7 +82,9 @@ async def mark_as_read(
     logger.info(f"mark_as_read: notify_id={notify_id}, user={user.id}")
     notify = await repo.get(notify_id)
     if notify.user_id != user.id and user.role != UserRole.ADMIN:
-        logger.warning(f"mark_as_read: forbidden for user {user.id} on notify {notify_id}")
+        logger.warning(
+            f"mark_as_read: forbidden for user {user.id} on notify {notify_id}"
+        )
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
     await repo.update(notify_id, {"is_read": True})
     notify.is_read = True
@@ -101,7 +112,7 @@ async def websocket_endpoint(
         logger.debug(f"WS: session found: {session_obj}")
         user = await user_repo.get(session_obj.user_id)
         logger.info(f"WS: authenticated user {user.id}")
-    except Exception as e:
+    except Exception as e:  # noqa: BLE001
         logger.error(f"WS: auth failed: {e}")
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return

@@ -16,9 +16,13 @@ class NotifyService:
         message: str,
         extra_data: dict | None = None,
     ) -> Notify:
-        data = NotifyCreate(user_id=user_id, title=title, message=message, extra_data=extra_data)
+        data = NotifyCreate(
+            user_id=user_id, title=title, message=message, extra_data=extra_data
+        )
         notify = await self.repo.create(data)
-        await self.connections.send_to_user(user_id, NotifyRead.model_validate(notify).model_dump())
+        await self.connections.send_to_user(
+            user_id, NotifyRead.model_validate(notify).model_dump()
+        )
         return notify
 
     async def send_notification(self, user_id: str, title: str, message: str) -> Notify:

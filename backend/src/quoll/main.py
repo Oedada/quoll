@@ -9,24 +9,24 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from quoll.attachments import S3StorageService, attachments_router
 from quoll.auth import auth_router
-from quoll.auth.models import Admin, UserRole
+from quoll.auth.bootstrap import ensure_admin_account
 from quoll.auth.repositories import UserRepository
 from quoll.config import settings
 from quoll.core import AppException
-from quoll.core.exceptions import UserAlreadyExistsAuthError
-from quoll.db import Base, RawBase
+from quoll.db import Base
 from quoll.interactions import (
     interactions_router,
     universities_router,
     vendors_router,
 )
+from quoll.notifications import router as notifications_router
+from quoll.notifications import ws_router as notifications_ws_router
+from quoll.notifications.connection_storage import ConnectionStorage
 from quoll.workflows import (
     stages_router,
     transitions_router,
     workflows_router,
 )
-from quoll.notifications import router as notifications_router, ws_router as notifications_ws_router
-from quoll.notifications.connection_storage import ConnectionStorage
 
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
@@ -49,7 +49,6 @@ async def lifespan(app: FastAPI):
     logger.debug("Creating database tables")
     async with app.state.db_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(RawBase.metadata.create_all)
     logger.debug("Initializing S3 storage service")
     app.state.s3 = S3StorageService(
         endpoint_url=settings.s3_endpoint_url,
@@ -59,25 +58,9 @@ async def lifespan(app: FastAPI):
         region_name=settings.s3_region_name,
     )
     async with app.state.db_session_maker() as session:
-        user_repo = UserRepository(session)
-        try:
-            await user_repo.create(
-                Admin(
-                    id=settings.app_admin_id,
-                    role=UserRole.ADMIN,
-                    username=settings.app_admin_username,
-                    email=settings.app_admin_email,
-                    first_name="admin",
-                    last_name="admin",
-                ),
-                password=settings.app_admin_password,
-            )
-            logger.debug("Admin created")
-        except UserAlreadyExistsAuthError:
-            pass
+        await ensure_admin_account(session, UserRepository(session))
         await session.commit()
     await app.state.s3.ensure_bucket()
-    logger.debug("Initializing connection storage")
     app.state.connection_storage = ConnectionStorage()
     logger.info("Application started")
 
@@ -148,6 +131,7 @@ app.include_router(universities_router)
 app.include_router(vendors_router)
 app.include_router(interactions_router)
 app.include_router(notifications_router)
+app.include_router(notifications_ws_router)
 
 
 @app.get("/", tags=["Health"])
