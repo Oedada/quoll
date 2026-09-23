@@ -1,0 +1,74 @@
+from enum import StrEnum
+from typing import Any
+
+from sqlalchemy import BigInteger, CheckConstraint, String
+from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.orm import Mapped, mapped_column
+
+from quoll.db import Base, created_at_dt
+
+
+class ActorType(StrEnum):
+    USER = "USER"
+    SYSTEM = "SYSTEM"
+
+
+class TargetType(StrEnum):
+    MANAGER = "MANAGER"
+    SUPERVISER = "SUPERVISER"
+    INTERACTION = "INTERACTION"
+    USER = "USER"
+    STAGE = "STAGE"
+    WORKFLOW = "WORKFLOW"
+
+
+class AuditEventType(StrEnum):
+    SUBORDINATE_ASSIGNED = "SUBORDINATE_ASSIGNED"
+    SUBORDINATE_RELEASED = "SUBORDINATE_RELEASED"
+    SUBORDINATE_TRANSFERRED = "SUBORDINATE_TRANSFERRED"
+    SUBORDINATE_ADOPTED = "SUBORDINATE_ADOPTED"
+    WORKLOAD_STATUS_CHANGED = "WORKLOAD_STATUS_CHANGED"
+    CAPACITY_LIMIT_CHANGED = "CAPACITY_LIMIT_CHANGED"
+    USER_DEACTIVATED = "USER_DEACTIVATED"
+    USER_REACTIVATED = "USER_REACTIVATED"
+    PROJECT_REASSIGNED = "PROJECT_REASSIGNED"
+    INTERACTION_PAUSED = "INTERACTION_PAUSED"
+    INTERACTION_UNPAUSED = "INTERACTION_UNPAUSED"
+    ROLE_TRANSITIONED = "ROLE_TRANSITIONED"
+    ROLE_TRANSITION_BLOCKED = "ROLE_TRANSITION_BLOCKED"
+    ROLE_TRANSITION_CANCELLED = "ROLE_TRANSITION_CANCELLED"
+    STAGE_CREATED = "STAGE_CREATED"
+    STAGE_UPDATED = "STAGE_UPDATED"
+    STAGE_DELETED = "STAGE_DELETED"
+    STAGE_SEMANTICS_CHANGED = "STAGE_SEMANTICS_CHANGED"
+    STAGE_TRANSITIONED = "STAGE_TRANSITIONED"
+    WORKFLOW_PUBLISHED = "WORKFLOW_PUBLISHED"
+    ROLE_MAPPING_CONFLICT_DETECTED = "ROLE_MAPPING_CONFLICT_DETECTED"
+    ROLE_MAPPING_CONFLICT_RESOLVED = "ROLE_MAPPING_CONFLICT_RESOLVED"
+    SUPERVISOR_OFFBOARDED = "SUPERVISOR_OFFBOARDED"
+    PAUSE_EXPIRED_SATURATED = "PAUSE_EXPIRED_SATURATED"
+
+
+class AuditLog(Base):
+    """Журнал действий, только на добавление.
+
+    UPDATE, DELETE и TRUNCATE запрещены триггером, поэтому тут нет updated_at
+    """
+
+    __table_args__ = (
+        CheckConstraint(
+            "(actor_type = 'SYSTEM' AND actor_id IS NULL) OR "
+            "(actor_type = 'USER' AND actor_id IS NOT NULL)",
+            name="chk_audit_actor_invariants",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    actor_type: Mapped[str] = mapped_column(String(20), index=True)
+    actor_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    target_type: Mapped[str] = mapped_column(String(30), index=True)
+    target_id: Mapped[str] = mapped_column(String(255), index=True)
+    event_type: Mapped[str] = mapped_column(String(50), index=True)
+    old_value: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    new_value: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[created_at_dt] = mapped_column(index=True)
