@@ -9,10 +9,11 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from quoll.attachments import S3StorageService, attachments_router
 from quoll.auth import auth_router
-from quoll.auth.models import User, UserRole
+from quoll.auth.bootstrap import ensure_admin_account
+from quoll.auth.repositories import UserRepository
 from quoll.config import settings
 from quoll.core import AppException
-from quoll.db import Base, RawBase
+from quoll.db import Base
 from quoll.interactions import (
     interactions_router,
     universities_router,
@@ -45,7 +46,6 @@ async def lifespan(app: FastAPI):
     logger.debug("Creating database tables")
     async with app.state.db_engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
-        await conn.run_sync(RawBase.metadata.create_all)
     logger.debug("Initializing S3 storage service")
     app.state.s3 = S3StorageService(
         endpoint_url=settings.s3_endpoint_url,
@@ -55,16 +55,8 @@ async def lifespan(app: FastAPI):
         region_name=settings.s3_region_name,
     )
     async with app.state.db_session_maker() as session:
-        if session.get(User, settings.app_admin_id) is None:
-            session.add(
-                User(
-                    id=settings.app_admin_id,
-                    role=UserRole.ADMIN,
-                    first_name="admin",
-                    last_name="admin",
-                )
-            )
-            await session.commit()
+        await ensure_admin_account(session, UserRepository(session))
+        await session.commit()
     await app.state.s3.ensure_bucket()
     logger.info("Application started")
 

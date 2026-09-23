@@ -17,7 +17,6 @@ class Settings(BaseSettings):
     app_admin_username: str
     app_admin_email: str
     app_admin_password: str
-    app_admin_id: str
     s3_endpoint_url: str
     s3_access_key: str
     s3_secret_key: str

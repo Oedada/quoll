@@ -1,13 +1,14 @@
 import logging
 
-from sqlalchemy import delete
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.keycloak_client import keycloak_client
-from quoll.auth.models import Session, User, UserRole
+from quoll.auth.models import Admin, Manager, Session, Superviser, User, UserRole
 from quoll.config import settings
 from quoll.core import (
     BaseRepository,
+    InvalidUserRoleException,
+    SystemDefaults,
     UnknowAuthError,
     UserAlreadyExistsAuthError,
     UserNotFoundException,
@@ -28,6 +29,30 @@ class UserRepository:
             f"{settings.keycloak_root_url}/admin/realms/{keycloak_client.realm}"
         )
 
+    async def set_superviser(self, manager_id: str, superviser_id: str) -> None:
+        manager = await self.get(manager_id)
+        superviser = await self.get(superviser_id)
+        if isinstance(manager, Manager):
+            if isinstance(superviser, Superviser):
+                manager.superviser_id = superviser_id
+                await self.s.flush()
+            else:
+                raise InvalidUserRoleException(manager_id)
+        else:
+            raise InvalidUserRoleException(manager_id)
+
+    async def find_id_by_username(self, username: str) -> str | None:
+        """Идентификатор выдаёт Keycloak, поэтому найти уже созданную учётку
+        можно только по логину"""
+        resp = await self.client.get(
+            url=f"{self.base_url}/users",
+            params={"username": username, "exact": True},
+        )
+        if resp.status_code >= 400:
+            raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
+        found = resp.json()
+        return found[0]["id"] if found else None
+
     async def assign_role(self, user_id: str, role: UserRole):
         role_resp = (
             await self.client.get(f"{self.base_url}/roles/{role.value}")
@@ -41,6 +66,17 @@ class UserRepository:
 
     async def create(self, user: User, password: str) -> str:
         logger.debug(f"Creating user with username={user.username}")
+        role_to_model = {
+            UserRole.MANAGER: Manager,
+            UserRole.SUPERVISER: Superviser,
+            UserRole.ADMIN: Admin,
+        }
+        expected_model = role_to_model.get(user.role)
+        if expected_model and not isinstance(user, expected_model):
+            raise ValueError(
+                f"Role {user.role} requires {expected_model.__name__} instance, "
+                f"got {type(user).__name__}"
+            )
         resp = await self.client.post(
             url=f"{self.base_url}/users",
             json={
@@ -87,7 +123,9 @@ class UserRepository:
         user.email = data["email"]
         return user
 
-    async def get_all(self, limit: int = 100, offset: int = 0) -> list[User]:
+    async def get_all(
+        self, limit: int = SystemDefaults.DEFAULT_PAGE_SIZE, offset: int = 0
+    ) -> list[User]:
         logger.debug(f"Getting all users with limit={limit}, offset={offset}")
         resp = await self.client.get(
             url=f"{self.base_url}/users",
@@ -134,12 +172,16 @@ class UserRepository:
         return await self.get(updated_user.id)
 
     async def delete(self, user_id: str) -> None:
-        result = await self.s.execute(delete(User).where(User.id == user_id))
         logger.debug(f"Deleting user with id={user_id}")
-        resp = await self.client.delete(url=f"{self.base_url}/users/{user_id}")
-        if resp.status_code == 404 or not (result.rowcount or 0):
+        user = await self.s.get(User, user_id)
+        if user is None:
             raise UserNotFoundException(user_id)
-        if resp.status_code >= 400:
+        # Сначала БД: если удаление упрётся в RESTRICT, транзакция откатится
+        # строку подтипа нужно снять раньше строки users
+        await self.s.delete(user)
+        await self.s.flush()
+        resp = await self.client.delete(url=f"{self.base_url}/users/{user_id}")
+        # 404 - в Keycloak учётки уже нет:
+        if resp.status_code >= 400 and resp.status_code != 404:
             raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
-        resp.raise_for_status()
         logger.info(f"User with id={user_id} deleted")
