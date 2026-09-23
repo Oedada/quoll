@@ -8,7 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
 from quoll.attachments import S3StorageService, attachments_router
-from quoll.auth import auth_router
+from quoll.auth import auth_router, users_router
 from quoll.auth.bootstrap import ensure_admin_account
 from quoll.auth.repositories import UserRepository
 from quoll.config import settings
@@ -59,7 +59,11 @@ async def lifespan(app: FastAPI):
     )
     async with app.state.db_session_maker() as session:
         await ensure_admin_account(session, UserRepository(session))
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError:
+            logger.debug("Admin projection already created by another process")
+            await session.rollback()
     await app.state.s3.ensure_bucket()
     app.state.connection_storage = ConnectionStorage()
     logger.info("Application started")
@@ -97,15 +101,28 @@ async def app_exception_handler(request: Request, exc: AppException):
     )
 
 
+# ограничений в схеме много
+_INTEGRITY_DETAILS = {
+    "23505": "Resource conflict: a record with these unique attributes already exists",
+    "23503": "Resource conflict: the record is referenced by other records or references a missing one",
+    "23514": "Invalid request: the record violates a domain constraint",
+    "23502": "Invalid request: a required field is missing",
+}
+
+
 @app.exception_handler(IntegrityError)
 async def integrity_error_handler(request: Request, exc: IntegrityError):
+    code = getattr(exc.orig, "sqlstate", None)
     logger.warning(
-        f"Database integrity conflict on {request.method} {request.url.path}: {exc.orig}"
+        f"Database integrity conflict on {request.method} {request.url.path} "
+        f"[{code}]: {exc.orig}"
     )
     return JSONResponse(
         status_code=409,
         content={
-            "detail": "Resource conflict: a record with these unique attributes already exists"
+            "detail": _INTEGRITY_DETAILS.get(
+                code, "Resource conflict: the request violates a database constraint"
+            )
         },
     )
 
@@ -123,6 +140,7 @@ async def unhandled_exception_handler(request: Request, exc: Exception):
 
 # Routers
 app.include_router(auth_router, prefix="/auth")
+app.include_router(users_router)
 app.include_router(workflows_router)
 app.include_router(stages_router)
 app.include_router(transitions_router)

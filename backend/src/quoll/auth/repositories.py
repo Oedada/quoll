@@ -3,10 +3,9 @@ import logging
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.keycloak_client import keycloak_client
-from quoll.auth.models import Admin, Manager, Session, Superviser, User, UserRole
+from quoll.auth.models import Admin, Manager, Superviser, User, UserRole
 from quoll.config import settings
 from quoll.core import (
-    BaseRepository,
     InvalidUserRoleException,
     SystemDefaults,
     UnknowAuthError,
@@ -15,10 +14,6 @@ from quoll.core import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-class SessionRepository(BaseRepository[Session]):
-    model = Session
 
 
 class UserRepository:

@@ -12,9 +12,8 @@ from fastapi import (
 )
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quoll.auth.dependencies import CurrentUser
-from quoll.auth.models import UserRole
-from quoll.auth.repositories import SessionRepository, UserRepository
+from quoll.auth.dependencies import CurrentUser, build_session_service
+from quoll.auth.models import User, UserRole
 from quoll.db import get_db_session
 from quoll.notifications.connection_storage import ConnectionStorage
 from quoll.notifications.dependencies import NotifyRepoDep
@@ -97,34 +96,29 @@ async def websocket_endpoint(
     websocket: WebSocket,
     session: AsyncSession = Depends(get_db_session),  # noqa: B008
 ) -> None:
-    logger.info(f"WS: incoming connection, cookies={websocket.cookies}")
-    session_id = websocket.cookies.get("session")
-    if not session_id:
-        logger.warning("WS: no session cookie, rejecting")
+    raw_key = websocket.cookies.get("session")
+    if not raw_key:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
-    session_repo = SessionRepository(session)
-    user_repo = UserRepository(session)
+    session_service = build_session_service(websocket.app.state.db_session_maker)
+    user_session = await session_service.resolve(raw_key)
+    if user_session is None:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
 
-    try:
-        session_obj = await session_repo.get(session_id)
-        logger.debug(f"WS: session found: {session_obj}")
-        user = await user_repo.get(session_obj.user_id)
-        logger.info(f"WS: authenticated user {user.id}")
-    except Exception as e:  # noqa: BLE001
-        logger.error(f"WS: auth failed: {e}")
+    user = await session.get(User, user_session.user_id)
+    if user is None or not user.is_active:
         await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
         return
 
     connections: ConnectionStorage = websocket.app.state.connection_storage
     logger.debug(f"WS: adding connection for user {user.id}")
+    await websocket.accept()
     await connections.add(user.id, websocket)
     logger.info(f"WS: connected for user {user.id}")
 
     try:
-        await websocket.accept()
-        logger.info(f"WS: accepted for user {user.id}")
         while True:
             data = await websocket.receive_text()
             logger.debug(f"WS: received from {user.id}: {data}")

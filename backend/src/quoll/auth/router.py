@@ -1,35 +1,35 @@
-from dataclasses import dataclass
-
-from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi import (
+    APIRouter,
+    Depends,
+    HTTPException,
+    Query,
+    Request,
+    Response,
+    status,
+)
 from fastapi.responses import RedirectResponse
 
 from quoll.auth.dependencies import (
     AdminUser,
     CurrentUser,
-    get_session_repo,
+    SessionServiceDep,
     get_user_repo,
 )
 from quoll.auth.keycloak_client import keycloak_client
-from quoll.auth.models import Session, User, user_class_for_role
-from quoll.auth.repositories import SessionRepository, UserRepository
+from quoll.auth.models import User, user_class_for_role
+from quoll.auth.repositories import UserRepository
 from quoll.auth.schemas import UserCreate, UserListRead, UserRead, UserUpdate
 from quoll.config import settings
+from quoll.core import SystemDefaults
 
-router = APIRouter()
+router = APIRouter(tags=["Auth"])
+users_router = APIRouter(prefix="/api/v1/users", tags=["Users"])
 
-
-@dataclass
-class Tokens:
-    access: str
-    refresh: str
-
-
-sessions: dict[str, Tokens] = {}
+SESSION_COOKIE = "session"
 
 
 @router.get("/")
-def root():
-    print("lol")
+def login():
     url = (
         f"{settings.keycloak_root_url}/realms/{keycloak_client.realm}/protocol/openid-connect/auth"
         f"?client_id={settings.keycloak_client_id}"
@@ -45,40 +45,33 @@ def root():
 async def logout(
     req: Request,
     response: Response,
-    session_repo: SessionRepository = Depends(get_session_repo),  # noqa: B008
+    session_service: SessionServiceDep,
 ) -> None:
-    session_id = req.cookies.get("session")
-    if not session_id is None:
-        print("logout")
-        await keycloak_client.http_client.post(
-            f"{settings.keycloak_root_url}/realms/{keycloak_client.realm}/protocol/openid-connect/logout",
-            data={
-                "client_id": keycloak_client.id,
-                "client_secret": keycloak_client.secret,
-                "refresh_token": (await session_repo.get(session_id)).refresh_token,
-            },
-        )
-        await session_repo.delete(session_id)
-    response.delete_cookie("session", path="/")
+    raw_key = req.cookies.get(SESSION_COOKIE)
+    if raw_key is not None:
+        await session_service.revoke(raw_key)
+    response.delete_cookie(SESSION_COOKIE, path="/")
 
 
 @router.get("/callback")
-async def callback(
-    code: str,
-    session_repo: SessionRepository = Depends(get_session_repo),  # noqa: B008
-):
-    session = await session_repo.create(
-        schema_or_data=await Session.get_session_for_code(
-            code, settings.keycloak_redirect_uri
-        )
+async def callback(code: str, session_service: SessionServiceDep):
+    raw_key, max_age = await session_service.create_from_code(
+        code, settings.keycloak_redirect_uri
     )
     response = RedirectResponse("http://127.0.0.1:8000/front")
-    response.set_cookie("session", session.id, httponly=True)
-    print("cookie set")
+    response.set_cookie(
+        SESSION_COOKIE,
+        raw_key,
+        max_age=max_age,
+        path="/",
+        httponly=True,
+        secure=settings.session_cookie_secure,
+        samesite="lax",
+    )
     return response
 
 
-@router.get("/me", response_model=UserRead)
+@users_router.get("/me", response_model=UserRead)
 async def get_me(user: CurrentUser) -> UserRead:
     return UserRead(
         id=user.id,
@@ -91,12 +84,16 @@ async def get_me(user: CurrentUser) -> UserRead:
     )
 
 
-@router.get("/users", response_model=UserListRead)
+@users_router.get("/", response_model=UserListRead)
 async def list_users(
     admin_user: AdminUser,
     user_repo: UserRepository = Depends(get_user_repo),  # noqa: B008
-    limit: int = 100,
-    offset: int = 0,
+    limit: int = Query(
+        default=SystemDefaults.DEFAULT_PAGE_SIZE,
+        ge=1,
+        le=SystemDefaults.MAX_PAGE_SIZE,
+    ),
+    offset: int = Query(default=0, ge=0),
 ) -> UserListRead:
     users = await user_repo.get_all(limit=limit, offset=offset)
     return UserListRead(
@@ -116,7 +113,7 @@ async def list_users(
     )
 
 
-@router.get("/users/{user_id}", response_model=UserRead)
+@users_router.get("/{user_id}", response_model=UserRead)
 async def get_user(
     user_id: str,
     admin_user: AdminUser,
@@ -134,7 +131,7 @@ async def get_user(
     )
 
 
-@router.post("/users", response_model=UserRead, status_code=201)
+@users_router.post("/", response_model=UserRead, status_code=201)
 async def create_user(
     user_data: UserCreate,
     admin_user: AdminUser,
@@ -162,8 +159,8 @@ async def create_user(
     )
 
 
-@router.post(
-    "/users/connections/{superviser_id}", status_code=status.HTTP_204_NO_CONTENT
+@users_router.post(
+    "/connections/{superviser_id}", status_code=status.HTTP_204_NO_CONTENT
 )
 async def set_connection(
     superviser_id: str,
@@ -174,7 +171,7 @@ async def set_connection(
     await user_repo.set_superviser(manager_id, superviser_id)
 
 
-@router.patch("/users/{user_id}", response_model=UserRead)
+@users_router.patch("/{user_id}", response_model=UserRead)
 async def update_user(
     user_id: str,
     user_data: UserUpdate,
@@ -209,7 +206,7 @@ async def update_user(
     )
 
 
-@router.delete("/users/{user_id}", status_code=204)
+@users_router.delete("/{user_id}", status_code=204)
 async def delete_user(
     user_id: str,
     admin_user: AdminUser,

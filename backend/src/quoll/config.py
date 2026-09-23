@@ -23,6 +23,12 @@ class Settings(BaseSettings):
     s3_bucket_name: str
     s3_region_name: str
     max_upload_size_mb: int
+    # ключ шифрования refresh-токенов, несколько через запятую = ротация
+    session_secret_key: str
+    # выключать только для локальной разработки по http
+    session_cookie_secure: bool = True
+    session_revalidate_seconds: int = 300
+    session_revalidate_hard_limit_seconds: int = 900
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

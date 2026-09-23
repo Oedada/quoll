@@ -1,46 +1,71 @@
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from quoll.auth.crypto import TokenCipher
 from quoll.auth.models import User, UserRole
-from quoll.auth.repositories import SessionRepository, UserRepository
-from quoll.core import UserNotFoundException
+from quoll.auth.repositories import UserRepository
+from quoll.auth.session_service import SessionService
+from quoll.auth.session_store import SessionStore
+from quoll.config import settings
 from quoll.db import get_db_session
 
+SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
-async def get_session_repo(
-    db_session: AsyncSession = Depends(get_db_session),  # noqa: B008
-) -> SessionRepository:
-    return SessionRepository(db_session)
+_cipher = TokenCipher(settings.session_secret_key)
 
 
-async def get_user_repo(
-    req: Request, session: AsyncSession = Depends(get_db_session)  # noqa: B008
-) -> UserRepository:
+def build_session_service(session_maker: async_sessionmaker) -> SessionService:
+    """отдельно от Depends - websocket-у Request не отдают"""
+    return SessionService(SessionStore(session_maker), _cipher)
+
+
+def get_session_service(req: Request) -> SessionService:
+    return build_session_service(req.app.state.db_session_maker)
+
+
+def get_user_repo(session: SessionDep) -> UserRepository:
     return UserRepository(session)
+
+
+SessionServiceDep = Annotated[SessionService, Depends(get_session_service)]
+UserRepoDep = Annotated[UserRepository, Depends(get_user_repo)]
+
+_NOT_AUTHENTICATED = HTTPException(
+    status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
+)
 
 
 async def get_current_user(
     req: Request,
-    session_repo: SessionRepository = Depends(get_session_repo),  # noqa: B008
-    user_repo: UserRepository = Depends(get_user_repo),  # noqa: B008
+    db: SessionDep,
+    session_service: SessionServiceDep,
 ) -> User:
-    session_id = req.cookies.get("session")
-    if session_id is None:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
-        )
-    try:
-        session = await session_repo.get(session_id)
-        return await user_repo.get(session.user_id)
-    except UserNotFoundException:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
-        )
+    """текущий пользователь из локальной проекции.
+
+    в Keycloak на чтении не ходим, сессию он подтверждает внутри resolve и не
+    чаще раза в интервал сверки
+    """
+    raw_key = req.cookies.get("session")
+    if raw_key is None:
+        raise _NOT_AUTHENTICATED
+
+    session = await session_service.resolve(raw_key)
+    if session is None:
+        raise _NOT_AUTHENTICATED
+
+    user = await db.get(User, session.user_id)
+    # проекции может не быть, если сверка ещё не завела пользователя
+    if user is None or not user.is_active:
+        raise _NOT_AUTHENTICATED
+    return user
 
 
-def require_admin(user: User = Depends(get_current_user)) -> User:  # noqa: B008
+CurrentUser = Annotated[User, Depends(get_current_user)]
+
+
+def require_admin(user: CurrentUser) -> User:
     if user.role != UserRole.ADMIN:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
@@ -48,5 +73,4 @@ def require_admin(user: User = Depends(get_current_user)) -> User:  # noqa: B008
     return user
 
 
-CurrentUser = Annotated[User, Depends(get_current_user)]
 AdminUser = Annotated[User, Depends(require_admin)]

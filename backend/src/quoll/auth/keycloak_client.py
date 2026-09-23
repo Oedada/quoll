@@ -104,5 +104,18 @@ class KeycloakClient:
             timeout=10,
             auth=RefreshableAuth(self.token_manager),
         )
+        # Отдельный клиент без авторизации на OIDC-эндпоинтах
+        self.oidc_client: AsyncClient = AsyncClient(
+            base_url=settings.keycloak_root_url, timeout=10
+        )
+
+    @property
+    def token_url(self) -> str:
+        return f"/realms/{self.realm}/protocol/openid-connect/token"
+
+    @property
+    def logout_url(self) -> str:
+        return f"/realms/{self.realm}/protocol/openid-connect/logout"
+
 
 keycloak_client = KeycloakClient(settings=settings)

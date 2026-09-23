@@ -1,7 +1,8 @@
-const API_BASE = '/auth';
+const AUTH_BASE = '/auth';
+const USERS_BASE = '/api/v1/users';
 
 export async function getMe() {
-  const res = await fetch(`${API_BASE}/me`);
+  const res = await fetch(`${USERS_BASE}/me`);
   if (!res.ok) {
     if (res.status === 401) return null;
     throw new Error(`HTTP ${res.status}`);
@@ -10,7 +11,7 @@ export async function getMe() {
 }
 
 export async function getUsers(limit = 100, offset = 0) {
-  const res = await fetch(`${API_BASE}/users?limit=${limit}&offset=${offset}`);
+  const res = await fetch(`${USERS_BASE}/?limit=${limit}&offset=${offset}`);
   if (!res.ok) {
     if (res.status === 401) return null;
     if (res.status === 403) throw new Error('Forbidden: admin access required');
@@ -20,7 +21,7 @@ export async function getUsers(limit = 100, offset = 0) {
 }
 
 export async function getUser(userId) {
-  const res = await fetch(`${API_BASE}/users/${userId}`);
+  const res = await fetch(`${USERS_BASE}/${userId}`);
   if (!res.ok) {
     if (res.status === 401) return null;
     if (res.status === 403) throw new Error('Forbidden: admin access required');
@@ -30,7 +31,7 @@ export async function getUser(userId) {
 }
 
 export async function createUser(data) {
-  const res = await fetch(`${API_BASE}/users`, {
+  const res = await fetch(`${USERS_BASE}/`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -45,7 +46,7 @@ export async function createUser(data) {
 }
 
 export async function updateUser(userId, data) {
-  const res = await fetch(`${API_BASE}/users/${userId}`, {
+  const res = await fetch(`${USERS_BASE}/${userId}`, {
     method: 'PATCH',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
@@ -60,7 +61,7 @@ export async function updateUser(userId, data) {
 }
 
 export async function deleteUser(userId) {
-  const res = await fetch(`${API_BASE}/users/${userId}`, {
+  const res = await fetch(`${USERS_BASE}/${userId}`, {
     method: 'DELETE',
   });
   if (!res.ok) {
@@ -72,7 +73,7 @@ export async function deleteUser(userId) {
 }
 
 export async function logout() {
-  const res = await fetch(`${API_BASE}/logout`, {
+  const res = await fetch(`${AUTH_BASE}/logout`, {
     method: 'POST',
   });
   if (!res.ok) {
