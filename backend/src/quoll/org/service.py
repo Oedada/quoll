@@ -263,6 +263,8 @@ async def set_limits(
     )
 
     old = getattr(target, field)
+    if old == value:
+        return
     setattr(target, field, value)
     record(
         session,
