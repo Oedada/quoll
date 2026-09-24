@@ -3,7 +3,7 @@
 uv sync --all-groups
 ```
 
-Инфраструктура (postgres, keycloak, minio):
+Инфраструктура (postgres, keycloak, garage):
 ```bash
 docker compose up -d
 ```

@@ -29,18 +29,21 @@ services:
       - ./keycloak-start-settings.json:/opt/keycloak/data/import/realm-export.json:ro
     ports:
       - "8081:8080"
-  minio:
-    image: quay.io/minio/minio:RELEASE.2024-09-13T20-26-02Z
-    command: server /data --console-address ":9001"
+  garage:
+    image: dxflrs/garage:v2.4.1
+    command: /garage server --single-node --default-bucket
     environment:
-      MINIO_ROOT_USER: minioadmin
-      MINIO_ROOT_PASSWORD: minioadminpassword
+      GARAGE_DEFAULT_ACCESS_KEY: GK000000000000000000000001
+      GARAGE_DEFAULT_SECRET_KEY: "0000000000000000000000000000000000000000000000000000000000000001"
+      GARAGE_DEFAULT_BUCKET: quoll-storage
     ports:
-      - "9000:9000"
-      - "9001:9001"
+      - "3900:3900"
     volumes:
-      - miniodata:/data
+      - ./garage.toml:/etc/garage.toml:ro
+      - garage-meta:/var/lib/garage/meta
+      - garage-data:/var/lib/garage/data
 
 volumes:
   pgdata:
-  miniodata:
+  garage-meta:
+  garage-data:

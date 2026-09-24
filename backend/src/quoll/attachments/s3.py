@@ -11,7 +11,7 @@ logger = logging.getLogger(__name__)
 
 
 class S3StorageService:
-    """Асинхронный сервис для взаимодействия с S3-совместимым хранилищем (MinIO, AWS S3)"""
+    """Асинхронный сервис для взаимодействия с S3-совместимым хранилищем (Garage, AWS S3)"""
 
     def __init__(
         self,
