@@ -11,7 +11,6 @@ from quoll.auth.identity_policy import identity_denial, is_incapacitated
 from quoll.auth.keycloak_admin import verify_target
 from quoll.auth.models import (
     Manager,
-    ManualWorkloadStatus,
     Superviser,
     User,
     UserRole,
@@ -286,15 +285,10 @@ async def set_workload_status(
     denial = identity_denial(users.get(manager_id))
     if manager is None or denial is not None:
         raise IdentityDeniedException(*(denial or (403, "Not a manager")))
+    # «готов» при полной загрузке можно: витрина покажет SATURATED, а слот
+    # освободится - менеджер сразу попадёт в Пул Б без второго действия
     if manager.manual_workload_status == status:
         return
-    if status == ManualWorkloadStatus.AVAILABLE:
-        used = await InteractionRepository(session).count_capacity_projects(manager_id)
-        # иначе был бы «готов» и тут же SATURATED
-        if used >= manager.max_active_projects:
-            raise DomainRuleException(
-                400, f"Capacity is full: {used} of {manager.max_active_projects}"
-            )
 
     old = manager.manual_workload_status
     manager.manual_workload_status = status
