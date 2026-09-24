@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Request, status
@@ -65,12 +66,22 @@ async def get_current_user(
 CurrentUser = Annotated[User, Depends(get_current_user)]
 
 
-def require_admin(user: CurrentUser) -> User:
-    if user.role != UserRole.ADMIN:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="Admin access required"
-        )
-    return user
+def require_roles(*roles: UserRole) -> Callable[[User], User]:
+    """зависимость, пропускающая только перечисленные роли"""
+    allowed = frozenset(roles)
+    detail = f"Requires role: {', '.join(sorted(role.value for role in allowed))}"
+
+    def dependency(user: CurrentUser) -> User:
+        if user.role not in allowed:
+            raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail=detail)
+        return user
+
+    return dependency
 
 
-AdminUser = Annotated[User, Depends(require_admin)]
+AdminUser = Annotated[User, Depends(require_roles(UserRole.ADMIN))]
+SupervisorUser = Annotated[User, Depends(require_roles(UserRole.SUPERVISER))]
+ManagerUser = Annotated[User, Depends(require_roles(UserRole.MANAGER))]
+StaffUser = Annotated[
+    User, Depends(require_roles(UserRole.MANAGER, UserRole.SUPERVISER))
+]

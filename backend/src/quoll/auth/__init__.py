@@ -1,6 +1,13 @@
 from quoll.auth.audit_models import ActorType, AuditEventType, AuditLog, TargetType
 from quoll.auth.crypto import TokenCipher
-from quoll.auth.dependencies import AdminUser, CurrentUser
+from quoll.auth.dependencies import (
+    AdminUser,
+    CurrentUser,
+    ManagerUser,
+    StaffUser,
+    SupervisorUser,
+    require_roles,
+)
 from quoll.auth.models import (
     Admin,
     IdentitySyncStatus,
@@ -32,6 +39,7 @@ __all__ = [
     "CurrentUser",
     "IdentitySyncStatus",
     "Manager",
+    "ManagerUser",
     "ManualWorkloadStatus",
     "PendingActionStatus",
     "PendingActionType",
@@ -39,7 +47,9 @@ __all__ = [
     "RoleTransitionStatus",
     "SessionService",
     "SessionStore",
+    "StaffUser",
     "Superviser",
+    "SupervisorUser",
     "TargetType",
     "TokenCipher",
     "User",
@@ -51,5 +61,6 @@ __all__ = [
     "UserUpdate",
     "auth_router",
     "hash_session_key",
+    "require_roles",
     "users_router",
 ]
