@@ -41,6 +41,16 @@ transitions_router = APIRouter(
 
 
 @workflows_router.post(
+    "/publish/{id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Publish workflow",
+    dependencies=[AdminOnly],
+)
+async def publish_workflow(repo: WorkflowRepoDep, id: int):
+    await repo.update(id, {"is_published": True})
+
+
+@workflows_router.post(
     "/",
     response_model=WorkflowRead,
     status_code=status.HTTP_201_CREATED,

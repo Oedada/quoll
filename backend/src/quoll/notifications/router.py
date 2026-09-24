@@ -77,7 +77,6 @@ async def send_notification(
         user_id=schema.user_id,
         title=schema.title,
         message=schema.message,
-        extra_data=schema.extra_data,
     )
     return NotifyRead.model_validate(notify)
 

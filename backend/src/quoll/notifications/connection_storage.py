@@ -36,7 +36,8 @@ class ConnectionStorage:
                 await ws.send_json(data)
                 sent += 1
             except Exception as e:  # noqa: BLE001
-                logger.warning(e)
+                logger.error(e)
+                logger.error(f"Data: {data}")
         return sent
 
     async def broadcast(self, data: dict[str, Any]) -> int:
