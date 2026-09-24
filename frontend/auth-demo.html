@@ -185,6 +185,34 @@
             margin-top: 24px;
         }
 
+        /* после входа таблицам нужна ширина */
+        .container.wide {
+            max-width: 1100px;
+        }
+
+        .table-wrap {
+            overflow-x: auto;
+        }
+
+        .muted {
+            color: #888;
+            font-size: 13px;
+        }
+
+        .inline-controls {
+            display: flex;
+            gap: 6px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+
+        .inline-controls select,
+        .inline-controls input {
+            width: auto;
+            padding: 4px 6px;
+            font-size: 13px;
+        }
+
         .users-filters {
             display: flex;
             gap: 12px;
@@ -439,7 +467,7 @@
         <div id="login-section">
             <h1>Auth Demo</h1>
             <p style="margin-bottom: 24px; color: #666;">Для доступа к приложению необходимо авторизоваться</p>
-            <a href="http://127.0.0.1:8000/auth" class="btn btn-block">Войти</a>
+            <a href="/auth" class="btn btn-block">Войти</a>
         </div>
 
         <div id="user-section" class="hidden">
@@ -512,12 +540,9 @@
                         </select>
                     </div>
 
-                    <div class="form-group hidden" id="superviser-group">
-                        <label for="superviser-select">Руководитель</label>
-                        <select id="superviser-select" name="superviser_id">
-                            <option value="">— Выбрать —</option>
-                        </select>
-                    </div>
+                    <p class="muted" id="manager-hint">
+                        Новый менеджер попадёт в Пул А - в команду его заберёт руководитель
+                    </p>
 
                     <button type="submit" class="btn btn-block">Создать пользователя</button>
                 </form>
@@ -550,6 +575,62 @@
                     </div>
                 </div>
             </div>
+
+            <div id="manager-section" class="section hidden">
+                <h2>Моя загрузка</h2>
+                <div id="my-load"></div>
+                <button id="workload-btn" class="btn btn-sm" onclick="toggleWorkload()"></button>
+                <div id="workload-result"></div>
+            </div>
+
+            <div id="supervisor-section" class="section hidden">
+                <h2>Моя команда <button class="btn btn-sm btn-secondary" onclick="loadSupervisorPanels()">Обновить</button></h2>
+                <div id="team-list"></div>
+                <h3>Пул А - свободные менеджеры</h3>
+                <div id="pool-a"></div>
+                <h3>Пул В - команды выбывших руководителей</h3>
+                <div id="pool-c"></div>
+                <h3>Балансировка между отделами</h3>
+                <div id="balance"></div>
+                <div id="org-result"></div>
+            </div>
+
+            <div id="interactions-section" class="section hidden">
+                <h2>Заявки <button class="btn btn-sm btn-secondary" onclick="loadInteractions()">Обновить</button></h2>
+                <form id="create-interaction-form" class="hidden" onsubmit="createInteraction(event)">
+                    <div class="inline-controls">
+                        <select id="new-university" required></select>
+                        <select id="new-vendor" required></select>
+                        <select id="new-workflow"></select>
+                        <input type="text" id="new-product" placeholder="ИТ-продукт">
+                        <button type="submit" class="btn btn-sm">Создать черновик</button>
+                    </div>
+                    <p class="muted">Черновик видите только вы, пока не назначите менеджера</p>
+                </form>
+                <div id="interaction-result"></div>
+                <div id="interactions-list"></div>
+                <div id="interaction-history"></div>
+            </div>
+
+            <div id="registry-section" class="section hidden">
+                <h2>Реестр задач оргструктуры <button class="btn btn-sm btn-secondary" onclick="loadRegistry()">Обновить</button></h2>
+                <div id="registry-list"></div>
+                <div id="admin-orphans" class="hidden">
+                    <h3>Пул В - команды выбывших руководителей</h3>
+                    <div id="admin-pool-c"></div>
+                </div>
+            </div>
+
+            <div id="catalog-section" class="section hidden">
+                <h2>Справочники</h2>
+                <div class="inline-controls">
+                    <input type="text" id="new-university-name" placeholder="Вуз">
+                    <button class="btn btn-sm" onclick="addCatalogItem('universities', 'new-university-name')">Добавить вуз</button>
+                    <input type="text" id="new-vendor-name" placeholder="Вендор">
+                    <button class="btn btn-sm" onclick="addCatalogItem('vendors', 'new-vendor-name')">Добавить вендора</button>
+                </div>
+                <div id="catalog-result"></div>
+            </div>
         </div>
 
         <div id="loading" class="loading hidden">Загрузка...</div>
@@ -557,8 +638,10 @@
 
     <script>
         // вход и выход под /auth, остальное API под /api/v1
-        const AUTH_BASE = 'http://127.0.0.1:8000/auth';
-        const API_BASE = 'http://127.0.0.1:8000/api/v1';
+        // страницу отдаёт само приложение (/front), поэтому адреса от неё же:
+        // иначе кука входа на localhost не уйдёт на 127.0.0.1 и наоборот
+        const AUTH_BASE = '/auth';
+        const API_BASE = '/api/v1';
 
         async function checkAuth() {
             const loginSection = document.getElementById('login-section');
@@ -641,6 +724,7 @@
             }
 
             userSection.classList.remove('hidden');
+            showRolePanels(user);
         }
 
         async function createUser(event) {
@@ -674,21 +758,6 @@
                 if (response.ok) {
                     const user = await response.json();
 
-                    if (form.role.value === 'MANAGER' && form.superviser_id.value) {
-                        const connResponse = await fetch(`${API_BASE}/users/connections/${form.superviser_id.value}?manager_id=${user.id}`, {
-                            method: 'POST',
-                            credentials: 'include'
-                        });
-
-                        if (!connResponse.ok) {
-                            const connError = await connResponse.json().catch(() => ({}));
-                            resultDiv.innerHTML = `<p class="error">Пользователь создан, но не удалось назначить руководителя: ${escapeHtml(connError.detail || 'Ошибка связи')}</p>`;
-                            form.reset();
-                            onRoleChange();
-                            return;
-                        }
-                    }
-
                     resultDiv.innerHTML = `
                         <div class="success">
                             Пользователь ${escapeHtml(user.username)} успешно создан!
@@ -713,42 +782,7 @@
 
         function onRoleChange() {
             const role = document.getElementById('role').value;
-            const superviserGroup = document.getElementById('superviser-group');
-            const superviserSelect = document.getElementById('superviser-select');
-
-            if (role === 'MANAGER') {
-                superviserGroup.classList.remove('hidden');
-                loadSupervisers();
-            } else {
-                superviserGroup.classList.add('hidden');
-                superviserSelect.value = '';
-            }
-        }
-
-        async function loadSupervisers() {
-            const superviserSelect = document.getElementById('superviser-select');
-            superviserSelect.innerHTML = '<option value="">— Выбрать —</option>';
-
-            try {
-                const response = await fetch(`${API_BASE}/users?limit=100&offset=0`, {
-                    credentials: 'include'
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    const supervisers = data.users.filter(u => u.role.toLowerCase() === 'superviser');
-
-                    supervisers.forEach(s => {
-                        const option = document.createElement('option');
-                        option.value = s.id;
-                        const nameParts = (s.first_name || '') + ' ' + (s.last_name || '');
-                        const fullName = nameParts.trim();
-                        superviserSelect.appendChild(option).textContent = fullName ? `${s.username} (${fullName})` : s.username;
-                    });
-                }
-            } catch (e) {
-                console.error('Failed to load supervisers:', e);
-            }
+            document.getElementById('manager-hint').classList.toggle('hidden', role !== 'MANAGER');
         }
 
         let usersData = [];
@@ -870,6 +904,7 @@
                                 <td>${u.role.toLowerCase() === 'manager' && supervisorMap[u.id] ? escapeHtml(supervisorMap[u.id]) : ''}</td>
                                 <td class="action-btns">
                                     <button onclick="editUser('${u.id}')" class="btn btn-sm">Ред.</button>
+                                    ${['manager', 'superviser'].includes(u.role.toLowerCase()) ? `<button onclick="editLimits('${u.id}', '${u.role.toLowerCase()}')" class="btn btn-sm btn-secondary">Пределы</button>` : ''}
                                     <button onclick="deleteUser('${u.id}', '${escapeHtml(u.username)}')" class="btn btn-sm btn-danger">Удал.</button>
                                 </td>
                             </tr>
@@ -880,13 +915,7 @@
                                     <input type="text" id="edit-first-${u.id}" value="${escapeHtml(u.first_name || '')}" placeholder="Имя">
                                     <input type="text" id="edit-last-${u.id}" value="${escapeHtml(u.last_name || '')}" placeholder="Фамилия" style="margin-top: 4px;">
                                 </td>
-                                <td>
-                                    <select id="edit-role-${u.id}">
-                                        <option value="MANAGER" ${u.role.toLowerCase() === 'manager' ? 'selected' : ''}>Менеджер</option>
-                                        <option value="SUPERVISER" ${u.role.toLowerCase() === 'superviser' ? 'selected' : ''}>Руководитель</option>
-                                        <option value="ADMIN" ${u.role.toLowerCase() === 'admin' ? 'selected' : ''}>Админ</option>
-                                    </select>
-                                </td>
+                                <td><span class="role-badge ${getRoleClass(u.role)}" title="роль меняется в Keycloak">${escapeHtml(u.role)}</span></td>
                                 <td></td>
                                 <td class="action-btns">
                                     <button onclick="saveUser('${u.id}')" class="btn btn-sm btn-success">Сохр.</button>
@@ -938,7 +967,6 @@
             const email = document.getElementById(`edit-email-${id}`).value;
             const first_name = document.getElementById(`edit-first-${id}`).value;
             const last_name = document.getElementById(`edit-last-${id}`).value;
-            const role = document.getElementById(`edit-role-${id}`).value;
 
             const errorDiv = document.getElementById('users-error');
             errorDiv.classList.add('hidden');
@@ -948,7 +976,7 @@
                     method: 'PATCH',
                     headers: { 'Content-Type': 'application/json' },
                     credentials: 'include',
-                    body: JSON.stringify({ email, first_name, last_name, role: role.toLowerCase() })
+                    body: JSON.stringify({ email, first_name, last_name })
                 });
 
                 if (response.ok) {
@@ -1032,7 +1060,7 @@
                 notificationsWS.close();
             }
             updateWsStatus('connecting');
-            notificationsWS = new WebSocket('ws://127.0.0.1:8000/api/v1/ws/notifications');
+            notificationsWS = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/api/v1/ws/notifications`);
             console.log('[WS] WebSocket created, state:', notificationsWS.readyState);
 
             notificationsWS.onopen = () => {
@@ -1192,6 +1220,453 @@
                 console.error('[Test] Network error:', e);
                 resultDiv.innerHTML = `<p class="error">Ошибка сети: ${escapeHtml(e.message)}</p>`;
             }
+        }
+
+        // --- оргструктура и заявки: панели по ролям
+
+        let currentUser = null;
+        // имена людей из ответов витрин - у руководителя нет доступа к /users
+        const people = {};
+        const STATUS_LABELS = {
+            AVAILABLE: 'готов',
+            SATURATED: 'загружен',
+            UNAVAILABLE: 'не берёт новые',
+            INACTIVE: 'неактивен'
+        };
+
+        async function api(method, path, body) {
+            const options = { method, credentials: 'include', headers: {} };
+            if (body !== undefined) {
+                options.headers['Content-Type'] = 'application/json';
+                options.body = JSON.stringify(body);
+            }
+            const response = await fetch(`${API_BASE}${path}`, options);
+            const data = response.status === 204 ? null : await response.json().catch(() => null);
+            return { ok: response.ok, status: response.status, data };
+        }
+
+        function describeError(result) {
+            const detail = result.data && result.data.detail;
+            const text = Array.isArray(detail) ? detail.map(d => d.msg).join('; ') : detail;
+            return `${result.status}: ${text || 'ошибка'}`;
+        }
+
+        function showResult(elementId, result, success) {
+            document.getElementById(elementId).innerHTML = result.ok
+                ? `<p class="success">${escapeHtml(success)}</p>`
+                : `<p class="error">${escapeHtml(describeError(result))}</p>`;
+        }
+
+        function remember(person) {
+            const name = `${person.first_name || ''} ${person.last_name || ''}`.trim();
+            people[person.id] = name || person.username || person.id;
+        }
+
+        function personName(id) {
+            if (!id) return '—';
+            return people[id] || id.slice(0, 8);
+        }
+
+        function table(headers, rows) {
+            if (rows.length === 0) return '<div class="empty-state">Пусто</div>';
+            return `
+                <div class="table-wrap">
+                    <table class="users-table">
+                        <thead><tr>${headers.map(h => `<th>${h}</th>`).join('')}</tr></thead>
+                        <tbody>${rows.map(r => `<tr>${r.map(c => `<td>${c}</td>`).join('')}</tr>`).join('')}</tbody>
+                    </table>
+                </div>`;
+        }
+
+        function loadCells(m) {
+            remember(m);
+            return [
+                escapeHtml(personName(m.id)),
+                `${m.capacity_used} / ${m.max_active_projects}`,
+                m.open_projects,
+                m.blocking_projects,
+                escapeHtml(STATUS_LABELS[m.effective_status] || m.effective_status)
+            ];
+        }
+
+        const LOAD_HEADERS = ['Менеджер', 'Слоты', 'Открытых', 'Держат', 'Статус'];
+
+        function showRolePanels(user) {
+            currentUser = user;
+            remember(user);
+            const role = user.role.toLowerCase();
+            document.querySelector('.container').classList.add('wide');
+            const show = (id, visible) => document.getElementById(id).classList.toggle('hidden', !visible);
+            show('manager-section', role === 'manager');
+            show('supervisor-section', role === 'superviser');
+            show('interactions-section', true);
+            show('create-interaction-form', role === 'superviser');
+            show('registry-section', role !== 'manager');
+            show('admin-orphans', role === 'admin');
+            show('catalog-section', role === 'admin');
+
+            if (role === 'manager') loadMyLoad();
+            if (role === 'superviser') {
+                loadSupervisorPanels();
+                loadCreateForm();
+            }
+            if (role !== 'manager') loadRegistry();
+            loadInteractions();
+        }
+
+        // --- менеджер
+
+        async function loadMyLoad() {
+            const result = await api('GET', `/org/profiles/${currentUser.id}`);
+            const box = document.getElementById('my-load');
+            if (!result.ok) {
+                box.innerHTML = `<p class="error">${escapeHtml(describeError(result))}</p>`;
+                return;
+            }
+            const load = result.data.load;
+            box.innerHTML = table(LOAD_HEADERS, [loadCells(load)]);
+            const available = load.manual_workload_status === 'available';
+            const button = document.getElementById('workload-btn');
+            button.textContent = available ? 'Не давать мне новые проекты' : 'Готов брать новые проекты';
+            button.dataset.next = available ? 'unavailable' : 'available';
+        }
+
+        async function toggleWorkload() {
+            const button = document.getElementById('workload-btn');
+            // пока запрос идёт, второе нажатие ушло бы со старым значением
+            button.disabled = true;
+            try {
+                const result = await api('PATCH', '/org/profiles/me/workload', { manual_workload_status: button.dataset.next });
+                showResult('workload-result', result, 'Статус обновлён');
+                await loadMyLoad();
+            } finally {
+                button.disabled = false;
+            }
+        }
+
+        // --- руководитель
+
+        let receivingTeams = [];
+
+        async function loadSupervisorPanels() {
+            const [team, poolA, poolC, capacity, quota] = await Promise.all([
+                api('GET', '/org/subordinates'),
+                api('GET', '/org/managers/recruitment-pool'),
+                api('GET', '/org/managers/orphaned'),
+                api('GET', '/org/supervisors/available-project-capacity'),
+                api('GET', '/org/supervisors/available-team-quota')
+            ]);
+            if (quota.ok) {
+                receivingTeams = quota.data;
+                quota.data.forEach(remember);
+            }
+            if (capacity.ok) capacity.data.forEach(remember);
+
+            if (team.ok) {
+                const transferOptions = receivingTeams
+                    .map(s => `<option value="${s.id}">${escapeHtml(personName(s.id))} (мест: ${s.free_places})</option>`)
+                    .join('');
+                document.getElementById('team-list').innerHTML =
+                    `<p class="muted">Штат: ${team.data.members.length} из ${team.data.max_subordinates}</p>` +
+                    table([...LOAD_HEADERS, 'Действия'], team.data.members.map(m => [
+                        ...loadCells(m),
+                        `<div class="inline-controls">
+                            <button class="btn btn-sm btn-danger" onclick="releaseManager('${m.id}')">Открепить</button>
+                            <select id="transfer-${m.id}"><option value="">перевести в…</option>${transferOptions}</select>
+                            <button class="btn btn-sm btn-secondary" onclick="transferManager('${m.id}')">Перевести</button>
+                        </div>`
+                    ]));
+            }
+            if (poolA.ok) {
+                document.getElementById('pool-a').innerHTML = table([...LOAD_HEADERS, ''], poolA.data.map(m => [
+                    ...loadCells(m),
+                    `<button class="btn btn-sm btn-success" onclick="recruitManager('${m.id}')">Взять в команду</button>`
+                ]));
+            }
+            if (poolC.ok) {
+                document.getElementById('pool-c').innerHTML = table([...LOAD_HEADERS, 'Прежний руководитель', ''], poolC.data.map(m => [
+                    ...loadCells(m),
+                    escapeHtml(personName(m.superviser_id)),
+                    `<button class="btn btn-sm btn-success" onclick="adoptManager('${m.id}', '${m.superviser_id}')">Усыновить</button>`
+                ]));
+            }
+            const free = capacity.ok ? capacity.data.map(s => `${escapeHtml(personName(s.id))}: ${s.free_project_slots}`).join(', ') : '';
+            const places = quota.ok ? quota.data.map(s => `${escapeHtml(personName(s.id))}: ${s.free_places}`).join(', ') : '';
+            document.getElementById('balance').innerHTML = `
+                <p><strong>Свободные слоты у готовых менеджеров:</strong> ${free || '—'}</p>
+                <p><strong>Вакантные места в штате:</strong> ${places || '—'}</p>`;
+        }
+
+        async function orgAction(result, success) {
+            showResult('org-result', result, success);
+            if (result.ok) {
+                await loadSupervisorPanels();
+                loadInteractions();
+            }
+        }
+
+        async function recruitManager(id) {
+            await orgAction(await api('POST', `/org/subordinates/${id}`, { expected_superviser_id: null }), 'Менеджер в команде');
+        }
+
+        async function releaseManager(id) {
+            if (!confirm(`Открепить ${personName(id)}? Он вернётся в Пул А`)) return;
+            const path = `/org/subordinates/${id}?expected_superviser_id=${encodeURIComponent(currentUser.id)}`;
+            await orgAction(await api('DELETE', path), 'Менеджер откреплён');
+        }
+
+        async function transferManager(id) {
+            const to = document.getElementById(`transfer-${id}`).value;
+            if (!to) return;
+            const body = { to_superviser_id: to, expected_superviser_id: currentUser.id };
+            await orgAction(await api('POST', `/org/subordinates/${id}/transfer`, body), 'Менеджер переведён вместе с проектами');
+        }
+
+        async function adoptManager(id, previous) {
+            const body = { expected_superviser_id: previous };
+            await orgAction(await api('POST', `/org/subordinates/${id}/adopt`, body), 'Менеджер усыновлён');
+        }
+
+        // --- заявки
+
+        const catalogs = { universities: {}, vendors: {}, workflows: {}, stages: {} };
+
+        async function loadCatalogs() {
+            const [universities, vendors, workflows] = await Promise.all([
+                api('GET', '/universities/?limit=100'),
+                api('GET', '/vendors/?limit=100'),
+                api('GET', '/workflows/?limit=100')
+            ]);
+            for (const [key, result] of [['universities', universities], ['vendors', vendors], ['workflows', workflows]]) {
+                if (result.ok) result.data.forEach(item => { catalogs[key][item.id] = item; });
+            }
+        }
+
+        async function stageName(workflowId, stageId) {
+            if (!stageId) return 'черновик';
+            if (!catalogs.stages[stageId]) {
+                const result = await api('GET', `/stages/by-workflow/${workflowId}`);
+                if (result.ok) result.data.forEach(st => { catalogs.stages[st.id] = st; });
+            }
+            const stage = catalogs.stages[stageId];
+            return stage ? stage.name : `стадия ${stageId}`;
+        }
+
+        async function loadCreateForm() {
+            await loadCatalogs();
+            const options = (items, empty) => `<option value="">${empty}</option>` +
+                Object.values(items).map(i => `<option value="${i.id}">${escapeHtml(i.name)}</option>`).join('');
+            document.getElementById('new-university').innerHTML = options(catalogs.universities, 'вуз');
+            document.getElementById('new-vendor').innerHTML = options(catalogs.vendors, 'вендор');
+            const published = Object.fromEntries(Object.entries(catalogs.workflows).filter(([, w]) => w.is_published));
+            document.getElementById('new-workflow').innerHTML = options(published, 'воркфлоу - позже');
+        }
+
+        async function createInteraction(event) {
+            event.preventDefault();
+            const workflow = document.getElementById('new-workflow').value;
+            const body = {
+                university_id: Number(document.getElementById('new-university').value),
+                vendor_id: Number(document.getElementById('new-vendor').value),
+                it_product: document.getElementById('new-product').value || null,
+                workflow_id: workflow ? Number(workflow) : null
+            };
+            const result = await api('POST', '/interactions/', body);
+            showResult('interaction-result', result, 'Черновик создан');
+            if (result.ok) loadInteractions();
+        }
+
+        // рёбра графа из стадии: для черновика без воркфлоу - входы всех опубликованных
+        async function edgesFor(interaction) {
+            const workflows = interaction.workflow_id
+                ? [interaction.workflow_id]
+                : Object.values(catalogs.workflows).filter(w => w.is_published).map(w => w.id);
+            const edges = [];
+            for (const wf of workflows) {
+                const from = interaction.state_id ? `&from_stage_id=${interaction.state_id}` : '';
+                const result = await api('GET', `/transitions/available?workflow_id=${wf}${from}`);
+                if (result.ok) edges.push(...result.data);
+            }
+            return edges;
+        }
+
+        let assignable = [];
+
+        async function loadInteractions() {
+            await loadCatalogs();
+            const role = currentUser.role.toLowerCase();
+            if (role === 'superviser') {
+                const pool = await api('GET', '/org/subordinates/assignment-pool');
+                assignable = pool.ok ? pool.data : [];
+                assignable.forEach(remember);
+            }
+            const result = await api('GET', '/interactions/?limit=100');
+            const box = document.getElementById('interactions-list');
+            if (!result.ok) {
+                box.innerHTML = `<p class="error">${escapeHtml(describeError(result))}</p>`;
+                return;
+            }
+
+            const rows = [];
+            for (const i of result.data) {
+                const university = catalogs.universities[i.university_id];
+                const vendor = catalogs.vendors[i.vendor_id];
+                const pause = i.pause_state === 'ACTIVE' ? '' : ` <span class="muted">(${escapeHtml(i.pause_state)})</span>`;
+                rows.push([
+                    i.id,
+                    escapeHtml(university ? university.name : i.university_id),
+                    escapeHtml(vendor ? vendor.name : i.vendor_id),
+                    escapeHtml(i.it_product || '—'),
+                    escapeHtml(personName(i.owner_id)),
+                    escapeHtml(await stageName(i.workflow_id, i.state_id)) + pause,
+                    await interactionActions(i, role)
+                ]);
+            }
+            box.innerHTML = table(['#', 'Вуз', 'Вендор', 'Продукт', 'Владелец', 'Стадия', 'Действия'], rows);
+        }
+
+        async function interactionActions(i, role) {
+            const parts = [`<button class="btn btn-sm btn-secondary" onclick="showHistory(${i.id})">История</button>`];
+            const canWork = role === 'superviser' || (role === 'manager' && i.owner_id === currentUser.id);
+            if (role === 'superviser') {
+                const options = assignable
+                    .filter(m => m.id !== i.owner_id)
+                    .map(m => `<option value="${m.id}">${escapeHtml(personName(m.id))}</option>`).join('');
+                parts.push(`<select id="assign-${i.id}"><option value="">назначить…</option>${options}</select>
+                    <button class="btn btn-sm" onclick="assignInteraction(${i.id}, ${i.owner_id ? `'${i.owner_id}'` : 'null'})">Назначить</button>`);
+                if (!i.state_id) {
+                    parts.push(`<button class="btn btn-sm btn-danger" onclick="deleteDraft(${i.id})">Удалить</button>`);
+                }
+            }
+            if (canWork && i.owner_id) {
+                const edges = await edgesFor(i);
+                if (edges.length) {
+                    const options = await Promise.all(edges.map(async e =>
+                        `<option value="${e.to_stage_id}">${escapeHtml(e.name)} → ${escapeHtml(await stageName(e.workflow_id, e.to_stage_id))}</option>`));
+                    parts.push(`<select id="move-${i.id}">${options.join('')}</select>
+                        <button class="btn btn-sm" onclick="moveInteraction(${i.id}, ${i.state_id || 'null'})">Перевести</button>`);
+                }
+                if (i.state_id) {
+                    parts.push(i.pause_state === 'ACTIVE'
+                        ? `<button class="btn btn-sm btn-secondary" onclick="pauseInteraction(${i.id})">Пауза</button>`
+                        : `<button class="btn btn-sm btn-secondary" onclick="unpauseInteraction(${i.id})">Снять паузу</button>`);
+                }
+            }
+            return `<div class="inline-controls">${parts.join('')}</div>`;
+        }
+
+        async function interactionAction(result, success) {
+            showResult('interaction-result', result, success);
+            if (result.ok) {
+                loadInteractions();
+                if (currentUser.role.toLowerCase() === 'superviser') loadSupervisorPanels();
+                if (currentUser.role.toLowerCase() === 'manager') loadMyLoad();
+            }
+        }
+
+        async function assignInteraction(id, expectedOwner) {
+            const manager = document.getElementById(`assign-${id}`).value;
+            if (!manager) return;
+            const reason = prompt('Причина (можно пусто)') || null;
+            const body = { manager_id: manager, expected_owner_id: expectedOwner, reason };
+            await interactionAction(await api('POST', `/interactions/${id}/assign`, body), 'Заявка назначена');
+        }
+
+        async function moveInteraction(id, expectedState) {
+            const to = Number(document.getElementById(`move-${id}`).value);
+            const comment = prompt('Комментарий к переходу (можно пусто)') || null;
+            const body = { to_stage_id: to, expected_state_id: expectedState, comment };
+            await interactionAction(await api('POST', `/interactions/${id}/transition`, body), 'Заявка переведена');
+        }
+
+        async function pauseInteraction(id) {
+            const comment = prompt('Почему пауза?');
+            if (!comment) return;
+            const hours = prompt('Срок в часах, 1-720 (пусто - без срока)');
+            const until = hours ? new Date(Date.now() + Number(hours) * 3600 * 1000).toISOString() : null;
+            await interactionAction(await api('POST', `/interactions/${id}/pause`, { until, comment }), 'Заявка на паузе');
+        }
+
+        async function unpauseInteraction(id) {
+            await interactionAction(await api('POST', `/interactions/${id}/unpause`), 'Пауза снята');
+        }
+
+        async function deleteDraft(id) {
+            if (!confirm(`Удалить черновик #${id}?`)) return;
+            await interactionAction(await api('DELETE', `/interactions/${id}`), 'Черновик удалён');
+        }
+
+        async function showHistory(id) {
+            const result = await api('GET', `/interactions/${id}/history`);
+            const box = document.getElementById('interaction-history');
+            if (!result.ok) {
+                box.innerHTML = `<p class="error">${escapeHtml(describeError(result))}</p>`;
+                return;
+            }
+            const when = t => new Date(t).toLocaleString();
+            const stages = [];
+            for (const h of result.data.stages) {
+                stages.push([
+                    when(h.created_at),
+                    escapeHtml(h.kind),
+                    escapeHtml(h.from_stage_id ? await stageName(null, h.from_stage_id) : 'черновик'),
+                    escapeHtml(await stageName(null, h.to_stage_id)),
+                    escapeHtml(personName(h.actor_id)),
+                    escapeHtml(h.comment || '')
+                ]);
+            }
+            const assignments = result.data.assignments.map(a => [
+                when(a.assigned_at),
+                a.released_at ? when(a.released_at) : 'сейчас',
+                escapeHtml(personName(a.manager_id)),
+                escapeHtml(a.reason || '')
+            ]);
+            box.innerHTML = `
+                <h3>История заявки #${id}</h3>
+                ${table(['Когда', 'Что', 'Откуда', 'Куда', 'Кто', 'Комментарий'], stages)}
+                ${table(['С', 'По', 'Менеджер', 'Причина'], assignments)}`;
+        }
+
+        // --- админ и реестр
+
+        async function loadRegistry() {
+            const result = await api('GET', '/org/pending-actions');
+            document.getElementById('registry-list').innerHTML = result.ok
+                ? table(['Тип', 'Кого', 'Статус', 'Попыток', 'Создана', 'Ошибка'], result.data.map(a => [
+                    escapeHtml(a.action_type),
+                    escapeHtml(personName(a.target_id)),
+                    escapeHtml(a.status),
+                    a.retry_count,
+                    new Date(a.created_at).toLocaleString(),
+                    escapeHtml(a.last_error || '')
+                ]))
+                : `<p class="error">${escapeHtml(describeError(result))}</p>`;
+
+            if (currentUser.role.toLowerCase() === 'admin') {
+                const orphans = await api('GET', '/org/managers/orphaned');
+                document.getElementById('admin-pool-c').innerHTML = orphans.ok
+                    ? table([...LOAD_HEADERS, 'Прежний руководитель'], orphans.data.map(m => [...loadCells(m), escapeHtml(personName(m.superviser_id))]))
+                    : `<p class="error">${escapeHtml(describeError(orphans))}</p>`;
+            }
+        }
+
+        async function editLimits(id, role) {
+            const field = role === 'manager' ? 'max_active_projects' : 'max_subordinates';
+            const label = role === 'manager' ? 'Сколько проектов одновременно (1-50)' : 'Сколько человек в команде (1-50)';
+            const value = prompt(label);
+            if (!value) return;
+            const result = await api('PATCH', `/org/profiles/${id}/limits`, { [field]: Number(value) });
+            const errorDiv = document.getElementById('users-error');
+            errorDiv.textContent = result.ok ? '' : `Пределы: ${describeError(result)}`;
+            errorDiv.classList.toggle('hidden', result.ok);
+        }
+
+        async function addCatalogItem(kind, inputId) {
+            const input = document.getElementById(inputId);
+            if (!input.value.trim()) return;
+            const result = await api('POST', `/${kind}/`, { name: input.value.trim() });
+            showResult('catalog-result', result, 'Добавлено');
+            if (result.ok) input.value = '';
         }
 
         checkAuth();
