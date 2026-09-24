@@ -556,7 +556,9 @@
     </div>
 
     <script>
-        const API_BASE = 'http://127.0.0.1:8000/auth';
+        // вход и выход под /auth, остальное API под /api/v1
+        const AUTH_BASE = 'http://127.0.0.1:8000/auth';
+        const API_BASE = 'http://127.0.0.1:8000/api/v1';
 
         async function checkAuth() {
             const loginSection = document.getElementById('login-section');
@@ -568,7 +570,7 @@
             loading.classList.remove('hidden');
 
             try {
-                const response = await fetch(`${API_BASE}/me`, {
+                const response = await fetch(`${API_BASE}/users/me`, {
                     credentials: 'include'
                 });
 
@@ -998,7 +1000,7 @@
 
         async function logout() {
             try {
-                await fetch(`${API_BASE}/logout`, {
+                await fetch(`${AUTH_BASE}/logout`, {
                     method: 'POST',
                     credentials: 'include'
                 });
@@ -1030,7 +1032,7 @@
                 notificationsWS.close();
             }
             updateWsStatus('connecting');
-            notificationsWS = new WebSocket('ws://127.0.0.1:8000/ws/notifications');
+            notificationsWS = new WebSocket('ws://127.0.0.1:8000/api/v1/ws/notifications');
             console.log('[WS] WebSocket created, state:', notificationsWS.readyState);
 
             notificationsWS.onopen = () => {
@@ -1057,7 +1059,7 @@
 
         async function loadNotifications() {
             try {
-                const response = await fetch('http://127.0.0.1:8000/notifications/me', {
+                const response = await fetch(`${API_BASE}/notifications/me`, {
                     credentials: 'include'
                 });
                 if (response.ok) {
@@ -1135,7 +1137,7 @@
 
         async function markAsRead(id) {
             try {
-                const response = await fetch(`http://127.0.0.1:8000/notifications/${id}/read`, {
+                const response = await fetch(`${API_BASE}/notifications/${id}/read`, {
                     method: 'PATCH',
                     credentials: 'include'
                 });
@@ -1167,8 +1169,12 @@
             resultDiv.innerHTML = '<p class="loading">Отправка...</p>';
 
             try {
-                const response = await fetch(`http://127.0.0.1:8000/notifications/${encodeURIComponent(userId)}?title=${encodeURIComponent(title)}&message=${encodeURIComponent(message)}`, {
-                    credentials: 'include'
+                // отправка теперь POST и только для админа
+                const response = await fetch(`${API_BASE}/notifications/`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId, title, message })
                 });
 
                 console.log('[Test] Response:', response.status);
