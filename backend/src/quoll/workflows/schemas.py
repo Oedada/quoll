@@ -41,8 +41,16 @@ class StageUpdate(AppBaseModel):
 
 class StageRead(StageBase):
     id: int
+    archived_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class StageArchiveRequest(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # куда переехать заявкам; по умолчанию - предыдущая действующая стадия
+    relocate_to_stage_id: int | None = None
 
 
 # WorkflowTransition

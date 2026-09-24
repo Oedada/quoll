@@ -52,14 +52,7 @@ async def transition(
     if current is not None and current.is_terminal:
         raise DomainRuleException(409, "Closed interaction is reopened, not moved")
 
-    # FOR SHARE: целевую стадию не должны поменять, пока мы на неё переходим
-    target = (
-        await session.execute(
-            select(Stage).where(Stage.id == to_stage_id).with_for_update(read=True)
-        )
-    ).scalar_one_or_none()
-    if target is None:
-        raise DomainRuleException(400, f"Stage '{to_stage_id}' does not exist")
+    target = await lock_target_stage(session, to_stage_id)
 
     # черновик без воркфлоу получает его первым переходом - иначе остался
     # бы черновиком навсегда: воркфлоу задаётся только при создании
@@ -123,10 +116,37 @@ async def _active_edge(
     session: AsyncSession, workflow_id: int, current: Stage | None, target: Stage
 ) -> WorkflowTransition | None:
     """ребро графа; у черновика - из NULL, то есть в начальную стадию (П3)"""
-    stmt = select(WorkflowTransition).where(
-        WorkflowTransition.workflow_id == workflow_id,
-        WorkflowTransition.from_stage_id == (current.id if current else None),
-        WorkflowTransition.to_stage_id == target.id,
-        WorkflowTransition.is_active.is_(True),
+    # FOR SHARE после стадии: деактивация ребра подождёт перехода или он её
+    stmt = (
+        select(WorkflowTransition)
+        .where(
+            WorkflowTransition.workflow_id == workflow_id,
+            WorkflowTransition.from_stage_id == (current.id if current else None),
+            WorkflowTransition.to_stage_id == target.id,
+            WorkflowTransition.is_active.is_(True),
+        )
+        .with_for_update(read=True)
+        .execution_options(populate_existing=True)
     )
-    return (await session.execute(stmt)).scalars().first()
+    return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def lock_target_stage(session: AsyncSession, stage_id: int) -> Stage:
+    """стадия, на которую ставят заявку: переход, закрытие, переоткрытие.
+
+    FOR SHARE - архивация её не пройдёт, пока мы не закоммитим, а начатая
+    раньше заставит нас дождаться и увидеть архив
+    """
+    target = (
+        await session.execute(
+            select(Stage)
+            .where(Stage.id == stage_id)
+            .with_for_update(read=True)
+            .execution_options(populate_existing=True)
+        )
+    ).scalar_one_or_none()
+    if target is None:
+        raise DomainRuleException(400, f"Stage '{stage_id}' does not exist")
+    if target.archived_at is not None:
+        raise DomainRuleException(409, f"Stage '{stage_id}' is archived")
+    return target

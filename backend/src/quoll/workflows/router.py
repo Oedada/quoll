@@ -10,6 +10,7 @@ from quoll.workflows.dependencies import (
     WorkflowRepoDep,
 )
 from quoll.workflows.schemas import (
+    StageArchiveRequest,
     StageCreate,
     StageRead,
     StageUpdate,
@@ -209,6 +210,23 @@ async def delete_stage(
 ):
     await workflow_service.delete_stage(session, id, admin.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@stages_router.post(
+    "/{id}/archive",
+    response_model=StageRead,
+    summary="Archive a stage of a live workflow, moving its interactions",
+    dependencies=[AdminOnly],
+)
+async def archive_stage(
+    body: StageArchiveRequest,
+    admin: AdminUser,
+    session: SessionDep,
+    id: int = Path(..., ge=1, description="Stage ID"),
+):
+    return await workflow_service.archive_stage(
+        session, id, body.relocate_to_stage_id, admin.id
+    )
 
 
 # Transitions Endpoints

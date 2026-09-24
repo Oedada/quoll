@@ -1,7 +1,7 @@
 """Правка графа воркфлоу. Всё - админ, под блокировкой строки воркфлоу,
 в журнал. Опубликованный граф после правки обязан остаться проходимым"""
 
-from sqlalchemy import select
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.audit import record
@@ -346,3 +346,138 @@ async def change_start_stage(
     )
     await session.refresh(entry)
     return entry
+
+
+# --- архивация
+
+
+def _fits(target: Stage, archived: Stage) -> bool:
+    """перенос не меняет смысла и не увеличивает ничью загрузку"""
+    return (
+        target.id != archived.id
+        and target.workflow_id == archived.workflow_id
+        and target.archived_at is None
+        and target.is_terminal == archived.is_terminal
+        and (archived.consumes_capacity or not target.consumes_capacity)
+    )
+
+
+async def _previous_stage(session: AsyncSession, stage: Stage) -> Stage | None:
+    """предыдущая действующая по позиции, при равных - меньший id"""
+    stmt = (
+        select(Stage)
+        .where(
+            Stage.workflow_id == stage.workflow_id,
+            Stage.archived_at.is_(None),
+            Stage.id != stage.id,
+            (Stage.position < stage.position)
+            | ((Stage.position == stage.position) & (Stage.id < stage.id)),
+        )
+        .order_by(Stage.position.desc(), Stage.id.desc())
+        .limit(1)
+    )
+    return await session.scalar(stmt)
+
+
+async def archive_stage(
+    session: AsyncSession,
+    stage_id: int,
+    relocate_to_stage_id: int | None,
+    actor_id: str,
+) -> Stage:
+    """стадию живого графа не удаляют: на неё ссылаются история и документы.
+    Заявки переезжают, рёбра деактивируются, граф проверяется по итогу.
+
+    порядок - core/locking.py: воркфлоу, архивируемая стадия, заявки на ней
+    по id, рёбра. Цель переноса не блокируется: параллельную архивацию цели
+    исключает строка воркфлоу, а NO KEY UPDATE на ней дал бы цикл с
+    переходом из архивируемой стадии в цель
+    """
+    from quoll.interactions.models import (
+        Interaction,
+        InteractionStageHistory,
+        StageChangeKind,
+    )
+
+    stage = await _stage(session, stage_id)
+    workflow = await lock_workflow(session, stage.workflow_id)
+    if not workflow.is_published:
+        raise DomainRuleException(
+            409, "Stage of a draft workflow is deleted, not archived"
+        )
+    # UPDATE берёт строку стадии: переход в неё, начатый раньше, архивация
+    # дождётся, начатый позже - увидит архив и откажет
+    archived = (
+        await session.execute(
+            update(Stage)
+            .where(Stage.id == stage.id, Stage.archived_at.is_(None))
+            .values(archived_at=func.now())
+            .returning(Stage.id)
+        )
+    ).scalar_one_or_none()
+    if archived is None:
+        raise DomainRuleException(409, "Stage is already archived")
+    await session.refresh(stage)
+
+    standing = list(
+        await session.scalars(
+            select(Interaction.id)
+            .where(Interaction.state_id == stage.id)
+            .order_by(Interaction.id)
+            .with_for_update(of=Interaction.__table__, key_share=True)
+        )
+    )
+    target = None
+    if standing:
+        target = (
+            await _stage(session, relocate_to_stage_id)
+            if relocate_to_stage_id is not None
+            else await _previous_stage(session, stage)
+        )
+        if target is None or not _fits(target, stage):
+            raise DomainRuleException(
+                409,
+                "Relocation target must be an active stage of this workflow with "
+                "the same terminality that does not add capacity; pass it explicitly",
+            )
+        await session.execute(
+            update(Interaction)
+            .where(Interaction.id.in_(standing))
+            .values(state_id=target.id)
+        )
+        session.add_all(
+            InteractionStageHistory(
+                interaction_id=interaction_id,
+                from_stage_id=stage.id,
+                to_stage_id=target.id,
+                kind=StageChangeKind.RELOCATION,
+                actor_id=actor_id,
+                comment=f"stage '{stage.name}' archived",
+            )
+            for interaction_id in standing
+        )
+
+    edges = await session.scalars(
+        select(WorkflowTransition)
+        .where(
+            WorkflowTransition.is_active.is_(True),
+            (WorkflowTransition.from_stage_id == stage.id)
+            | (WorkflowTransition.to_stage_id == stage.id),
+        )
+        .order_by(WorkflowTransition.id)
+        .with_for_update(of=WorkflowTransition.__table__, key_share=True)
+    )
+    for edge in edges:
+        edge.is_active = False
+    await session.flush()
+    await check_graph(session, workflow)
+
+    _journal(
+        session,
+        actor_id,
+        AuditEventType.STAGE_ARCHIVED,
+        TargetType.STAGE,
+        stage.id,
+        new={"relocated": len(standing), "to_stage_id": target.id if target else None},
+    )
+    return stage
