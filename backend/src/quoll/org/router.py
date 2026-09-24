@@ -12,12 +12,14 @@ from quoll.auth.models import Manager, User, UserRole
 from quoll.core import SystemDefaults
 from quoll.org import service
 from quoll.org.dependencies import Limit, Offset, OrgRepoDep
+from quoll.org.repository import OrgRepository
 from quoll.org.schemas import (
     ManagerLoadRead,
     RecruitRequest,
     SupervisorCapacityRead,
     SupervisorQuotaRead,
     TeamRead,
+    TransferRequest,
 )
 
 org_router = APIRouter(
@@ -89,6 +91,12 @@ async def available_team_quota(user: Observer, repo: OrgRepoDep):
     return await repo.free_team_quota(_except_self(user))
 
 
+async def _read(repo: OrgRepository, manager_id: str) -> ManagerLoadRead:
+    """менеджер после операции - в том же виде, что в витринах"""
+    [row] = await repo.managers_where(Manager.id == manager_id)
+    return row
+
+
 @org_router.post("/subordinates/{manager_id}", response_model=ManagerLoadRead)
 async def recruit(
     manager_id: str,
@@ -103,8 +111,42 @@ async def recruit(
         manager_id=manager_id,
         expected_superviser_id=body.expected_superviser_id,
     )
-    [row] = await repo.managers_where(Manager.id == manager_id)
-    return row
+    return await _read(repo, manager_id)
+
+
+@org_router.post("/subordinates/{manager_id}/transfer", response_model=ManagerLoadRead)
+async def transfer(
+    manager_id: str,
+    body: TransferRequest,
+    user: SupervisorUser,
+    session: SessionDep,
+    repo: OrgRepoDep,
+):
+    await service.transfer(
+        session,
+        actor_id=user.id,
+        manager_id=manager_id,
+        to_superviser_id=body.to_superviser_id,
+        expected_superviser_id=body.expected_superviser_id,
+    )
+    return await _read(repo, manager_id)
+
+
+@org_router.post("/subordinates/{manager_id}/adopt", response_model=ManagerLoadRead)
+async def adopt(
+    manager_id: str,
+    body: RecruitRequest,
+    user: SupervisorUser,
+    session: SessionDep,
+    repo: OrgRepoDep,
+):
+    await service.adopt(
+        session,
+        actor_id=user.id,
+        manager_id=manager_id,
+        expected_superviser_id=body.expected_superviser_id,
+    )
+    return await _read(repo, manager_id)
 
 
 @org_router.delete("/subordinates/{manager_id}", status_code=status.HTTP_204_NO_CONTENT)

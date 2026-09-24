@@ -25,6 +25,10 @@ class RecruitRequest(AppBaseModel):
     expected_superviser_id: str | None
 
 
+class TransferRequest(RecruitRequest):
+    to_superviser_id: str
+
+
 class TeamRead(AppBaseModel):
     max_subordinates: int
     members: list[ManagerLoadRead]
