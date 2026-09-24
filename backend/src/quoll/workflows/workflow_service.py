@@ -1,30 +1,348 @@
-"""Правка графа воркфлоу. Пока одно правило - остальные приедут в блоке C"""
+"""Правка графа воркфлоу. Всё - админ, под блокировкой строки воркфлоу,
+в журнал. Опубликованный граф после правки обязан остаться проходимым"""
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quoll.core.exceptions import PublishedGraphChangeException
-from quoll.workflows.models import WorkflowTransition
-from quoll.workflows.repository import (
-    WorkflowRepository,
-    WorkflowTransitionRepository,
+from quoll.auth.audit import record
+from quoll.auth.audit_models import AuditEventType, TargetType
+from quoll.core.exceptions import (
+    DomainRuleException,
+    IdNotExistsException,
+    PublishedGraphChangeException,
 )
-from quoll.workflows.schemas import WorkflowTransitionUpdate
+from quoll.core.locking import lock_row
+from quoll.workflows.graph_policy import EdgeFacts, StageFacts, graph_problems
+from quoll.workflows.models import Stage, Workflow, WorkflowTransition
+from quoll.workflows.schemas import (
+    StageCreate,
+    StageUpdate,
+    WorkflowTransitionCreate,
+    WorkflowTransitionUpdate,
+)
 
 # концы ребра - то, на что ссылается история переходов заявок
 _EDGE_ENDS = frozenset({"from_stage_id", "to_stage_id"})
 
 
-async def update_transition(
-    session: AsyncSession, transition_id: int, changes: WorkflowTransitionUpdate
+async def lock_workflow(session: AsyncSession, workflow_id: int) -> Workflow:
+    workflow = await lock_row(session, Workflow, workflow_id)
+    if workflow is None:
+        raise IdNotExistsException(Workflow.__name__)
+    return workflow
+
+
+async def check_graph(
+    session: AsyncSession, workflow: Workflow, *, full: bool = False
+) -> None:
+    """черновик собирают как угодно - проверяется опубликованный и публикация"""
+    if not (workflow.is_published or full):
+        return
+    # здесь, а не наверху: модели заявок сами импортируют модели воркфлоу
+    from quoll.interactions.models import Interaction
+
+    stages = (
+        await session.scalars(select(Stage).where(Stage.workflow_id == workflow.id))
+    ).all()
+    edges = (
+        await session.scalars(
+            select(WorkflowTransition).where(
+                WorkflowTransition.workflow_id == workflow.id,
+                WorkflowTransition.is_active.is_(True),
+            )
+        )
+    ).all()
+    occupied = set(
+        await session.scalars(
+            select(Interaction.state_id)
+            .where(
+                Interaction.workflow_id == workflow.id,
+                Interaction.state_id.is_not(None),
+            )
+            .distinct()
+        )
+    )
+    problems = graph_problems(
+        [StageFacts(s.id, s.is_terminal, s.archived_at is not None) for s in stages],
+        [EdgeFacts(e.from_stage_id, e.to_stage_id) for e in edges],
+        occupied,
+        full=full,
+    )
+    if problems:
+        raise DomainRuleException(
+            409, "Workflow graph is broken: " + "; ".join(problems)
+        )
+
+
+def _journal(session, actor_id, event, target_type, target_id, old=None, new=None):
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=event,
+        target_type=target_type,
+        target_id=target_id,
+        old_value=old,
+        new_value=new,
+    )
+
+
+async def publish(session: AsyncSession, workflow_id: int, actor_id: str) -> None:
+    """публикуется проходимый граф целиком: заявки не должны застрять"""
+    workflow = await lock_workflow(session, workflow_id)
+    if workflow.is_published:
+        raise DomainRuleException(409, "Workflow is already published")
+    await check_graph(session, workflow, full=True)
+    workflow.is_published = True
+    _journal(
+        session,
+        actor_id,
+        AuditEventType.WORKFLOW_PUBLISHED,
+        TargetType.WORKFLOW,
+        workflow.id,
+    )
+    await session.flush()
+
+
+async def delete_workflow(
+    session: AsyncSession, workflow_id: int, actor_id: str
+) -> None:
+    """только черновик: по опубликованному могли ехать заявки"""
+    workflow = await lock_workflow(session, workflow_id)
+    if workflow.is_published:
+        raise DomainRuleException(409, "Published workflow cannot be deleted")
+    _journal(
+        session,
+        actor_id,
+        AuditEventType.WORKFLOW_DELETED,
+        TargetType.WORKFLOW,
+        workflow.id,
+        old={"name": workflow.name},
+    )
+    await session.delete(workflow)
+    await session.flush()
+
+
+# --- стадии
+
+
+async def create_stage(
+    session: AsyncSession, schema: StageCreate, actor_id: str
+) -> Stage:
+    # новая стадия пуста и недостижима - граф она не ломает, проверять нечего
+    await lock_workflow(session, schema.workflow_id)
+    stage = Stage(**schema.model_dump())
+    session.add(stage)
+    await session.flush()
+    _journal(
+        session,
+        actor_id,
+        AuditEventType.STAGE_CREATED,
+        TargetType.STAGE,
+        stage.id,
+        new=schema.model_dump(mode="json"),
+    )
+    await session.refresh(stage)
+    return stage
+
+
+async def _stage(session: AsyncSession, stage_id: int) -> Stage:
+    stage = await session.get(Stage, stage_id)
+    if stage is None:
+        raise IdNotExistsException(Stage.__name__)
+    return stage
+
+
+async def update_stage(
+    session: AsyncSession, stage_id: int, changes: StageUpdate, actor_id: str
+) -> Stage:
+    """имя, описание, позиция. Флаги стадии не меняются никогда (Р15)"""
+    stage = await _stage(session, stage_id)
+    await lock_workflow(session, stage.workflow_id)
+    new = changes.model_dump(exclude_unset=True)
+    old = {field: getattr(stage, field) for field in new}
+    for field, value in new.items():
+        setattr(stage, field, value)
+    _journal(
+        session,
+        actor_id,
+        AuditEventType.STAGE_UPDATED,
+        TargetType.STAGE,
+        stage.id,
+        old,
+        new,
+    )
+    await session.flush()
+    await session.refresh(stage)
+    return stage
+
+
+async def delete_stage(session: AsyncSession, stage_id: int, actor_id: str) -> None:
+    """удаляется стадия черновика; у опубликованного - архивация"""
+    stage = await _stage(session, stage_id)
+    workflow = await lock_workflow(session, stage.workflow_id)
+    if workflow.is_published:
+        raise DomainRuleException(
+            409, "Stage of a published workflow is archived, not deleted"
+        )
+    _journal(
+        session,
+        actor_id,
+        AuditEventType.STAGE_DELETED,
+        TargetType.STAGE,
+        stage.id,
+        old={"name": stage.name, "workflow_id": stage.workflow_id},
+    )
+    await session.delete(stage)
+    await session.flush()
+
+
+# --- рёбра
+
+
+async def _check_ends(
+    session: AsyncSession, workflow_id: int, stage_ids: list[int | None]
+) -> None:
+    for stage_id in stage_ids:
+        if stage_id is None:
+            continue
+        stage = await _stage(session, stage_id)
+        if stage.workflow_id != workflow_id:
+            raise DomainRuleException(
+                400, f"Stage '{stage_id}' belongs to another workflow"
+            )
+        if stage.archived_at is not None:
+            raise DomainRuleException(409, f"Stage '{stage_id}' is archived")
+
+
+async def create_transition(
+    session: AsyncSession, schema: WorkflowTransitionCreate, actor_id: str
 ) -> WorkflowTransition:
-    """у опубликованного воркфлоу концы ребра не перевешиваются: история
-    ссылается на ребро, и оно стало бы значить другое. Деактивировать и
-    создать новое"""
-    transitions = WorkflowTransitionRepository(session)
-    transition = await transitions.get(transition_id)
-    moved = _EDGE_ENDS & changes.model_dump(exclude_unset=True).keys()
-    if moved:
-        workflow = await WorkflowRepository(session).get(transition.workflow_id)
-        if workflow.is_published:
-            raise PublishedGraphChangeException(sorted(moved))
-    return await transitions.update(transition_id, changes)
+    workflow = await lock_workflow(session, schema.workflow_id)
+    await _check_ends(session, workflow.id, [schema.from_stage_id, schema.to_stage_id])
+    edge = WorkflowTransition(**schema.model_dump())
+    session.add(edge)
+    await session.flush()
+    await check_graph(session, workflow)
+    _journal(
+        session,
+        actor_id,
+        AuditEventType.TRANSITION_CREATED,
+        TargetType.TRANSITION,
+        edge.id,
+        new={"from_stage_id": edge.from_stage_id, "to_stage_id": edge.to_stage_id},
+    )
+    await session.refresh(edge)
+    return edge
+
+
+async def _lock_edge(
+    session: AsyncSession, transition_id: int
+) -> tuple[Workflow, WorkflowTransition]:
+    # воркфлоу раньше ребра - порядок из core/locking.py
+    edge = await session.get(WorkflowTransition, transition_id)
+    if edge is None:
+        raise IdNotExistsException(WorkflowTransition.__name__)
+    workflow = await lock_workflow(session, edge.workflow_id)
+    return workflow, await lock_row(session, WorkflowTransition, transition_id)
+
+
+async def update_transition(
+    session: AsyncSession,
+    transition_id: int,
+    changes: WorkflowTransitionUpdate,
+    actor_id: str,
+) -> WorkflowTransition:
+    """у опубликованного концы не перевешиваются - история ссылается на
+    ребро, и оно стало бы значить другое. Деактивировать и создать новое"""
+    workflow, edge = await _lock_edge(session, transition_id)
+    new = changes.model_dump(exclude_unset=True)
+    moved = _EDGE_ENDS & new.keys()
+    if moved and workflow.is_published:
+        raise PublishedGraphChangeException(sorted(moved))
+    await _check_ends(session, workflow.id, [new.get(f) for f in moved])
+
+    old = {field: getattr(edge, field) for field in new}
+    for field, value in new.items():
+        setattr(edge, field, value)
+    await session.flush()
+    # имя и описание граф не ломают, концы у опубликованного не меняются
+    if "is_active" in new:
+        await check_graph(session, workflow)
+
+    deactivated = old.get("is_active") is True and new.get("is_active") is False
+    event = (
+        AuditEventType.TRANSITION_DEACTIVATED
+        if deactivated
+        else AuditEventType.TRANSITION_UPDATED
+    )
+    _journal(session, actor_id, event, TargetType.TRANSITION, edge.id, old, new)
+    await session.refresh(edge)
+    return edge
+
+
+async def delete_transition(
+    session: AsyncSession, transition_id: int, actor_id: str
+) -> None:
+    """удаляется ребро черновика; у опубликованного на ребро ссылается история"""
+    workflow, edge = await _lock_edge(session, transition_id)
+    if workflow.is_published:
+        raise DomainRuleException(
+            409, "Transition of a published workflow is deactivated, not deleted"
+        )
+    _journal(
+        session,
+        actor_id,
+        AuditEventType.TRANSITION_DELETED,
+        TargetType.TRANSITION,
+        edge.id,
+        old={"from_stage_id": edge.from_stage_id, "to_stage_id": edge.to_stage_id},
+    )
+    await session.delete(edge)
+    await session.flush()
+
+
+async def change_start_stage(
+    session: AsyncSession, workflow_id: int, stage_id: int, actor_id: str
+) -> WorkflowTransition:
+    """одной операцией: после любой из двух правок по отдельности начальных
+    стадий было бы ноль или две"""
+    workflow = await lock_workflow(session, workflow_id)
+    await _check_ends(session, workflow.id, [stage_id])
+    if (await _stage(session, stage_id)).is_terminal:
+        raise DomainRuleException(400, "Start stage cannot be terminal")
+    current = (
+        await session.scalars(
+            select(WorkflowTransition).where(
+                WorkflowTransition.workflow_id == workflow.id,
+                WorkflowTransition.from_stage_id.is_(None),
+                WorkflowTransition.is_active.is_(True),
+            )
+        )
+    ).all()
+    if [e.to_stage_id for e in current] == [stage_id]:
+        return current[0]
+
+    for edge in current:
+        edge.is_active = False
+    # сначала снять старое - иначе частичный уникальный индекс увидит два входа
+    await session.flush()
+    entry = WorkflowTransition(
+        workflow_id=workflow.id,
+        from_stage_id=None,
+        to_stage_id=stage_id,
+        name=current[0].name if current else "Начало",
+    )
+    session.add(entry)
+    await session.flush()
+    await check_graph(session, workflow)
+    _journal(
+        session,
+        actor_id,
+        AuditEventType.START_STAGE_CHANGED,
+        TargetType.WORKFLOW,
+        workflow.id,
+        old={"stage_id": current[0].to_stage_id if current else None},
+        new={"stage_id": stage_id},
+    )
+    await session.refresh(entry)
+    return entry

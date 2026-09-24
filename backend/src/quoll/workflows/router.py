@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, Path, Query, Response, status
 
-from quoll.auth.dependencies import AdminOnly, get_current_user
+from quoll.auth.dependencies import AdminOnly, AdminUser, get_current_user
 from quoll.core import SystemDefaults
 from quoll.workflows import workflow_service
 from quoll.workflows.dependencies import (
@@ -13,6 +13,7 @@ from quoll.workflows.schemas import (
     StageCreate,
     StageRead,
     StageUpdate,
+    StartStageRequest,
     WorkflowCreate,
     WorkflowDetailRead,
     WorkflowRead,
@@ -48,8 +49,26 @@ transitions_router = APIRouter(
     summary="Publish workflow",
     dependencies=[AdminOnly],
 )
-async def publish_workflow(repo: WorkflowRepoDep, id: int):
-    await repo.update(id, {"is_published": True})
+async def publish_workflow(id: int, admin: AdminUser, session: SessionDep):
+    await workflow_service.publish(session, id, admin.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@workflows_router.post(
+    "/{id}/start-stage",
+    response_model=WorkflowTransitionRead,
+    summary="Make another stage the start one",
+    dependencies=[AdminOnly],
+)
+async def change_start_stage(
+    body: StartStageRequest,
+    admin: AdminUser,
+    session: SessionDep,
+    id: int = Path(..., ge=1, description="Workflow ID"),
+):
+    return await workflow_service.change_start_stage(
+        session, id, body.stage_id, admin.id
+    )
 
 
 @workflows_router.post(
@@ -116,10 +135,11 @@ async def update_workflow(
     dependencies=[AdminOnly],
 )
 async def delete_workflow(
-    repo: WorkflowRepoDep,
+    admin: AdminUser,
+    session: SessionDep,
     id: int = Path(..., ge=1, description="Workflow ID"),
 ):
-    await repo.delete(id)
+    await workflow_service.delete_workflow(session, id, admin.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -133,11 +153,8 @@ async def delete_workflow(
     summary="Add a new stage to a workflow",
     dependencies=[AdminOnly],
 )
-async def create_stage(
-    schema: StageCreate,
-    repo: StageRepoDep,
-):
-    return await repo.create(schema)
+async def create_stage(schema: StageCreate, admin: AdminUser, session: SessionDep):
+    return await workflow_service.create_stage(session, schema, admin.id)
 
 
 @stages_router.get(
@@ -172,10 +189,11 @@ async def get_stage(
 )
 async def update_stage(
     schema: StageUpdate,
-    repo: StageRepoDep,
+    admin: AdminUser,
+    session: SessionDep,
     id: int = Path(..., ge=1, description="Stage ID"),
 ):
-    return await repo.update(id, schema)
+    return await workflow_service.update_stage(session, id, schema, admin.id)
 
 
 @stages_router.delete(
@@ -185,10 +203,11 @@ async def update_stage(
     dependencies=[AdminOnly],
 )
 async def delete_stage(
-    repo: StageRepoDep,
+    admin: AdminUser,
+    session: SessionDep,
     id: int = Path(..., ge=1, description="Stage ID"),
 ):
-    await repo.delete(id)
+    await workflow_service.delete_stage(session, id, admin.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
@@ -203,10 +222,9 @@ async def delete_stage(
     dependencies=[AdminOnly],
 )
 async def create_transition(
-    schema: WorkflowTransitionCreate,
-    repo: TransitionRepoDep,
+    schema: WorkflowTransitionCreate, admin: AdminUser, session: SessionDep
 ):
-    return await repo.create(schema)
+    return await workflow_service.create_transition(session, schema, admin.id)
 
 
 @transitions_router.get(
@@ -246,10 +264,11 @@ async def get_transition(
 )
 async def update_transition(
     schema: WorkflowTransitionUpdate,
+    admin: AdminUser,
     session: SessionDep,
     id: int = Path(..., ge=1, description="Transition ID"),
 ):
-    return await workflow_service.update_transition(session, id, schema)
+    return await workflow_service.update_transition(session, id, schema, admin.id)
 
 
 @transitions_router.post(
@@ -291,8 +310,9 @@ async def unlink_attachment(
     dependencies=[AdminOnly],
 )
 async def delete_transition(
-    repo: TransitionRepoDep,
+    admin: AdminUser,
+    session: SessionDep,
     id: int = Path(..., ge=1, description="Transition ID"),
 ):
-    await repo.delete(id)
+    await workflow_service.delete_transition(session, id, admin.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

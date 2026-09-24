@@ -104,3 +104,9 @@ class WorkflowRead(WorkflowBase):
 class WorkflowDetailRead(WorkflowRead):
     stages: list[StageRead] = Field(default_factory=list)
     transitions: list[WorkflowTransitionRead] = Field(default_factory=list)
+
+
+class StartStageRequest(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stage_id: int
