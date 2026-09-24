@@ -4,18 +4,22 @@ from typing import Any
 
 from sqlalchemy import (
     JSON,
+    BigInteger,
     Boolean,
     CheckConstraint,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
+    Index,
     Integer,
     String,
+    Text,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from quoll.core.mixins import IdMixin, TimestampMixin
-from quoll.db import Base, str_255
+from quoll.db import Base, created_at_dt, str_255
 from quoll.workflows.models import Stage, Workflow
 
 
@@ -84,7 +88,6 @@ class Interaction(Base, IdMixin, TimestampMixin):
     )
     state_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
 
-    history: Mapped[list[dict[str, Any]]] = mapped_column(JSON, default=list)
     # только на managers, владельцем заявки может быть лишь менеджер,
     # а RESTRICT не даёт удалить менеджера с заявками
     owner_id: Mapped[str | None] = mapped_column(
@@ -107,6 +110,8 @@ class Interaction(Base, IdMixin, TimestampMixin):
     paused_until: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
+    # причина текущей паузы, история пауз - в журнале
+    pause_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     # Relationships
     university: Mapped[University] = relationship(back_populates="interactions")
@@ -114,3 +119,79 @@ class Interaction(Base, IdMixin, TimestampMixin):
     workflow: Mapped[Workflow | None] = relationship()
     # viewonly, иначе эта связь и workflow спорят за право писать workflow_id
     state: Mapped[Stage | None] = relationship(viewonly=True)
+
+
+class StageChangeKind(StrEnum):
+    """как заявка попала на стадию"""
+
+    TRANSITION = "TRANSITION"  # по ребру графа
+    CLOSE = "CLOSE"  # досрочное закрытие, без ребра
+    REOPEN = "REOPEN"  # переоткрытие закрытой
+    RELOCATION = "RELOCATION"  # перенос при архивации стадии
+
+
+class InteractionStageHistory(Base):
+    """история движения заявки по стадиям - бизнес-история, не журнал.
+
+    ссылки на стадии и ребро RESTRICT: стадии не удаляются, а архивируются,
+    и история не должна терять, откуда и куда шла заявка
+    """
+
+    __tablename__ = "interaction_stage_history"
+    __table_args__ = (
+        CheckConstraint(
+            "kind IN ('TRANSITION', 'CLOSE', 'REOPEN', 'RELOCATION')",
+            name="chk_stage_history_kind",
+        ),
+        Index("ix_stage_history_interaction_created", "interaction_id", "created_at"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    interaction_id: Mapped[int] = mapped_column(
+        ForeignKey("interactions.id", ondelete="CASCADE")
+    )
+    # NULL - заявка встала на первую стадию из черновика
+    from_stage_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stages.id", ondelete="RESTRICT"), nullable=True
+    )
+    to_stage_id: Mapped[int] = mapped_column(
+        ForeignKey("stages.id", ondelete="RESTRICT")
+    )
+    # NULL у закрытия, переоткрытия и переноса - они идут не по ребру
+    transition_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workflow_transitions.id", ondelete="RESTRICT"), nullable=True
+    )
+    kind: Mapped[str] = mapped_column(String(20))
+    actor_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[created_at_dt]
+
+
+class InteractionAssignment(Base):
+    """кто и когда вёл заявку. Нужна, чтобы менеджер видел бывшие свои -
+    last_owner_id помнит только один шаг назад"""
+
+    __table_args__ = (
+        # открытая запись одна - та, что совпадает с текущим владельцем
+        Index(
+            "uq_interaction_assignments_open",
+            "interaction_id",
+            unique=True,
+            postgresql_where=text("released_at IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    interaction_id: Mapped[int] = mapped_column(
+        ForeignKey("interactions.id", ondelete="CASCADE"), index=True
+    )
+    manager_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    assigned_at: Mapped[created_at_dt]
+    released_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)

@@ -83,7 +83,9 @@ class InteractionRead(AppBaseModel):
     workflow_id: int | None
     state_id: int | None
     owner_id: str | None
-    history: list[dict[str, Any]]
+    pause_state: str
+    paused_until: datetime | None
+    pause_comment: str | None
     created_at: datetime
     updated_at: datetime
 
