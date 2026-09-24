@@ -1,9 +1,11 @@
+from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Path, status
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.dependencies import CurrentUser
+from quoll.auth.models import User
 from quoll.db import get_db_session
 from quoll.interactions.access_policy import can_change, can_delete, can_read
 from quoll.interactions.models import Interaction
@@ -43,35 +45,26 @@ def _forbidden(action: str) -> HTTPException:
     )
 
 
-async def readable_interaction(
-    id: InteractionId, user: CurrentUser, repo: InteractionRepoDep
-) -> Interaction:
-    interaction = await repo.get_with_details(id)
-    if not can_read(user, interaction.owner_id):
-        raise _forbidden("view")
-    return interaction
+Predicate = Callable[[User, str | None, str | None], bool]
 
 
-async def changeable_interaction(
-    id: InteractionId, user: CurrentUser, repo: InteractionRepoDep
-) -> Interaction:
-    interaction = await repo.get(id)
-    owner_superviser_id = await repo.owner_superviser_id(interaction.owner_id)
-    if not can_change(user, interaction.owner_id, owner_superviser_id):
-        raise _forbidden("change")
-    return interaction
+def _guarded(predicate: Predicate, action: str, *, details: bool = False):
+    """зависимость: загрузить заявку и пустить, только если predicate разрешает"""
+
+    async def dependency(
+        id: InteractionId, user: CurrentUser, repo: InteractionRepoDep
+    ) -> Interaction:
+        interaction = await (repo.get_with_details(id) if details else repo.get(id))
+        owner_superviser_id = await repo.owner_superviser_id(interaction.owner_id)
+        if not predicate(user, interaction.owner_id, owner_superviser_id):
+            raise _forbidden(action)
+        return interaction
+
+    return dependency
 
 
-async def deletable_interaction(
-    id: InteractionId, user: CurrentUser, repo: InteractionRepoDep
-) -> Interaction:
-    interaction = await repo.get(id)
-    owner_superviser_id = await repo.owner_superviser_id(interaction.owner_id)
-    if not can_delete(user, interaction.owner_id, owner_superviser_id):
-        raise _forbidden("delete")
-    return interaction
-
-
-ReadableInteraction = Annotated[Interaction, Depends(readable_interaction)]
-ChangeableInteraction = Annotated[Interaction, Depends(changeable_interaction)]
-DeletableInteraction = Annotated[Interaction, Depends(deletable_interaction)]
+ReadableInteraction = Annotated[
+    Interaction, Depends(_guarded(can_read, "view", details=True))
+]
+ChangeableInteraction = Annotated[Interaction, Depends(_guarded(can_change, "change"))]
+DeletableInteraction = Annotated[Interaction, Depends(_guarded(can_delete, "delete"))]
