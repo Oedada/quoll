@@ -1,8 +1,9 @@
 """Сколько заявок тянет менеджер."""
 
 import logging
+from enum import StrEnum
 
-from sqlalchemy import ColumnElement, Select, and_, func, select
+from sqlalchemy import ColumnElement, Select, and_, case, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.models import (
@@ -54,6 +55,72 @@ def capacity_filter_expression() -> ColumnElement[bool]:
 
 def open_projects_filter_expression() -> ColumnElement[bool]:
     return Stage.is_terminal.is_(False)
+
+
+def blocking_filter_expression() -> ColumnElement[bool]:
+    """что мешает отпустить менеджера: незакрытые и черновики с ним.
+    Стадия присоединяется внешним соединением - у черновика её нет"""
+    return or_(Interaction.state_id.is_(None), Stage.is_terminal.is_(False))
+
+
+def manager_load_subquery():
+    """загрузка всех менеджеров одним запросом, включая тех, у кого заявок нет.
+
+    условия - в FILTER при агрегате, а не в WHERE: в WHERE они выродили бы
+    внешнее соединение во внутреннее, и менеджер без заявок пропал бы
+    """
+    managers = Manager.__table__
+    counted = Interaction.id
+    return (
+        select(
+            managers.c.id.label("manager_id"),
+            func.count(counted)
+            .filter(capacity_filter_expression())
+            .label("capacity_used"),
+            func.count(counted)
+            .filter(open_projects_filter_expression())
+            .label("open_projects"),
+            func.count(counted)
+            .filter(blocking_filter_expression())
+            .label("blocking_projects"),
+        )
+        .select_from(managers)
+        .outerjoin(Interaction, Interaction.owner_id == managers.c.id)
+        .outerjoin(Stage, Interaction.state_id == Stage.id)
+        .group_by(managers.c.id)
+        .subquery("manager_load")
+    )
+
+
+class EffectiveStatus(StrEnum):
+    AVAILABLE = "AVAILABLE"
+    SATURATED = "SATURATED"
+    UNAVAILABLE = "UNAVAILABLE"
+    INACTIVE = "INACTIVE"
+
+
+def effective_status_expression(
+    capacity_used: ColumnElement[int],
+) -> ColumnElement[str]:
+    """готовность менеджера взять новую работу: первое сработавшее условие.
+    AVAILABLE - то же, что пропускает assert_can_take_new_work с дельтой 1"""
+    return case(
+        (Manager.is_active.is_(False), EffectiveStatus.INACTIVE.value),
+        (
+            Manager.identity_sync_status != IdentitySyncStatus.OK,
+            EffectiveStatus.UNAVAILABLE.value,
+        ),
+        (
+            Manager.role_transition_status != RoleTransitionStatus.NONE,
+            EffectiveStatus.UNAVAILABLE.value,
+        ),
+        (
+            Manager.manual_workload_status != ManualWorkloadStatus.AVAILABLE,
+            EffectiveStatus.UNAVAILABLE.value,
+        ),
+        (capacity_used >= Manager.max_active_projects, EffectiveStatus.SATURATED.value),
+        else_=EffectiveStatus.AVAILABLE.value,
+    )
 
 
 def capacity_count_stmt(manager_id: str) -> Select[tuple[int]]:

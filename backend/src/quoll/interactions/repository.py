@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import ColumnElement, func, or_, select
+from sqlalchemy import ColumnElement, func, select
 from sqlalchemy.orm import selectinload
 
 from quoll.auth.identity_policy import is_incapacitated
@@ -9,6 +9,7 @@ from quoll.core.base_repository import BaseRepository
 from quoll.core.exceptions import IdNotExistsException
 from quoll.interactions.access_policy import Ownership, author_gone
 from quoll.interactions.capacity_policy import (
+    blocking_filter_expression,
     capacity_count_stmt,
     open_projects_filter_expression,
 )
@@ -162,9 +163,6 @@ class InteractionRepository(BaseRepository[Interaction]):
             select(func.count())
             .select_from(Interaction)
             .outerjoin(Stage, Interaction.state_id == Stage.id)
-            .where(
-                Interaction.owner_id == manager_id,
-                or_(Interaction.state_id.is_(None), Stage.is_terminal.is_(False)),
-            )
+            .where(Interaction.owner_id == manager_id, blocking_filter_expression())
         )
         return await self.session.scalar(stmt) or 0

@@ -22,6 +22,7 @@ from quoll.interactions import (
 from quoll.notifications import router as notifications_router
 from quoll.notifications import ws_router as notifications_ws_router
 from quoll.notifications.connection_storage import ConnectionStorage
+from quoll.org import org_router
 from quoll.workflows import (
     stages_router,
     transitions_router,
@@ -145,6 +146,7 @@ app.include_router(attachments_router)
 app.include_router(universities_router)
 app.include_router(vendors_router)
 app.include_router(interactions_router)
+app.include_router(org_router)
 app.include_router(notifications_router)
 app.include_router(notifications_ws_router)
 
