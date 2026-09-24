@@ -7,6 +7,7 @@
 
 from sqlalchemy import ColumnElement, or_, select, true
 
+from quoll.auth.identity_policy import is_incapacitated
 from quoll.auth.models import Manager, User, UserRole
 from quoll.interactions.models import Interaction
 
@@ -38,6 +39,25 @@ def can_delete(
     return user.role == UserRole.SUPERVISER and can_change(
         user, owner_id, owner_superviser_id
     )
+
+
+def can_assign(
+    actor: User,
+    owner: Manager | None,
+    owner_superviser: User | None,
+    target: Manager,
+) -> bool:
+    """назначить или переназначить заявку.
+
+    руководитель владельца - всегда, в своей команде и в другой отдел.
+    Руководитель цели - только бесхозную или из осиротевшей команды
+    """
+    if actor.role != UserRole.SUPERVISER:
+        return False
+    if owner is not None and owner.superviser_id == actor.id:
+        return True
+    orphaned = owner is None or is_incapacitated(owner_superviser)
+    return target.superviser_id == actor.id and orphaned
 
 
 def readable_filter(user: User) -> ColumnElement[bool]:

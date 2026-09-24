@@ -4,6 +4,7 @@ from quoll.auth.dependencies import (
     AdminOnly,
     CurrentUser,
     SupervisorOnly,
+    SupervisorUser,
     get_current_user,
 )
 from quoll.core import SystemDefaults
@@ -12,6 +13,7 @@ from quoll.interactions.access_policy import readable_filter
 from quoll.interactions.dependencies import (
     ChangeableInteraction,
     DeletableInteraction,
+    InteractionId,
     InteractionRepoDep,
     ReadableInteraction,
     SessionDep,
@@ -19,6 +21,7 @@ from quoll.interactions.dependencies import (
     VendorRepoDep,
 )
 from quoll.interactions.schemas import (
+    AssignRequest,
     InteractionCreate,
     InteractionDetailRead,
     InteractionRead,
@@ -237,6 +240,27 @@ async def list_interactions(
         vendor_id=vendor_id,
         limit=limit,
         offset=offset,
+    )
+
+
+@interactions_router.post(
+    "/{id}/assign",
+    response_model=InteractionRead,
+    summary="Assign or reassign an interaction to a manager",
+)
+async def assign_interaction(
+    id: InteractionId,
+    body: AssignRequest,
+    user: SupervisorUser,
+    session: SessionDep,
+):
+    return await project_service.assign(
+        session,
+        interaction_id=id,
+        actor_id=user.id,
+        manager_id=body.manager_id,
+        expected_owner_id=body.expected_owner_id,
+        reason=body.reason,
     )
 
 

@@ -150,3 +150,34 @@ class IdentityDeniedException(AppException):
     def __init__(self, status_code: int, detail: str):
         super().__init__(status_code, detail)
         logger.warning(self.message)
+
+
+class TargetAccountUnavailableException(AppException):
+    """цель назначения не годится по данным Keycloak"""
+
+    def __init__(self, user_id: str, reason: str):
+        super().__init__(409, f"Target account '{user_id}' is unavailable: {reason}")
+        logger.warning(self.message)
+
+
+class StaleStateException(AppException):
+    """клиент ожидал одно, а в базе уже другое - он работает с устаревшими данными"""
+
+    def __init__(self, what: str, current: object):
+        super().__init__(409, f"{what} has changed, current value: {current!r}")
+        logger.warning(self.message)
+
+
+class OperationForbiddenException(AppException):
+    def __init__(self, action: str):
+        super().__init__(403, f"Not allowed to {action}")
+        logger.warning(self.message)
+
+
+class DomainRuleException(AppException):
+    """операция нарушает доменное правило: 400 - запрос не имеет смысла,
+    409 - противоречит текущему состоянию"""
+
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(status_code, detail)
+        logger.warning(self.message)

@@ -15,3 +15,9 @@ def identity_denial(user: User | None) -> tuple[int, str] | None:
     if user.role_transition_status != RoleTransitionStatus.NONE:
         return status.HTTP_409_CONFLICT, "Role transition in progress"
     return None
+
+
+def is_incapacitated(user: User | None) -> bool:
+    """руководитель, которого нет в строю: неактивен, конфликт ролей или смена
+    роли. Его команда осиротела - заявки может забрать другой руководитель"""
+    return user is None or identity_denial(user) is not None

@@ -74,6 +74,16 @@ class InteractionUpdate(AppBaseModel):
     it_product: str | None = None
 
 
+class AssignRequest(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    manager_id: str
+    # обязательно, но может быть null - «ожидаю, что владельца нет».
+    # Отсутствие поля - 422, чтобы «забыл передать» не стало «владельца нет»
+    expected_owner_id: str | None
+    reason: str | None = None
+
+
 class InteractionRead(AppBaseModel):
     id: int
     university_id: int
