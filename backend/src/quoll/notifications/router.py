@@ -66,21 +66,20 @@ async def get_my_notifications(
     return [NotifyRead.model_validate(n) for n in notifications]
 
 
-@router.get("/{user_id}", status_code=201)
+@router.get("/{user_id}", status_code=status.HTTP_204_NO_CONTENT, summary="test send notify")
 async def send_test_notification(
     request: Request,
     repo: NotifyRepoDep,
     user_id: str,
     title: str = Query(...),
     message: str = Query(...),
-) -> dict:
+):
     logger.info(f"send_test_notification: user_id={user_id}, title={title}")
     connections: ConnectionStorage = request.app.state.connection_storage
     logger.debug(f"ConnectionStorage: {connections}")
     service = NotifyService(repo, connections)
     await service.send_notification(user_id, title, message)
     logger.info(f"send_test_notification: done for user {user_id}")
-    return {"ok": True}
 
 
 @router.patch("/{notify_id}/read", response_model=NotifyRead)

@@ -219,3 +219,5 @@ __marimo__/
 
 # PyRight configuration files
 *pyrightconfig.json
+
+backend/tests/

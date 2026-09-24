@@ -7,7 +7,6 @@ class NotifyBase(AppBaseModel):
     user_id: str
     title: str
     message: str
-    extra_data: dict | None = None
 
 
 class NotifyCreate(NotifyBase):
