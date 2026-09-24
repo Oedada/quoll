@@ -1,15 +1,17 @@
 """Кто что может делать с заявкой. Чистые правила, в БД не ходят.
 
 руководитель видит и меняет заявки своих менеджеров - состав команды
-динамический, усыновил менеджера - видит его заявки. Бесхозные видят все
-руководители: это общий пул нераспределённой работы. Админ только читает
+динамический, усыновил менеджера - видит его заявки. Бесхозные и заявки
+осиротевших команд видят все руководители: это общий пул работы, которую
+надо кому-то отдать. Админ только читает
 """
 
 from dataclasses import dataclass
 
 from sqlalchemy import ColumnElement, exists, or_, select, true
+from sqlalchemy.orm import aliased
 
-from quoll.auth.identity_policy import is_incapacitated
+from quoll.auth.identity_policy import incapacitated_expression
 from quoll.auth.models import Manager, User, UserRole
 from quoll.interactions.models import Interaction, InteractionAssignment
 
@@ -21,7 +23,13 @@ class Ownership:
 
     owner_id: str | None
     owner_superviser_id: str | None
+    # руководитель владельца не в строю - команда осиротела
+    owner_orphaned: bool = False
     former_owner_ids: frozenset[str] = frozenset()
+
+
+def _in_common_pool(ownership: Ownership) -> bool:
+    return ownership.owner_id is None or ownership.owner_orphaned
 
 
 def can_read(user: User, ownership: Ownership) -> bool:
@@ -29,7 +37,7 @@ def can_read(user: User, ownership: Ownership) -> bool:
         # и бывшие свои - документы проекта нужны и после передачи
         return ownership.owner_id == user.id or user.id in ownership.former_owner_ids
     if user.role == UserRole.SUPERVISER:
-        return ownership.owner_id is None or ownership.owner_superviser_id == user.id
+        return _in_common_pool(ownership) or ownership.owner_superviser_id == user.id
     return True
 
 
@@ -53,12 +61,7 @@ def can_pause(user: User, ownership: Ownership) -> bool:
     return can_change(user, ownership)
 
 
-def can_assign(
-    actor: User,
-    owner: Manager | None,
-    owner_superviser: User | None,
-    target: Manager,
-) -> bool:
+def can_assign(actor: User, ownership: Ownership, target: Manager) -> bool:
     """назначить или переназначить заявку.
 
     руководитель владельца - всегда, в своей команде и в другой отдел.
@@ -66,10 +69,9 @@ def can_assign(
     """
     if actor.role != UserRole.SUPERVISER:
         return False
-    if owner is not None and owner.superviser_id == actor.id:
+    if ownership.owner_id is not None and ownership.owner_superviser_id == actor.id:
         return True
-    orphaned = owner is None or is_incapacitated(owner_superviser)
-    return target.superviser_id == actor.id and orphaned
+    return target.superviser_id == actor.id and _in_common_pool(ownership)
 
 
 def readable_filter(user: User) -> ColumnElement[bool]:
@@ -82,5 +84,15 @@ def readable_filter(user: User) -> ColumnElement[bool]:
         return or_(Interaction.owner_id == user.id, was_owner)
     if user.role == UserRole.SUPERVISER:
         team = select(Manager.id).where(Manager.superviser_id == user.id)
-        return or_(Interaction.owner_id.is_(None), Interaction.owner_id.in_(team))
+        boss = aliased(User)
+        orphaned = (
+            select(Manager.id)
+            .outerjoin(boss, Manager.superviser_id == boss.id)
+            .where(or_(boss.id.is_(None), incapacitated_expression(boss)))
+        )
+        return or_(
+            Interaction.owner_id.is_(None),
+            Interaction.owner_id.in_(team),
+            Interaction.owner_id.in_(orphaned),
+        )
     return true()

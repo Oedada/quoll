@@ -1,6 +1,7 @@
 """Кого пускать в систему. Одно правило на каждый запрос, на сокет и на вход"""
 
 from fastapi import status
+from sqlalchemy import ColumnElement, or_
 
 from quoll.auth.models import IdentitySyncStatus, RoleTransitionStatus, User
 
@@ -21,3 +22,12 @@ def is_incapacitated(user: User | None) -> bool:
     """руководитель, которого нет в строю: неактивен, конфликт ролей или смена
     роли. Его команда осиротела - заявки может забрать другой руководитель"""
     return user is None or identity_denial(user) is not None
+
+
+def incapacitated_expression(user: type[User]) -> ColumnElement[bool]:
+    """то же, что is_incapacitated, для SQL. user - модель или её alias"""
+    return or_(
+        user.is_active.is_(False),
+        user.identity_sync_status != IdentitySyncStatus.OK,
+        user.role_transition_status != RoleTransitionStatus.NONE,
+    )

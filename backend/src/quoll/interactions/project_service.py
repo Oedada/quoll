@@ -69,7 +69,7 @@ async def assign(
     target = scope.managers.get(manager_id)
     if target is None:
         raise DomainRuleException(400, f"User '{manager_id}' is not a manager")
-    if not can_assign(scope.actor, scope.owner, scope.owner_superviser, target):
+    if not can_assign(scope.actor, scope.ownership, target):
         raise OperationForbiddenException("assign this interaction")
     if manager_id == interaction.owner_id:
         raise DomainRuleException(

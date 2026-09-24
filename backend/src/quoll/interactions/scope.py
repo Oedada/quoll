@@ -11,7 +11,7 @@ from dataclasses import dataclass
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quoll.auth.identity_policy import identity_denial
+from quoll.auth.identity_policy import identity_denial, is_incapacitated
 from quoll.auth.models import Manager, User
 from quoll.core.exceptions import (
     IdentityDeniedException,
@@ -41,6 +41,8 @@ class InteractionScope:
         return Ownership(
             self.interaction.owner_id,
             self.owner.superviser_id if self.owner else None,
+            owner_orphaned=self.owner is not None
+            and is_incapacitated(self.owner_superviser),
         )
 
 

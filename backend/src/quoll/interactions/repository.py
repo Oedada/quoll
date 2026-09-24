@@ -3,7 +3,8 @@ import logging
 from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import selectinload
 
-from quoll.auth.models import Manager
+from quoll.auth.identity_policy import is_incapacitated
+from quoll.auth.models import Manager, User
 from quoll.core.base_repository import BaseRepository
 from quoll.core.exceptions import IdNotExistsException
 from quoll.interactions.access_policy import Ownership
@@ -91,18 +92,24 @@ class InteractionRepository(BaseRepository[Interaction]):
         return list((await self.session.execute(stmt)).scalars().all())
 
     async def ownership(self, interaction: Interaction) -> Ownership:
-        superviser_id = None
+        superviser_id, orphaned = None, False
         if interaction.owner_id is not None:
             superviser_id = await self.session.scalar(
                 select(Manager.superviser_id).where(Manager.id == interaction.owner_id)
             )
+            boss = (
+                await self.session.get(User, superviser_id) if superviser_id else None
+            )
+            orphaned = is_incapacitated(boss)
         former = await self.session.scalars(
             select(InteractionAssignment.manager_id).where(
                 InteractionAssignment.interaction_id == interaction.id,
                 InteractionAssignment.manager_id.is_not(None),
             )
         )
-        return Ownership(interaction.owner_id, superviser_id, frozenset(former))
+        return Ownership(
+            interaction.owner_id, superviser_id, orphaned, frozenset(former)
+        )
 
     async def stage_history(self, interaction_id: int) -> list[InteractionStageHistory]:
         stmt = (
