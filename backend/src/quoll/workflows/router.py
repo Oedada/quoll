@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Path, Query, Response, status
+from starlette.status import HTTP_204_NO_CONTENT
 
 from quoll.auth.dependencies import AdminOnly, get_current_user
 from quoll.core import SystemDefaults
@@ -39,6 +40,15 @@ transitions_router = APIRouter(
 
 # Workflows Endpoints
 
+
+@workflows_router.post(
+    "/publish/{id}",
+    status_code=HTTP_204_NO_CONTENT,
+    summary="Publish workflow",
+    dependencies=[AdminOnly],
+)
+async def publish_workflow(repo: WorkflowRepoDep, id: int):
+    await repo.update(id, {"is_published": True})
 
 @workflows_router.post(
     "/",
