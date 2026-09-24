@@ -156,18 +156,6 @@ async def create_user(
     return UserRead.model_validate(created_user)
 
 
-@users_router.post(
-    "/connections/{superviser_id}", status_code=status.HTTP_204_NO_CONTENT
-)
-async def set_connection(
-    superviser_id: str,
-    manager_id: str,
-    admin_user: AdminUser,
-    user_repo: UserRepository = Depends(get_user_repo),  # noqa: B008
-):
-    await user_repo.set_superviser(manager_id, superviser_id)
-
-
 @users_router.patch("/{user_id}", response_model=UserRead)
 async def update_user(
     user_id: str,

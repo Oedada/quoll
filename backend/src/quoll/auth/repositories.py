@@ -16,7 +16,6 @@ from quoll.auth.models import (
 from quoll.auth.schemas import UserUpdate
 from quoll.config import settings
 from quoll.core import (
-    InvalidUserRoleException,
     SystemDefaults,
     UnknowAuthError,
     UserAlreadyExistsAuthError,
@@ -40,18 +39,6 @@ class UserRepository:
         self.base_url = (
             f"{settings.keycloak_root_url}/admin/realms/{keycloak_client.realm}"
         )
-
-    async def set_superviser(self, manager_id: str, superviser_id: str) -> None:
-        manager = await self.get(manager_id)
-        superviser = await self.get(superviser_id)
-        if isinstance(manager, Manager):
-            if isinstance(superviser, Superviser):
-                manager.superviser_id = superviser_id
-                await self.s.flush()
-            else:
-                raise InvalidUserRoleException(manager_id)
-        else:
-            raise InvalidUserRoleException(manager_id)
 
     async def ensure_projection(
         self, user_id: str, role: UserRole, profile: dict[str, str | None]

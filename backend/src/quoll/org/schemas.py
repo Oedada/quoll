@@ -1,3 +1,5 @@
+from pydantic import ConfigDict
+
 from quoll.core.schemas import AppBaseModel
 from quoll.interactions.capacity_policy import EffectiveStatus
 
@@ -14,6 +16,13 @@ class ManagerLoadRead(AppBaseModel):
     open_projects: int
     blocking_projects: int
     effective_status: EffectiveStatus
+
+
+class RecruitRequest(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # обязательно, для Пула А - null: «ожидаю, что руководителя нет»
+    expected_superviser_id: str | None
 
 
 class TeamRead(AppBaseModel):

@@ -1,13 +1,20 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query, Response, status
 
-from quoll.auth.dependencies import SupervisorUser, get_current_user, require_roles
-from quoll.auth.models import User, UserRole
+from quoll.auth.dependencies import (
+    SessionDep,
+    SupervisorUser,
+    get_current_user,
+    require_roles,
+)
+from quoll.auth.models import Manager, User, UserRole
 from quoll.core import SystemDefaults
+from quoll.org import service
 from quoll.org.dependencies import Limit, Offset, OrgRepoDep
 from quoll.org.schemas import (
     ManagerLoadRead,
+    RecruitRequest,
     SupervisorCapacityRead,
     SupervisorQuotaRead,
     TeamRead,
@@ -80,3 +87,38 @@ async def available_project_capacity(user: Observer, repo: OrgRepoDep):
 )
 async def available_team_quota(user: Observer, repo: OrgRepoDep):
     return await repo.free_team_quota(_except_self(user))
+
+
+@org_router.post("/subordinates/{manager_id}", response_model=ManagerLoadRead)
+async def recruit(
+    manager_id: str,
+    body: RecruitRequest,
+    user: SupervisorUser,
+    session: SessionDep,
+    repo: OrgRepoDep,
+):
+    await service.recruit(
+        session,
+        actor_id=user.id,
+        manager_id=manager_id,
+        expected_superviser_id=body.expected_superviser_id,
+    )
+    [row] = await repo.managers_where(Manager.id == manager_id)
+    return row
+
+
+@org_router.delete("/subordinates/{manager_id}", status_code=status.HTTP_204_NO_CONTENT)
+async def release(
+    manager_id: str,
+    user: SupervisorUser,
+    session: SessionDep,
+    # у DELETE нет тела - ожидаемый руководитель в запросе
+    expected_superviser_id: str = Query(),
+):
+    await service.release(
+        session,
+        actor_id=user.id,
+        manager_id=manager_id,
+        expected_superviser_id=expected_superviser_id,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
