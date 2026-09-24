@@ -110,6 +110,7 @@ class InteractionRead(AppBaseModel):
     workflow_id: int | None
     state_id: int | None
     owner_id: str | None
+    created_by: str | None
     pause_state: str
     paused_until: datetime | None
     pause_comment: str | None

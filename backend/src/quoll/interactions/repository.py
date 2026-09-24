@@ -7,7 +7,7 @@ from quoll.auth.identity_policy import is_incapacitated
 from quoll.auth.models import Manager, User
 from quoll.core.base_repository import BaseRepository
 from quoll.core.exceptions import IdNotExistsException
-from quoll.interactions.access_policy import Ownership
+from quoll.interactions.access_policy import Ownership, author_gone
 from quoll.interactions.capacity_policy import (
     capacity_count_stmt,
     open_projects_filter_expression,
@@ -107,8 +107,18 @@ class InteractionRepository(BaseRepository[Interaction]):
                 InteractionAssignment.manager_id.is_not(None),
             )
         )
+        author = (
+            await self.session.get(User, interaction.created_by)
+            if interaction.created_by
+            else None
+        )
         return Ownership(
-            interaction.owner_id, superviser_id, orphaned, frozenset(former)
+            interaction.owner_id,
+            superviser_id,
+            orphaned,
+            frozenset(former),
+            author_id=interaction.created_by,
+            author_gone=author_gone(author),
         )
 
     async def stage_history(self, interaction_id: int) -> list[InteractionStageHistory]:

@@ -36,14 +36,17 @@ from quoll.workflows.repository import WorkflowRepository
 
 
 async def create_interaction(
-    session: AsyncSession, schema: InteractionCreate
+    session: AsyncSession, schema: InteractionCreate, author_id: str
 ) -> Interaction:
-    """новая заявка рождается без владельца - назначает руководитель"""
+    """новая заявка рождается без владельца, черновиком автора - пока он
+    её не назначит, другим руководителям она не видна"""
     if schema.workflow_id is not None:
         workflow = await WorkflowRepository(session).get(schema.workflow_id)
         if not workflow.is_published:
             raise WorkflowNotPublishedException(workflow.id)
-    return await InteractionRepository(session).create(schema)
+    return await InteractionRepository(session).create(
+        schema.model_dump() | {"created_by": author_id}
+    )
 
 
 async def assign(

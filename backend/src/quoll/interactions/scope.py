@@ -19,7 +19,7 @@ from quoll.core.exceptions import (
     InteractionChangedConcurrentlyException,
 )
 from quoll.core.locking import lock_row, lock_rows
-from quoll.interactions.access_policy import Ownership
+from quoll.interactions.access_policy import Ownership, author_gone
 from quoll.interactions.models import Interaction
 
 MAX_ATTEMPTS = 3
@@ -33,6 +33,8 @@ class InteractionScope:
     # руководитель владельца - на уровне User: все признаки недееспособности
     # лежат в users
     owner_superviser: User | None
+    # автор важен, пока владельца нет: чей это черновик
+    author: User | None
     managers: dict[str, Manager]
 
     @property
@@ -43,18 +45,26 @@ class InteractionScope:
             self.owner.superviser_id if self.owner else None,
             owner_orphaned=self.owner is not None
             and is_incapacitated(self.owner_superviser),
+            author_id=self.interaction.created_by,
+            author_gone=author_gone(self.author),
         )
 
 
-async def _read_owner(session: AsyncSession, interaction_id: int) -> str | None:
+async def _read_owner(
+    session: AsyncSession, interaction_id: int
+) -> tuple[str | None, str | None]:
+    """владелец и автор, без блокировки. Автор не меняется, владелец -
+    может, поэтому его сверяют под блокировкой"""
     row = (
         await session.execute(
-            select(Interaction.owner_id).where(Interaction.id == interaction_id)
+            select(Interaction.owner_id, Interaction.created_by).where(
+                Interaction.id == interaction_id
+            )
         )
     ).one_or_none()
     if row is None:
         raise IdNotExistsException(Interaction.__name__)
-    return row.owner_id
+    return row.owner_id, row.created_by
 
 
 async def lock_interaction_scope(
@@ -66,13 +76,15 @@ async def lock_interaction_scope(
     """Manager -> User -> Interaction, как велит общий порядок блокировок"""
     targets = list(target_manager_ids)
     for _ in range(MAX_ATTEMPTS):
-        seen_owner = await _read_owner(session, interaction_id)
+        seen_owner, author_id = await _read_owner(session, interaction_id)
+        if seen_owner is not None:
+            author_id = None
         attempt = await session.begin_nested()
         managers = await lock_rows(session, Manager, [seen_owner, *targets])
         owner = managers.get(seen_owner)
         superviser_id = owner.superviser_id if owner else None
         users = await lock_rows(
-            session, User, [seen_owner, *targets, actor_id, superviser_id]
+            session, User, [seen_owner, *targets, actor_id, superviser_id, author_id]
         )
         interaction = await lock_row(session, Interaction, interaction_id)
         if interaction is not None and interaction.owner_id == seen_owner:
@@ -86,6 +98,7 @@ async def lock_interaction_scope(
                 actor=actor,
                 owner=owner,
                 owner_superviser=users.get(superviser_id),
+                author=users.get(author_id),
                 managers=managers,
             )
         await attempt.rollback()

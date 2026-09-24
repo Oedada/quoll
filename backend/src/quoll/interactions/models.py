@@ -93,6 +93,10 @@ class Interaction(Base, IdMixin, TimestampMixin):
     owner_id: Mapped[str | None] = mapped_column(
         ForeignKey("managers.id", ondelete="RESTRICT"), nullable=True, index=True
     )
+    # руководитель, создавший заявку. Пока владельца нет, это его черновик
+    created_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
     # кто владел раньше - авторство переживает смену роли менеджера
     last_owner_id: Mapped[str | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True

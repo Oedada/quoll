@@ -3,7 +3,6 @@ from fastapi import APIRouter, Depends, Path, Query, Response, status
 from quoll.auth.dependencies import (
     AdminOnly,
     CurrentUser,
-    SupervisorOnly,
     SupervisorUser,
     get_current_user,
 )
@@ -209,11 +208,12 @@ async def delete_vendor(
     "/",
     response_model=InteractionRead,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new interaction without an owner",
-    dependencies=[SupervisorOnly],
+    summary="Create a draft interaction, visible to its author until assigned",
 )
-async def create_interaction(schema: InteractionCreate, session: SessionDep):
-    return await project_service.create_interaction(session, schema)
+async def create_interaction(
+    schema: InteractionCreate, user: SupervisorUser, session: SessionDep
+):
+    return await project_service.create_interaction(session, schema, user.id)
 
 
 @interactions_router.get(
