@@ -1,55 +1,54 @@
 import logging
+from typing import Annotated
 
 from fastapi import (
     APIRouter,
     Depends,
     HTTPException,
     Query,
-    Request,
     WebSocket,
     WebSocketDisconnect,
     status,
 )
 
 from quoll.auth.dependencies import (
+    AdminOnly,
     CurrentUser,
     WebSocketUser,
     get_current_user,
     get_websocket_user,
 )
 from quoll.auth.models import UserRole
+from quoll.core import SystemDefaults
 from quoll.notifications.connection_storage import ConnectionStorage
-from quoll.notifications.dependencies import NotifyRepoDep
-from quoll.notifications.schemas import NotifyRead
-from quoll.notifications.service import NotifyService
+from quoll.notifications.dependencies import NotifyRepoDep, NotifyServiceDep
+from quoll.notifications.schemas import NotifyCreate, NotifyRead
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(
-    prefix="/notifications",
+    prefix="/api/v1/notifications",
     tags=["notifications"],
     dependencies=[Depends(get_current_user)],
 )
 ws_router = APIRouter(
-    prefix="/ws",
+    prefix="/api/v1/ws",
     tags=["notifications-ws"],
     dependencies=[Depends(get_websocket_user)],
 )
 
+PageLimit = Annotated[int, Query(ge=1, le=SystemDefaults.MAX_PAGE_SIZE)]
+PageOffset = Annotated[int, Query(ge=0)]
 
-@router.get("", response_model=list[NotifyRead])
-async def list_notifications(
-    user: CurrentUser,
+
+@router.get("/", response_model=list[NotifyRead], dependencies=[AdminOnly])
+async def list_all_notifications(
     repo: NotifyRepoDep,
-    limit: int = 100,
-    offset: int = 0,
+    limit: PageLimit = SystemDefaults.DEFAULT_PAGE_SIZE,
+    offset: PageOffset = 0,
 ) -> list[NotifyRead]:
-    logger.info(f"list_notifications: user={user.id}, role={user.role}")
-    if user.role == UserRole.ADMIN:
-        notifications = await repo.get_all(limit=limit, offset=offset)
-    else:
-        notifications = await repo.get_by_user(user.id, limit=limit, offset=offset)
-    logger.info(f"list_notifications: returning {len(notifications)} notifications")
+    """все уведомления системы - единственное место, где читают чужие"""
+    notifications = await repo.get_all(limit=limit, offset=offset)
     return [NotifyRead.model_validate(n) for n in notifications]
 
 
@@ -57,30 +56,30 @@ async def list_notifications(
 async def get_my_notifications(
     user: CurrentUser,
     repo: NotifyRepoDep,
-    limit: int = 100,
-    offset: int = 0,
+    limit: PageLimit = SystemDefaults.DEFAULT_PAGE_SIZE,
+    offset: PageOffset = 0,
 ) -> list[NotifyRead]:
-    logger.info(f"get_my_notifications: user={user.id}")
     notifications = await repo.get_by_user(user.id, limit=limit, offset=offset)
-    logger.info(f"get_my_notifications: returning {len(notifications)} notifications")
     return [NotifyRead.model_validate(n) for n in notifications]
 
 
-@router.get("/{user_id}", status_code=201)
-async def send_test_notification(
-    request: Request,
-    repo: NotifyRepoDep,
-    user_id: str,
-    title: str = Query(...),
-    message: str = Query(...),
-) -> dict:
-    logger.info(f"send_test_notification: user_id={user_id}, title={title}")
-    connections: ConnectionStorage = request.app.state.connection_storage
-    logger.debug(f"ConnectionStorage: {connections}")
-    service = NotifyService(repo, connections)
-    await service.send_notification(user_id, title, message)
-    logger.info(f"send_test_notification: done for user {user_id}")
-    return {"ok": True}
+@router.post(
+    "/",
+    response_model=NotifyRead,
+    status_code=status.HTTP_201_CREATED,
+    dependencies=[AdminOnly],
+)
+async def send_notification(
+    schema: NotifyCreate, service: NotifyServiceDep
+) -> NotifyRead:
+    """ручная отправка. Изнутри системы уведомления шлёт NotifyService, не HTTP"""
+    notify = await service.create_and_send(
+        user_id=schema.user_id,
+        title=schema.title,
+        message=schema.message,
+        extra_data=schema.extra_data,
+    )
+    return NotifyRead.model_validate(notify)
 
 
 @router.patch("/{notify_id}/read", response_model=NotifyRead)
