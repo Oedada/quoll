@@ -3,23 +3,31 @@ from typing import Annotated
 from fastapi import APIRouter, Depends, Query, Response, status
 
 from quoll.auth.dependencies import (
+    AdminUser,
+    CurrentUser,
+    ManagerUser,
     SessionDep,
     SupervisorUser,
     get_current_user,
     require_roles,
 )
-from quoll.auth.models import Manager, User, UserRole
+from quoll.auth.models import Manager, Superviser, User, UserRole
 from quoll.core import SystemDefaults
+from quoll.core.exceptions import OperationForbiddenException, UserNotFoundException
 from quoll.org import service
 from quoll.org.dependencies import Limit, Offset, OrgRepoDep
 from quoll.org.repository import OrgRepository
 from quoll.org.schemas import (
+    LimitsUpdate,
     ManagerLoadRead,
+    PendingActionRead,
+    ProfileRead,
     RecruitRequest,
     SupervisorCapacityRead,
     SupervisorQuotaRead,
     TeamRead,
     TransferRequest,
+    WorkloadUpdate,
 )
 
 org_router = APIRouter(
@@ -164,3 +172,61 @@ async def release(
         expected_superviser_id=expected_superviser_id,
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+# --- профили и пределы
+
+
+@org_router.get("/profiles/{user_id}", response_model=ProfileRead)
+async def get_profile(
+    user_id: str, viewer: CurrentUser, session: SessionDep, repo: OrgRepoDep
+) -> ProfileRead:
+    """менеджер - себя, руководитель - себя и своих, админ - любого"""
+    user = await session.get(User, user_id)
+    if user is None:
+        raise UserNotFoundException(user_id)
+    own_subordinate = isinstance(user, Manager) and user.superviser_id == viewer.id
+    if viewer.id != user_id and viewer.role != UserRole.ADMIN and not own_subordinate:
+        raise OperationForbiddenException("read this profile")
+
+    profile = ProfileRead.model_validate(user)
+    if isinstance(user, Manager):
+        profile.load = await _read(repo, user.id)
+    if isinstance(user, Superviser):
+        profile.max_subordinates = user.max_subordinates
+        profile.team_size = await repo.team_size(user.id)
+    return profile
+
+
+@org_router.patch("/profiles/{user_id}/limits", status_code=status.HTTP_204_NO_CONTENT)
+async def set_limits(
+    user_id: str, body: LimitsUpdate, admin: AdminUser, session: SessionDep
+):
+    await service.set_limits(
+        session,
+        actor_id=admin.id,
+        user_id=user_id,
+        max_active_projects=body.max_active_projects,
+        max_subordinates=body.max_subordinates,
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@org_router.patch("/profiles/me/workload", response_model=ManagerLoadRead)
+async def set_my_workload(
+    body: WorkloadUpdate, user: ManagerUser, session: SessionDep, repo: OrgRepoDep
+):
+    await service.set_workload_status(
+        session, manager_id=user.id, status=body.manual_workload_status
+    )
+    return await _read(repo, user.id)
+
+
+@org_router.get("/pending-actions", response_model=list[PendingActionRead])
+async def pending_actions(
+    user: Observer,
+    repo: OrgRepoDep,
+    limit: Limit = SystemDefaults.DEFAULT_PAGE_SIZE,
+    offset: Offset = 0,
+):
+    return await repo.pending_actions(user, limit, offset)

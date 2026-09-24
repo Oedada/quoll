@@ -9,7 +9,13 @@ from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.identity_policy import identity_denial, is_incapacitated
 from quoll.auth.keycloak_admin import verify_target
-from quoll.auth.models import Manager, Superviser, User, UserRole
+from quoll.auth.models import (
+    Manager,
+    ManualWorkloadStatus,
+    Superviser,
+    User,
+    UserRole,
+)
 from quoll.core.exceptions import (
     DomainRuleException,
     IdentityDeniedException,
@@ -225,3 +231,80 @@ async def adopt(
     )
     await session.flush()
     return manager
+
+
+async def set_limits(
+    session: AsyncSession,
+    *,
+    actor_id: str,
+    user_id: str,
+    max_active_projects: int | None,
+    max_subordinates: int | None,
+) -> None:
+    """пределы меняет только админ (П12). Понизить ниже текущей загрузки можно:
+    это «больше не давайте», а не «отберите» - уже идущее остаётся"""
+    superviser = await lock_row(session, Superviser, user_id)
+    manager = await lock_row(session, Manager, user_id)
+    users = await lock_rows(session, User, [user_id, actor_id])
+    denial = identity_denial(users.get(actor_id))
+    if denial is not None:
+        raise IdentityDeniedException(*denial)
+    if user_id not in users:
+        raise UserNotFoundException(user_id)
+
+    if max_active_projects is not None and manager is None:
+        raise DomainRuleException(400, "Only a manager has max_active_projects")
+    if max_subordinates is not None and superviser is None:
+        raise DomainRuleException(400, "Only a supervisor has max_subordinates")
+    # схема не пропустит пустое тело, так что одно из двух точно есть
+    target, field, value = (
+        (manager, "max_active_projects", max_active_projects)
+        if manager is not None
+        else (superviser, "max_subordinates", max_subordinates)
+    )
+
+    old = getattr(target, field)
+    setattr(target, field, value)
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=AuditEventType.CAPACITY_LIMIT_CHANGED,
+        target_type=TargetType.MANAGER if manager else TargetType.SUPERVISER,
+        target_id=user_id,
+        old_value={field: old},
+        new_value={field: value},
+    )
+    await session.flush()
+
+
+async def set_workload_status(
+    session: AsyncSession, *, manager_id: str, status: str
+) -> None:
+    """менеджер сам говорит, брать ли ему новые проекты"""
+    manager = await lock_row(session, Manager, manager_id)
+    users = await lock_rows(session, User, [manager_id])
+    denial = identity_denial(users.get(manager_id))
+    if manager is None or denial is not None:
+        raise IdentityDeniedException(*(denial or (403, "Not a manager")))
+    if manager.manual_workload_status == status:
+        return
+    if status == ManualWorkloadStatus.AVAILABLE:
+        used = await InteractionRepository(session).count_capacity_projects(manager_id)
+        # иначе был бы «готов» и тут же SATURATED
+        if used >= manager.max_active_projects:
+            raise DomainRuleException(
+                400, f"Capacity is full: {used} of {manager.max_active_projects}"
+            )
+
+    old = manager.manual_workload_status
+    manager.manual_workload_status = status
+    record(
+        session,
+        actor_id=manager_id,
+        event_type=AuditEventType.WORKLOAD_STATUS_CHANGED,
+        target_type=TargetType.MANAGER,
+        target_id=manager_id,
+        old_value={"manual_workload_status": old},
+        new_value={"manual_workload_status": status},
+    )
+    await session.flush()

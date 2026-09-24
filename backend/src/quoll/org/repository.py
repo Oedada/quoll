@@ -1,12 +1,13 @@
 """Витрины оргструктуры. Всё одним запросом на витрину, загрузка - из
 manager_load_subquery, чтобы числа не расходились с проверками ёмкости"""
 
-from sqlalchemy import ColumnElement, Select, func, not_, select
+from sqlalchemy import ColumnElement, Select, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
 from quoll.auth.identity_policy import incapacitated_expression
-from quoll.auth.models import Manager, Superviser, User
+from quoll.auth.models import Manager, Superviser, User, UserRole
+from quoll.auth.pending_actions import PendingOrgAction
 from quoll.interactions.capacity_policy import (
     EffectiveStatus,
     effective_status_expression,
@@ -171,3 +172,23 @@ class OrgRepository:
     async def team_size(self, superviser_id: str) -> int:
         stmt = select(func.count()).where(Manager.superviser_id == superviser_id)
         return await self.session.scalar(stmt) or 0
+
+    async def pending_actions(
+        self, viewer: User, limit: int, offset: int
+    ) -> list[PendingOrgAction]:
+        """админ видит все задачи, руководитель - поставленные им и по своим"""
+        stmt = select(PendingOrgAction)
+        if viewer.role != UserRole.ADMIN:
+            team = select(Manager.id).where(Manager.superviser_id == viewer.id)
+            stmt = stmt.where(
+                or_(
+                    PendingOrgAction.origin_supervisor_id == viewer.id,
+                    PendingOrgAction.target_id.in_(team),
+                )
+            )
+        stmt = (
+            stmt.order_by(PendingOrgAction.created_at.desc(), PendingOrgAction.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
