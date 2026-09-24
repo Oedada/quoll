@@ -1,14 +1,11 @@
 from typing import Annotated
 
 from fastapi import Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from quoll.db import get_db_session
+from quoll.db import SessionDep
 from quoll.notifications.connection_storage import ConnectionStorage
 from quoll.notifications.repository import NotifyRepository
 from quoll.notifications.service import NotifyService
-
-SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 def get_notify_repo(session: SessionDep) -> NotifyRepository:

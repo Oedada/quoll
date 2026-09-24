@@ -18,9 +18,7 @@ from quoll.auth.repositories import UserRepository
 from quoll.auth.session_service import SessionService
 from quoll.auth.session_store import SessionStore
 from quoll.config import settings
-from quoll.db import get_db_session
-
-SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
+from quoll.db import SessionDep
 
 token_cipher = TokenCipher(settings.session_secret_key)
 

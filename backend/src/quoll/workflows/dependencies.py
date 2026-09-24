@@ -1,16 +1,13 @@
 from typing import Annotated
 
 from fastapi import Depends
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from quoll.db import get_db_session
+from quoll.db import SessionDep
 from quoll.workflows.repository import (
     StageRepository,
     WorkflowRepository,
     WorkflowTransitionRepository,
 )
-
-SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 def get_workflow_repo(session: SessionDep) -> WorkflowRepository:

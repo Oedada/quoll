@@ -4,7 +4,7 @@ from collections.abc import AsyncGenerator
 from datetime import datetime
 from typing import Annotated
 
-from fastapi import Request
+from fastapi import Depends, Request
 from sqlalchemy import DateTime, MetaData, String, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import DeclarativeBase, declared_attr, mapped_column
@@ -51,6 +51,12 @@ async def get_db_session(req: Request) -> AsyncGenerator[AsyncSession]:
             logger.error(f"Error during session, rolling back: {e}")
             await session.rollback()
             raise
+
+
+# scope="function": коммит до отправки ответа. По умолчанию FastAPI выходит из
+# зависимости с yield уже после ответа - клиент получал 200 до коммита, читал
+# следующим запросом старое, а упавший коммит оставлял у него «успех»
+SessionDep = Annotated[AsyncSession, Depends(get_db_session, scope="function")]
 
 
 class Base(DeclarativeBase):

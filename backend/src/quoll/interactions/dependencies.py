@@ -2,11 +2,10 @@ from collections.abc import Callable
 from typing import Annotated
 
 from fastapi import Depends, HTTPException, Path, status
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.dependencies import CurrentUser
 from quoll.auth.models import User
-from quoll.db import get_db_session
+from quoll.db import SessionDep
 from quoll.interactions.access_policy import (
     Ownership,
     can_change,
@@ -19,8 +18,6 @@ from quoll.interactions.repository import (
     UniversityRepository,
     VendorRepository,
 )
-
-SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
 
 def get_university_repo(session: SessionDep) -> UniversityRepository:

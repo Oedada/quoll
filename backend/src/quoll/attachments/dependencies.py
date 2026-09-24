@@ -1,15 +1,12 @@
 from typing import Annotated
 
 from fastapi import Depends, Request
-from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.attachments.models import Attachment
 from quoll.attachments.s3 import S3StorageService
 from quoll.attachments.service import AttachmentService
 from quoll.core.base_repository import BaseRepository
-from quoll.db import get_db_session
-
-SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
+from quoll.db import SessionDep
 
 
 def get_attachment_repo(session: SessionDep) -> BaseRepository[Attachment]:
