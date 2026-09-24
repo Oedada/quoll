@@ -84,6 +84,15 @@ class AssignRequest(AppBaseModel):
     reason: str | None = None
 
 
+class TransitionRequest(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    to_stage_id: int
+    # обязательно, для черновика - null, как expected_owner_id у назначения
+    expected_state_id: int | None
+    comment: str | None = None
+
+
 class InteractionRead(AppBaseModel):
     id: int
     university_id: int

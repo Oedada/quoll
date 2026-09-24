@@ -8,7 +8,7 @@ from quoll.auth.dependencies import (
     get_current_user,
 )
 from quoll.core import SystemDefaults
-from quoll.interactions import project_service
+from quoll.interactions import project_service, transition_service
 from quoll.interactions.access_policy import readable_filter
 from quoll.interactions.dependencies import (
     ChangeableInteraction,
@@ -26,6 +26,7 @@ from quoll.interactions.schemas import (
     InteractionDetailRead,
     InteractionRead,
     InteractionUpdate,
+    TransitionRequest,
     UniversityCreate,
     UniversityRead,
     UniversityUpdate,
@@ -261,6 +262,27 @@ async def assign_interaction(
         manager_id=body.manager_id,
         expected_owner_id=body.expected_owner_id,
         reason=body.reason,
+    )
+
+
+@interactions_router.post(
+    "/{id}/transition",
+    response_model=InteractionRead,
+    summary="Move an interaction along an active workflow edge",
+)
+async def move_interaction(
+    id: InteractionId,
+    body: TransitionRequest,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    return await transition_service.transition(
+        session,
+        interaction_id=id,
+        actor_id=user.id,
+        to_stage_id=body.to_stage_id,
+        expected_state_id=body.expected_state_id,
+        comment=body.comment,
     )
 
 
