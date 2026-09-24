@@ -1,7 +1,8 @@
 from quoll.interactions.capacity_policy import (
+    assert_can_keep_working,
+    assert_can_take_new_work,
     counts_toward_capacity,
     is_open_project,
-    validate_capacity_transition,
 )
 from quoll.interactions.models import Interaction, PauseState, University, Vendor
 from quoll.interactions.repository import (
@@ -45,10 +46,11 @@ __all__ = [
     "VendorRead",
     "VendorRepository",
     "VendorUpdate",
+    "assert_can_keep_working",
+    "assert_can_take_new_work",
     "counts_toward_capacity",
     "interactions_router",
     "is_open_project",
     "universities_router",
-    "validate_capacity_transition",
     "vendors_router",
 ]

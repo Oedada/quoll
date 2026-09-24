@@ -81,8 +81,8 @@ class StorageException(AppException):
 
 
 class ManagerNotActiveException(AppException):
-    def __init__(self, manager_id: str):
-        super().__init__(400, f"Manager '{manager_id}' is not active")
+    def __init__(self, manager_id: str, reason: str = "inactive"):
+        super().__init__(400, f"Manager '{manager_id}' cannot work: {reason}")
         logger.warning(self.message)
 
 
@@ -133,4 +133,20 @@ class PublishedGraphChangeException(AppException):
             f"Cannot change {', '.join(fields)} of a published workflow edge: "
             "deactivate it and create a new one",
         )
+        logger.warning(self.message)
+
+
+class InteractionChangedConcurrentlyException(AppException):
+    def __init__(self, interaction_id: int):
+        super().__init__(
+            409, f"Interaction '{interaction_id}' is being changed concurrently, retry"
+        )
+        logger.warning(self.message)
+
+
+class IdentityDeniedException(AppException):
+    """актора перепроверили под блокировкой, а его уже нельзя пускать"""
+
+    def __init__(self, status_code: int, detail: str):
+        super().__init__(status_code, detail)
         logger.warning(self.message)

@@ -5,7 +5,12 @@ import logging
 from sqlalchemy import ColumnElement, Select, and_, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quoll.auth.models import Manager, ManualWorkloadStatus
+from quoll.auth.models import (
+    IdentitySyncStatus,
+    Manager,
+    ManualWorkloadStatus,
+    RoleTransitionStatus,
+)
 from quoll.core.exceptions import (
     CapacityExceededException,
     ManagerNotActiveException,
@@ -60,27 +65,50 @@ def capacity_count_stmt(manager_id: str) -> Select[tuple[int]]:
     )
 
 
-async def validate_capacity_transition(
-    session: AsyncSession, manager: Manager, delta_slots: int
-) -> None:
-    """проверка перед тем, как повесить на менеджера ещё заявку.
-
-    строка менеджера к этому моменту должна быть уже залокана, иначе
-    между подсчётом и записью влезет кто-то ещё
-    """
-    if delta_slots <= 0:
-        return
+def _assert_can_work(manager: Manager) -> None:
+    """в строю: активен, без конфликта ролей, не в смене роли"""
     if not manager.is_active:
         raise ManagerNotActiveException(manager.id)
-    if manager.manual_workload_status != ManualWorkloadStatus.AVAILABLE:
-        raise ManagerUnavailableException(manager.id)
+    if manager.identity_sync_status != IdentitySyncStatus.OK:
+        raise ManagerNotActiveException(manager.id, "role mapping conflict")
+    if manager.role_transition_status != RoleTransitionStatus.NONE:
+        raise ManagerNotActiveException(manager.id, "role transition in progress")
 
+
+async def _assert_has_capacity(
+    session: AsyncSession, manager: Manager, delta_slots: int
+) -> None:
+    if delta_slots <= 0:
+        return
     current = await session.scalar(capacity_count_stmt(manager.id)) or 0
     if current + delta_slots > manager.max_active_projects:
         raise CapacityExceededException(
             manager.id, current, delta_slots, manager.max_active_projects
         )
-    logger.debug(
-        f"Capacity check passed for manager={manager.id}: "
-        f"{current}+{delta_slots}<={manager.max_active_projects}"
-    )
+
+
+async def assert_can_take_new_work(
+    session: AsyncSession, manager: Manager, delta_slots: int
+) -> None:
+    """менеджеру дают работу: назначение, переоткрытие, передача.
+
+    available проверяется при любой дельте - паузную заявку тоже не отдают
+    тому, кто просил не давать новых. Строка менеджера уже должна быть
+    заблокирована, иначе между подсчётом и записью влезет кто-то ещё
+    """
+    _assert_can_work(manager)
+    if manager.manual_workload_status != ManualWorkloadStatus.AVAILABLE:
+        raise ManagerUnavailableException(manager.id)
+    await _assert_has_capacity(session, manager, delta_slots)
+
+
+async def assert_can_keep_working(
+    session: AsyncSession, manager: Manager, delta_slots: int
+) -> None:
+    """менеджер двигает свою заявку: переход, снятие с паузы.
+
+    unavailable тут не мешает - это «не давайте новых», а не «не трогайте
+    мои». Строка менеджера уже должна быть заблокирована
+    """
+    _assert_can_work(manager)
+    await _assert_has_capacity(session, manager, delta_slots)

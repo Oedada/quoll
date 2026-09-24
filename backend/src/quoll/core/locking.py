@@ -28,6 +28,9 @@ def lock_stmt[ModelType: Base](model: type[ModelType], ident: Any) -> Select:
         select(model)
         .where(model.id == ident)  # pyright: ignore [reportAttributeAccessIssue]
         .with_for_update(of=model.__table__, key_share=True)
+        # объект мог попасть в сессию раньше, до блокировки - без этого
+        # SQLAlchemy отдал бы его как есть, со старыми значениями
+        .execution_options(populate_existing=True)
     )
 
 
