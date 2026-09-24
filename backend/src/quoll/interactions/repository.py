@@ -1,8 +1,9 @@
 import logging
 
-from sqlalchemy import func, or_, select
+from sqlalchemy import ColumnElement, func, or_, select
 from sqlalchemy.orm import selectinload
 
+from quoll.auth.models import Manager
 from quoll.core.base_repository import BaseRepository
 from quoll.core.exceptions import IdNotExistsException
 from quoll.interactions.capacity_policy import (
@@ -58,25 +59,35 @@ class InteractionRepository(BaseRepository[Interaction]):
         logger.debug(f"Interaction with id={interaction_id} and details found")
         return interaction
 
-    async def get_by_university(self, university_id: int) -> list[Interaction]:
-        logger.debug(f"Getting interactions for university_id={university_id}")
+    async def list_visible(
+        self,
+        visibility: ColumnElement[bool],
+        *,
+        university_id: int | None,
+        vendor_id: int | None,
+        limit: int,
+        offset: int,
+    ) -> list[Interaction]:
+        """одним запросом - фильтры и видимость до пагинации, иначе страница
+        приходит неполной"""
+        stmt = select(Interaction).where(visibility)
+        if university_id is not None:
+            stmt = stmt.where(Interaction.university_id == university_id)
+        if vendor_id is not None:
+            stmt = stmt.where(Interaction.vendor_id == vendor_id)
+        # id вторым ключом - при равном времени порядок страниц не плывёт
         stmt = (
-            select(Interaction)
-            .where(Interaction.university_id == university_id)
-            .order_by(Interaction.created_at.desc())
+            stmt.order_by(Interaction.created_at.desc(), Interaction.id.desc())
+            .limit(limit)
+            .offset(offset)
         )
-        res = await self.session.execute(stmt)
-        return list(res.scalars().all())
+        return list((await self.session.execute(stmt)).scalars().all())
 
-    async def get_by_vendor(self, vendor_id: int) -> list[Interaction]:
-        logger.debug(f"Getting interactions for vendor_id={vendor_id}")
-        stmt = (
-            select(Interaction)
-            .where(Interaction.vendor_id == vendor_id)
-            .order_by(Interaction.created_at.desc())
-        )
-        res = await self.session.execute(stmt)
-        return list(res.scalars().all())
+    async def owner_superviser_id(self, owner_id: str | None) -> str | None:
+        if owner_id is None:
+            return None
+        stmt = select(Manager.superviser_id).where(Manager.id == owner_id)
+        return await self.session.scalar(stmt)
 
     async def count_capacity_projects(self, manager_id: str) -> int:
         """сколько слотов занято прямо сейчас"""

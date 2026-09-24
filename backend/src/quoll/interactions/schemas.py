@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import Field
+from pydantic import ConfigDict, Field
 
 from quoll.core.schemas import AppBaseModel
 from quoll.workflows.schemas import StageRead, WorkflowRead
@@ -50,34 +50,40 @@ class VendorRead(VendorBase):
 
 
 # Interaction
-class InteractionBase(AppBaseModel):
+class InteractionCreate(AppBaseModel):
+    # лишнее поле - 422, а не молчаливый игнор: иначе PATCH с owner_id
+    # ответит 200 и ничего не сделает
+    model_config = ConfigDict(extra="forbid")
+
     university_id: int
     vendor_id: int
     it_program: str | None = None
     it_product: str | None = None
+    # только опубликованный - по черновику графа заявке ехать нельзя
     workflow_id: int | None = None
-    state_id: int | None = None
-    history: list[dict[str, Any]] = Field(default_factory=list)
-    owner_id: str | None = None
-
-
-class InteractionCreate(InteractionBase):
-    pass
 
 
 class InteractionUpdate(AppBaseModel):
+    """владелец, стадия и воркфлоу меняются только операциями над заявкой"""
+
+    model_config = ConfigDict(extra="forbid")
+
     university_id: int | None = None
     vendor_id: int | None = None
     it_program: str | None = None
     it_product: str | None = None
-    workflow_id: int | None = None
-    state_id: int | None = None
-    history: list[dict[str, Any]] | None = None
-    owner_id: str | None = None
 
 
-class InteractionRead(InteractionBase):
+class InteractionRead(AppBaseModel):
     id: int
+    university_id: int
+    vendor_id: int
+    it_program: str | None
+    it_product: str | None
+    workflow_id: int | None
+    state_id: int | None
+    owner_id: str | None
+    history: list[dict[str, Any]]
     created_at: datetime
     updated_at: datetime
 

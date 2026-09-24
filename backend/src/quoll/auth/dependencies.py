@@ -122,10 +122,13 @@ def require_roles(*roles: UserRole) -> Callable[[User], User]:
 
 _require_admin = require_roles(UserRole.ADMIN)
 
+_require_supervisor = require_roles(UserRole.SUPERVISER)
+
 AdminUser = Annotated[User, Depends(_require_admin)]
+SupervisorUser = Annotated[User, Depends(_require_supervisor)]
 # для эндпоинтов, которым нужна только проверка, а сам пользователь - нет
 AdminOnly = Depends(_require_admin)
-SupervisorUser = Annotated[User, Depends(require_roles(UserRole.SUPERVISER))]
+SupervisorOnly = Depends(_require_supervisor)
 ManagerUser = Annotated[User, Depends(require_roles(UserRole.MANAGER))]
 StaffUser = Annotated[
     User, Depends(require_roles(UserRole.MANAGER, UserRole.SUPERVISER))

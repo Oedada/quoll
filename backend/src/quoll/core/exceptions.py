@@ -100,3 +100,9 @@ class CapacityExceededException(AppException):
             f"{current}/{maximum} occupied, {requested} more requested",
         )
         logger.warning(self.message)
+
+
+class WorkflowNotPublishedException(AppException):
+    def __init__(self, workflow_id: int):
+        super().__init__(409, f"Workflow '{workflow_id}' is not published")
+        logger.warning(self.message)

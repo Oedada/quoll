@@ -15,6 +15,7 @@ from quoll.core.exceptions import (
     UnknowAuthError,
     UserAlreadyExistsAuthError,
     UserNotFoundException,
+    WorkflowNotPublishedException,
 )
 from quoll.core.locking import lock_row, lock_rows
 from quoll.core.mixins import IdMixin, TimestampMixin
@@ -42,6 +43,7 @@ __all__ = [
     "UnknowAuthError",
     "UserAlreadyExistsAuthError",
     "UserNotFoundException",
+    "WorkflowNotPublishedException",
     "lock_row",
     "lock_rows",
 ]

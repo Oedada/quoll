@@ -1,9 +1,20 @@
 from fastapi import APIRouter, Depends, Path, Query, Response, status
 
-from quoll.auth.dependencies import AdminOnly, get_current_user
+from quoll.auth.dependencies import (
+    AdminOnly,
+    CurrentUser,
+    SupervisorOnly,
+    get_current_user,
+)
 from quoll.core import SystemDefaults
+from quoll.interactions import project_service
+from quoll.interactions.access_policy import readable_filter
 from quoll.interactions.dependencies import (
+    ChangeableInteraction,
+    DeletableInteraction,
     InteractionRepoDep,
+    ReadableInteraction,
+    SessionDep,
     UniversityRepoDep,
     VendorRepoDep,
 )
@@ -192,21 +203,20 @@ async def delete_vendor(
     "/",
     response_model=InteractionRead,
     status_code=status.HTTP_201_CREATED,
-    summary="Create a new interaction",
+    summary="Create a new interaction without an owner",
+    dependencies=[SupervisorOnly],
 )
-async def create_interaction(
-    schema: InteractionCreate,
-    repo: InteractionRepoDep,
-):
-    return await repo.create(schema)
+async def create_interaction(schema: InteractionCreate, session: SessionDep):
+    return await project_service.create_interaction(session, schema)
 
 
 @interactions_router.get(
     "/",
     response_model=list[InteractionRead],
-    summary="List interactions with optional filtering by university or vendor",
+    summary="List interactions visible to the current user",
 )
 async def list_interactions(
+    user: CurrentUser,
     repo: InteractionRepoDep,
     university_id: int | None = Query(
         default=None, ge=1, description="Filter by University ID"
@@ -221,11 +231,13 @@ async def list_interactions(
     ),
     offset: int = Query(default=0, ge=0),
 ):
-    if university_id is not None:
-        return await repo.get_by_university(university_id)
-    if vendor_id is not None:
-        return await repo.get_by_vendor(vendor_id)
-    return await repo.get_all(limit=limit, offset=offset)
+    return await repo.list_visible(
+        readable_filter(user),
+        university_id=university_id,
+        vendor_id=vendor_id,
+        limit=limit,
+        offset=offset,
+    )
 
 
 @interactions_router.get(
@@ -233,24 +245,21 @@ async def list_interactions(
     response_model=InteractionDetailRead,
     summary="Get interaction details with fully hydrated relations",
 )
-async def get_interaction(
-    repo: InteractionRepoDep,
-    id: int = Path(..., ge=1, description="Interaction ID"),
-):
-    return await repo.get_with_details(id)
+async def get_interaction(interaction: ReadableInteraction):
+    return interaction
 
 
 @interactions_router.patch(
     "/{id}",
     response_model=InteractionRead,
-    summary="Partially update an interaction (status, history, etc.)",
+    summary="Update descriptive fields of an interaction",
 )
 async def update_interaction(
     schema: InteractionUpdate,
+    interaction: ChangeableInteraction,
     repo: InteractionRepoDep,
-    id: int = Path(..., ge=1, description="Interaction ID"),
 ):
-    return await repo.update(id, schema)
+    return await repo.update(interaction.id, schema)
 
 
 @interactions_router.delete(
@@ -259,8 +268,7 @@ async def update_interaction(
     summary="Delete an interaction",
 )
 async def delete_interaction(
-    repo: InteractionRepoDep,
-    id: int = Path(..., ge=1, description="Interaction ID"),
+    interaction: DeletableInteraction, repo: InteractionRepoDep
 ):
-    await repo.delete(id)
+    await repo.delete(interaction.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
