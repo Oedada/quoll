@@ -23,7 +23,7 @@ from quoll.auth.dependencies import (
     token_cipher,
 )
 from quoll.auth.login_service import LoginDenied
-from quoll.auth.models import User, user_class_for_role
+from quoll.auth.models import user_class_for_role
 from quoll.auth.repositories import UserRepository
 from quoll.auth.schemas import UserCreate, UserListRead, UserRead, UserUpdate
 from quoll.config import settings
@@ -104,15 +104,7 @@ async def callback(
 
 @users_router.get("/me", response_model=UserRead)
 async def get_me(user: CurrentUser) -> UserRead:
-    return UserRead(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        role=user.role,
-        superviser_id=getattr(user, "superviser_id", None),
-    )
+    return UserRead.model_validate(user)
 
 
 @users_router.get("/", response_model=UserListRead)
@@ -128,17 +120,7 @@ async def list_users(
 ) -> UserListRead:
     users = await user_repo.get_all(limit=limit, offset=offset)
     return UserListRead(
-        users=[
-            UserRead(
-                id=u.id,
-                username=u.username,
-                email=u.email,
-                first_name=u.first_name,
-                last_name=u.last_name,
-                role=u.role,
-            )
-            for u in users
-        ],
+        users=[UserRead.model_validate(u) for u in users],
         limit=limit,
         offset=offset,
     )
@@ -151,15 +133,7 @@ async def get_user(
     user_repo: UserRepository = Depends(get_user_repo),  # noqa: B008
 ) -> UserRead:
     user = await user_repo.get(user_id)
-    return UserRead(
-        id=user.id,
-        username=user.username,
-        email=user.email,
-        first_name=user.first_name,
-        last_name=user.last_name,
-        role=user.role,
-        superviser_id=getattr(user, "superviser_id", None),
-    )
+    return UserRead.model_validate(user)
 
 
 @users_router.post("/", response_model=UserRead, status_code=201)
@@ -179,15 +153,7 @@ async def create_user(
     )
     user_id = await user_repo.create(user, user_data.password)
     created_user = await user_repo.get(user_id)
-    return UserRead(
-        id=created_user.id,
-        username=created_user.username,
-        email=created_user.email,
-        first_name=created_user.first_name,
-        last_name=created_user.last_name,
-        role=created_user.role,
-        superviser_id=getattr(created_user, "superviser_id", None),
-    )
+    return UserRead.model_validate(created_user)
 
 
 @users_router.post(
@@ -209,32 +175,8 @@ async def update_user(
     admin_user: AdminUser,
     user_repo: UserRepository = Depends(get_user_repo),  # noqa: B008
 ) -> UserRead:
-    current_user = await user_repo.get(user_id)
-    updated_user = await user_repo.update(
-        User(
-            id=current_user.id,
-            username=current_user.username,
-            email=user_data.email
-            if user_data.email is not None
-            else current_user.email,
-            first_name=user_data.first_name
-            if user_data.first_name is not None
-            else current_user.first_name,
-            last_name=user_data.last_name
-            if user_data.last_name is not None
-            else current_user.last_name,
-            role=current_user.role,
-        ),
-    )
-    return UserRead(
-        id=updated_user.id,
-        username=updated_user.username,
-        email=updated_user.email,
-        first_name=updated_user.first_name,
-        last_name=updated_user.last_name,
-        role=updated_user.role,
-        superviser_id=getattr(updated_user, "superviser_id", None),
-    )
+    user = await user_repo.update_profile(user_id, user_data)
+    return UserRead.model_validate(user)
 
 
 @users_router.delete("/{user_id}", status_code=204)

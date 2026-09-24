@@ -1,3 +1,5 @@
+from pydantic import ConfigDict
+
 from quoll.auth.models import UserRole
 from quoll.core.schemas import AppBaseModel
 
@@ -15,15 +17,24 @@ class UserCreate(UserBase):
 
 
 class UserUpdate(AppBaseModel):
+    """профиль. Отключение учётки придёт с увольнением в 1.3, не через патч"""
+
+    model_config = ConfigDict(extra="forbid")
+
     email: str | None = None
     first_name: str | None = None
     last_name: str | None = None
-    enabled: bool | None = None
 
 
-class UserRead(UserBase):
+class UserRead(AppBaseModel):
     id: str
+    # в Keycloak логин и почта не у всех, колонки nullable
+    username: str | None
+    email: str | None
+    first_name: str
+    last_name: str
     role: UserRole
+    # есть только у менеджера, у остальных - значение по умолчанию
     superviser_id: str | None = None
 
 

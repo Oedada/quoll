@@ -109,7 +109,8 @@ class User(Base, TimestampMixin):
     email: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
     first_name: Mapped[str_255]
     last_name: Mapped[str_255]
-    # новая запись неактивна, пока Keycloak не подтвердит enabled
+    # по умолчанию неактивна. Заводя учётку сами - при создании и первом входе -
+    # ставим True: Keycloak подтвердил enabled в том же вызове
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", index=True
     )

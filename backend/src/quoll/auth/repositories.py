@@ -1,5 +1,6 @@
 import logging
 
+from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -12,6 +13,7 @@ from quoll.auth.models import (
     UserRole,
     user_class_for_role,
 )
+from quoll.auth.schemas import UserUpdate
 from quoll.config import settings
 from quoll.core import (
     InvalidUserRoleException,
@@ -22,6 +24,13 @@ from quoll.core import (
 )
 
 logger = logging.getLogger(__name__)
+
+# имена полей профиля у нас и в Keycloak
+_KEYCLOAK_PROFILE_FIELDS = {
+    "email": "email",
+    "first_name": "firstName",
+    "last_name": "lastName",
+}
 
 
 class UserRepository:
@@ -132,69 +141,44 @@ class UserRepository:
         return user_id
 
     async def get(self, user_id: str) -> User:
-        logger.debug(f"Getting user with id={user_id}")
-        resp = await self.client.get(url=f"{self.base_url}/users/{user_id}")
-        if resp.status_code == 404:
-            raise UserNotFoundException(user_id)
-        if resp.status_code >= 400:
-            raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
-        resp.raise_for_status()
-        data = resp.json()
-        logger.debug(f"User with id={user_id} found")
+        """из проекции - в Keycloak на чтении не ходим"""
         user = await self.s.get(User, user_id)
         if user is None:
             raise UserNotFoundException(user_id)
-        user.username = data["username"]
-        user.email = data["email"]
         return user
 
     async def get_all(
         self, limit: int = SystemDefaults.DEFAULT_PAGE_SIZE, offset: int = 0
     ) -> list[User]:
-        logger.debug(f"Getting all users with limit={limit}, offset={offset}")
-        resp = await self.client.get(
-            url=f"{self.base_url}/users",
-            params={"max": limit, "first": offset},
+        stmt = (
+            select(User).order_by(User.created_at, User.id).limit(limit).offset(offset)
         )
-        if resp.status_code >= 400:
-            raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
-        resp.raise_for_status()
+        return list((await self.s.execute(stmt)).scalars().all())
 
-        users: list[User] = []
-        for data in resp.json():
-            user_id = data["id"]
-            user = await self.s.get(User, user_id)
-            if user is None:
-                raise UserNotFoundException(user_id)
-            user.email = data["email"]
-            user.username = data["username"]
+    async def update_profile(self, user_id: str, changes: UserUpdate) -> User:
+        """сначала Keycloak, потом проекция: профиль там главный, и сверщик
+        реестра откатил бы правку, сделанную только у нас"""
+        user = await self.get(user_id)
+        fields = changes.model_dump(exclude_unset=True)
+        if not fields:
+            return user
 
-            users.append(user)
-        logger.debug(f"Found {len(users)} users")
-        return users
-
-    async def update(self, updated_user: User) -> User:
-        logger.debug(f"Updating user with id={updated_user.id}")
         resp = await self.client.put(
-            url=f"{self.base_url}/users/{updated_user.id}",
+            url=f"{self.base_url}/users/{user_id}",
             json={
-                "username": updated_user.username,
-                "email": updated_user.email,
+                _KEYCLOAK_PROFILE_FIELDS[name]: value for name, value in fields.items()
             },
         )
         if resp.status_code == 404:
-            raise UserNotFoundException(updated_user.id)
+            raise UserNotFoundException(user_id)
         if resp.status_code >= 400:
             raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
-        user = await self.s.get(User, updated_user.id)
-        if user is None:
-            raise UserNotFoundException(updated_user.id)
-        user.first_name = updated_user.first_name
-        user.last_name = updated_user.last_name
+
+        for name, value in fields.items():
+            setattr(user, name, value)
         await self.s.flush()
-        resp.raise_for_status()
-        logger.info(f"User with id={updated_user.id} updated")
-        return await self.get(updated_user.id)
+        logger.info(f"User with id={user_id} updated")
+        return user
 
     async def delete(self, user_id: str) -> None:
         logger.debug(f"Deleting user with id={user_id}")
