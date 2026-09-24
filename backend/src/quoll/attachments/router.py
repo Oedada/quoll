@@ -3,6 +3,7 @@ from urllib.parse import quote
 
 from fastapi import (
     APIRouter,
+    Depends,
     File,
     Form,
     Path,
@@ -18,8 +19,13 @@ from quoll.attachments.dependencies import (
     AttachmentServiceDep,
 )
 from quoll.attachments.schemas import AttachmentRead, PresignedUrlResponse
+from quoll.auth.dependencies import AdminOnly, get_current_user
 
-attachments_router = APIRouter(prefix="/api/v1/attachments", tags=["Attachments"])
+attachments_router = APIRouter(
+    prefix="/api/v1/attachments",
+    tags=["Attachments"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @attachments_router.post(
@@ -27,6 +33,7 @@ attachments_router = APIRouter(prefix="/api/v1/attachments", tags=["Attachments"
     response_model=AttachmentRead,
     status_code=status.HTTP_201_CREATED,
     summary="Upload an attachment file to S3 and record metadata",
+    dependencies=[AdminOnly],
 )
 async def upload_attachment(
     service: AttachmentServiceDep,
@@ -97,6 +104,7 @@ async def get_attachment_presigned_url(
     "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete an attachment from DB and S3",
+    dependencies=[AdminOnly],
 )
 async def delete_attachment(
     service: AttachmentServiceDep,

@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Path, Query, Response, status
+from fastapi import APIRouter, Depends, Path, Query, Response, status
 
+from quoll.auth.dependencies import AdminOnly, get_current_user
 from quoll.core import SystemDefaults
 from quoll.interactions.dependencies import (
     InteractionRepoDep,
@@ -19,9 +20,21 @@ from quoll.interactions.schemas import (
     VendorUpdate,
 )
 
-universities_router = APIRouter(prefix="/api/v1/universities", tags=["Universities"])
-vendors_router = APIRouter(prefix="/api/v1/vendors", tags=["Vendors"])
-interactions_router = APIRouter(prefix="/api/v1/interactions", tags=["Interactions"])
+universities_router = APIRouter(
+    prefix="/api/v1/universities",
+    tags=["Universities"],
+    dependencies=[Depends(get_current_user)],
+)
+vendors_router = APIRouter(
+    prefix="/api/v1/vendors",
+    tags=["Vendors"],
+    dependencies=[Depends(get_current_user)],
+)
+interactions_router = APIRouter(
+    prefix="/api/v1/interactions",
+    tags=["Interactions"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 # Universities Endpoints
@@ -32,6 +45,7 @@ interactions_router = APIRouter(prefix="/api/v1/interactions", tags=["Interactio
     response_model=UniversityRead,
     status_code=status.HTTP_201_CREATED,
     summary="Register a new university",
+    dependencies=[AdminOnly],
 )
 async def create_university(
     schema: UniversityCreate,
@@ -73,6 +87,7 @@ async def get_university(
     "/{id}",
     response_model=UniversityRead,
     summary="Partially update a university",
+    dependencies=[AdminOnly],
 )
 async def update_university(
     schema: UniversityUpdate,
@@ -86,6 +101,7 @@ async def update_university(
     "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a university",
+    dependencies=[AdminOnly],
 )
 async def delete_university(
     repo: UniversityRepoDep,
@@ -103,6 +119,7 @@ async def delete_university(
     response_model=VendorRead,
     status_code=status.HTTP_201_CREATED,
     summary="Register a new vendor",
+    dependencies=[AdminOnly],
 )
 async def create_vendor(
     schema: VendorCreate,
@@ -144,6 +161,7 @@ async def get_vendor(
     "/{id}",
     response_model=VendorRead,
     summary="Partially update a vendor",
+    dependencies=[AdminOnly],
 )
 async def update_vendor(
     schema: VendorUpdate,
@@ -157,6 +175,7 @@ async def update_vendor(
     "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a vendor",
+    dependencies=[AdminOnly],
 )
 async def delete_vendor(
     repo: VendorRepoDep,

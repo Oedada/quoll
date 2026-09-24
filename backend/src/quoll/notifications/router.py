@@ -2,6 +2,7 @@ import logging
 
 from fastapi import (
     APIRouter,
+    Depends,
     HTTPException,
     Query,
     Request,
@@ -10,7 +11,12 @@ from fastapi import (
     status,
 )
 
-from quoll.auth.dependencies import CurrentUser, WebSocketUser
+from quoll.auth.dependencies import (
+    CurrentUser,
+    WebSocketUser,
+    get_current_user,
+    get_websocket_user,
+)
 from quoll.auth.models import UserRole
 from quoll.notifications.connection_storage import ConnectionStorage
 from quoll.notifications.dependencies import NotifyRepoDep
@@ -19,8 +25,16 @@ from quoll.notifications.service import NotifyService
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(prefix="/notifications", tags=["notifications"])
-ws_router = APIRouter(prefix="/ws", tags=["notifications-ws"])
+router = APIRouter(
+    prefix="/notifications",
+    tags=["notifications"],
+    dependencies=[Depends(get_current_user)],
+)
+ws_router = APIRouter(
+    prefix="/ws",
+    tags=["notifications-ws"],
+    dependencies=[Depends(get_websocket_user)],
+)
 
 
 @router.get("", response_model=list[NotifyRead])

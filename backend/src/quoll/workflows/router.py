@@ -1,5 +1,6 @@
-from fastapi import APIRouter, Path, Query, Response, status
+from fastapi import APIRouter, Depends, Path, Query, Response, status
 
+from quoll.auth.dependencies import AdminOnly, get_current_user
 from quoll.core import SystemDefaults
 from quoll.workflows.dependencies import (
     StageRepoDep,
@@ -19,10 +20,20 @@ from quoll.workflows.schemas import (
     WorkflowUpdate,
 )
 
-workflows_router = APIRouter(prefix="/api/v1/workflows", tags=["Workflows"])
-stages_router = APIRouter(prefix="/api/v1/stages", tags=["Workflow Stages"])
+workflows_router = APIRouter(
+    prefix="/api/v1/workflows",
+    tags=["Workflows"],
+    dependencies=[Depends(get_current_user)],
+)
+stages_router = APIRouter(
+    prefix="/api/v1/stages",
+    tags=["Workflow Stages"],
+    dependencies=[Depends(get_current_user)],
+)
 transitions_router = APIRouter(
-    prefix="/api/v1/transitions", tags=["Workflow Transitions"]
+    prefix="/api/v1/transitions",
+    tags=["Workflow Transitions"],
+    dependencies=[Depends(get_current_user)],
 )
 
 
@@ -34,6 +45,7 @@ transitions_router = APIRouter(
     response_model=WorkflowRead,
     status_code=status.HTTP_201_CREATED,
     summary="Create a new workflow",
+    dependencies=[AdminOnly],
 )
 async def create_workflow(
     schema: WorkflowCreate,
@@ -75,6 +87,7 @@ async def get_workflow(
     "/{id}",
     response_model=WorkflowRead,
     summary="Partially update a workflow",
+    dependencies=[AdminOnly],
 )
 async def update_workflow(
     schema: WorkflowUpdate,
@@ -88,6 +101,7 @@ async def update_workflow(
     "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a workflow",
+    dependencies=[AdminOnly],
 )
 async def delete_workflow(
     repo: WorkflowRepoDep,
@@ -105,6 +119,7 @@ async def delete_workflow(
     response_model=StageRead,
     status_code=status.HTTP_201_CREATED,
     summary="Add a new stage to a workflow",
+    dependencies=[AdminOnly],
 )
 async def create_stage(
     schema: StageCreate,
@@ -141,6 +156,7 @@ async def get_stage(
     "/{id}",
     response_model=StageRead,
     summary="Partially update a stage",
+    dependencies=[AdminOnly],
 )
 async def update_stage(
     schema: StageUpdate,
@@ -154,6 +170,7 @@ async def update_stage(
     "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a stage",
+    dependencies=[AdminOnly],
 )
 async def delete_stage(
     repo: StageRepoDep,
@@ -171,6 +188,7 @@ async def delete_stage(
     response_model=WorkflowTransitionRead,
     status_code=status.HTTP_201_CREATED,
     summary="Create a transition between stages",
+    dependencies=[AdminOnly],
 )
 async def create_transition(
     schema: WorkflowTransitionCreate,
@@ -212,6 +230,7 @@ async def get_transition(
     "/{id}",
     response_model=WorkflowTransitionRead,
     summary="Partially update a transition",
+    dependencies=[AdminOnly],
 )
 async def update_transition(
     schema: WorkflowTransitionUpdate,
@@ -225,6 +244,7 @@ async def update_transition(
     "/{id}/attachments/{attachment_id}",
     status_code=status.HTTP_201_CREATED,
     summary="Link an attachment to a transition",
+    dependencies=[AdminOnly],
 )
 async def link_attachment(
     repo: TransitionRepoDep,
@@ -240,6 +260,7 @@ async def link_attachment(
     "/{id}/attachments/{attachment_id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Unlink an attachment from a transition",
+    dependencies=[AdminOnly],
 )
 async def unlink_attachment(
     repo: TransitionRepoDep,
@@ -255,6 +276,7 @@ async def unlink_attachment(
     "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a transition",
+    dependencies=[AdminOnly],
 )
 async def delete_transition(
     repo: TransitionRepoDep,

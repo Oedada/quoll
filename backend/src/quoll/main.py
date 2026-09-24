@@ -1,5 +1,6 @@
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -153,6 +154,10 @@ async def root():
     return JSONResponse(content={"ok": True})
 
 
+# демо-страница из репозитория, main.py лежит в backend/src/quoll
+DEMO_PAGE = Path(__file__).resolve().parents[3] / "frontend" / "auth-demo.html"
+
+
 @app.get("/front")
 async def frontend():
-    return FileResponse("/home/oedada/dev/Projects/apps/quoll/frontend/auth-demo.html")
+    return FileResponse(DEMO_PAGE)

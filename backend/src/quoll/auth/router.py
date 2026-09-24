@@ -14,6 +14,7 @@ from quoll.auth.dependencies import (
     AdminUser,
     CurrentUser,
     SessionServiceDep,
+    get_current_user,
     get_user_repo,
 )
 from quoll.auth.keycloak_client import keycloak_client
@@ -24,7 +25,11 @@ from quoll.config import settings
 from quoll.core import SystemDefaults
 
 router = APIRouter(tags=["Auth"])
-users_router = APIRouter(prefix="/api/v1/users", tags=["Users"])
+users_router = APIRouter(
+    prefix="/api/v1/users",
+    tags=["Users"],
+    dependencies=[Depends(get_current_user)],
+)
 
 
 @router.get("/")
