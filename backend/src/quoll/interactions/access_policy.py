@@ -5,48 +5,52 @@
 руководители: это общий пул нераспределённой работы. Админ только читает
 """
 
-from sqlalchemy import ColumnElement, or_, select, true
+from dataclasses import dataclass
+
+from sqlalchemy import ColumnElement, exists, or_, select, true
 
 from quoll.auth.identity_policy import is_incapacitated
 from quoll.auth.models import Manager, User, UserRole
-from quoll.interactions.models import Interaction
+from quoll.interactions.models import Interaction, InteractionAssignment
 
 
-def can_read(user: User, owner_id: str | None, owner_superviser_id: str | None) -> bool:
-    # бывшие свои заявки менеджер увидит, когда появится история назначений
+@dataclass(frozen=True)
+class Ownership:
+    """факты о владении заявкой, которые нужны правилам. Собирает их
+    репозиторий или захват области - правила в базу не ходят"""
+
+    owner_id: str | None
+    owner_superviser_id: str | None
+    former_owner_ids: frozenset[str] = frozenset()
+
+
+def can_read(user: User, ownership: Ownership) -> bool:
     if user.role == UserRole.MANAGER:
-        return owner_id == user.id
+        # и бывшие свои - документы проекта нужны и после передачи
+        return ownership.owner_id == user.id or user.id in ownership.former_owner_ids
     if user.role == UserRole.SUPERVISER:
-        return owner_id is None or owner_superviser_id == user.id
+        return ownership.owner_id is None or ownership.owner_superviser_id == user.id
     return True
 
 
-def can_change(
-    user: User, owner_id: str | None, owner_superviser_id: str | None
-) -> bool:
+def can_change(user: User, ownership: Ownership) -> bool:
     if user.role == UserRole.MANAGER:
-        return owner_id == user.id
+        return ownership.owner_id == user.id
     if user.role == UserRole.SUPERVISER:
         # бесхозную может взять в работу любой руководитель
-        return owner_id is None or owner_superviser_id == user.id
+        return ownership.owner_id is None or ownership.owner_superviser_id == user.id
     return False
 
 
-def can_delete(
-    user: User, owner_id: str | None, owner_superviser_id: str | None
-) -> bool:
+def can_delete(user: User, ownership: Ownership) -> bool:
     # проект удаляет руководитель, менеджеру нельзя даже свой
-    return user.role == UserRole.SUPERVISER and can_change(
-        user, owner_id, owner_superviser_id
-    )
+    return user.role == UserRole.SUPERVISER and can_change(user, ownership)
 
 
-def can_pause(
-    user: User, owner_id: str | None, owner_superviser_id: str | None
-) -> bool:
+def can_pause(user: User, ownership: Ownership) -> bool:
     """П11: пока и владелец, и его руководитель. Отдельным именем - если
     аналитики сузят до руководителя, правка будет здесь одной строкой"""
-    return can_change(user, owner_id, owner_superviser_id)
+    return can_change(user, ownership)
 
 
 def can_assign(
@@ -71,7 +75,11 @@ def can_assign(
 def readable_filter(user: User) -> ColumnElement[bool]:
     """то же, что can_read, но для SQL - чтобы пагинация не врала"""
     if user.role == UserRole.MANAGER:
-        return Interaction.owner_id == user.id
+        was_owner = exists().where(
+            InteractionAssignment.interaction_id == Interaction.id,
+            InteractionAssignment.manager_id == user.id,
+        )
+        return or_(Interaction.owner_id == user.id, was_owner)
     if user.role == UserRole.SUPERVISER:
         team = select(Manager.id).where(Manager.superviser_id == user.id)
         return or_(Interaction.owner_id.is_(None), Interaction.owner_id.in_(team))

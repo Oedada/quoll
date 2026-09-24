@@ -19,6 +19,7 @@ from quoll.core.exceptions import (
     InteractionChangedConcurrentlyException,
 )
 from quoll.core.locking import lock_row, lock_rows
+from quoll.interactions.access_policy import Ownership
 from quoll.interactions.models import Interaction
 
 MAX_ATTEMPTS = 3
@@ -33,6 +34,14 @@ class InteractionScope:
     # лежат в users
     owner_superviser: User | None
     managers: dict[str, Manager]
+
+    @property
+    def ownership(self) -> Ownership:
+        """факты для правил - из заблокированных строк, а не прочитанных раньше"""
+        return Ownership(
+            self.interaction.owner_id,
+            self.owner.superviser_id if self.owner else None,
+        )
 
 
 async def _read_owner(session: AsyncSession, interaction_id: int) -> str | None:

@@ -7,7 +7,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quoll.auth.dependencies import CurrentUser
 from quoll.auth.models import User
 from quoll.db import get_db_session
-from quoll.interactions.access_policy import can_change, can_delete, can_read
+from quoll.interactions.access_policy import (
+    Ownership,
+    can_change,
+    can_delete,
+    can_read,
+)
 from quoll.interactions.models import Interaction
 from quoll.interactions.repository import (
     InteractionRepository,
@@ -45,7 +50,7 @@ def _forbidden(action: str) -> HTTPException:
     )
 
 
-Predicate = Callable[[User, str | None, str | None], bool]
+Predicate = Callable[[User, Ownership], bool]
 
 
 def _guarded(predicate: Predicate, action: str, *, details: bool = False):
@@ -55,8 +60,7 @@ def _guarded(predicate: Predicate, action: str, *, details: bool = False):
         id: InteractionId, user: CurrentUser, repo: InteractionRepoDep
     ) -> Interaction:
         interaction = await (repo.get_with_details(id) if details else repo.get(id))
-        owner_superviser_id = await repo.owner_superviser_id(interaction.owner_id)
-        if not predicate(user, interaction.owner_id, owner_superviser_id):
+        if not predicate(user, await repo.ownership(interaction)):
             raise _forbidden(action)
         return interaction
 

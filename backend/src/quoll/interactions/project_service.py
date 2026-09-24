@@ -214,8 +214,7 @@ async def _pausable(
     """общее у паузы и снятия: права и стадия, на которой пауза имеет смысл"""
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     interaction = scope.interaction
-    owner_superviser_id = scope.owner.superviser_id if scope.owner else None
-    if not can_pause(scope.actor, interaction.owner_id, owner_superviser_id):
+    if not can_pause(scope.actor, scope.ownership):
         raise OperationForbiddenException("pause this interaction")
     stage = await _stage_of(session, interaction)
     # пауза управляет слотом, а у черновика его нет
@@ -236,3 +235,11 @@ def _check_pause_term(until: datetime) -> None:
             f"Pause term must be {SystemDefaults.MIN_PAUSE_HOURS}-"
             f"{SystemDefaults.MAX_PAUSE_HOURS} hours ahead",
         )
+
+
+async def delete_draft(session: AsyncSession, interaction: Interaction) -> None:
+    """удалить можно только черновик, ни разу не встававший на стадию - у него
+    нет истории. Остальное закрывают: каскад стёр бы историю и назначения"""
+    if interaction.state_id is not None:
+        raise DomainRuleException(409, "Only a draft can be deleted, close the rest")
+    await InteractionRepository(session).delete(interaction.id)

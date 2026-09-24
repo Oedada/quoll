@@ -43,8 +43,7 @@ async def transition(
     if interaction.state_id != expected_state_id:
         raise StaleStateException("Interaction stage", interaction.state_id)
 
-    owner_superviser_id = scope.owner.superviser_id if scope.owner else None
-    if not can_change(scope.actor, interaction.owner_id, owner_superviser_id):
+    if not can_change(scope.actor, scope.ownership):
         raise OperationForbiddenException("move this interaction")
 
     current = (

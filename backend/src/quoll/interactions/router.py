@@ -24,6 +24,7 @@ from quoll.interactions.schemas import (
     AssignRequest,
     InteractionCreate,
     InteractionDetailRead,
+    InteractionHistoryRead,
     InteractionRead,
     InteractionUpdate,
     PauseRequest,
@@ -337,13 +338,25 @@ async def update_interaction(
     return await repo.update(interaction.id, schema)
 
 
+@interactions_router.get(
+    "/{id}/history",
+    response_model=InteractionHistoryRead,
+    summary="Stage moves and assignments of an interaction",
+)
+async def interaction_history(
+    interaction: ReadableInteraction, repo: InteractionRepoDep
+) -> InteractionHistoryRead:
+    return InteractionHistoryRead(
+        stages=await repo.stage_history(interaction.id),
+        assignments=await repo.assignments(interaction.id),
+    )
+
+
 @interactions_router.delete(
     "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete an interaction",
+    summary="Delete a draft that never entered a stage",
 )
-async def delete_interaction(
-    interaction: DeletableInteraction, repo: InteractionRepoDep
-):
-    await repo.delete(interaction.id)
+async def delete_interaction(interaction: DeletableInteraction, session: SessionDep):
+    await project_service.delete_draft(session, interaction)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

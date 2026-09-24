@@ -6,11 +6,18 @@ from sqlalchemy.orm import selectinload
 from quoll.auth.models import Manager
 from quoll.core.base_repository import BaseRepository
 from quoll.core.exceptions import IdNotExistsException
+from quoll.interactions.access_policy import Ownership
 from quoll.interactions.capacity_policy import (
     capacity_count_stmt,
     open_projects_filter_expression,
 )
-from quoll.interactions.models import Interaction, University, Vendor
+from quoll.interactions.models import (
+    Interaction,
+    InteractionAssignment,
+    InteractionStageHistory,
+    University,
+    Vendor,
+)
 from quoll.workflows.models import Stage
 
 logger = logging.getLogger(__name__)
@@ -83,11 +90,35 @@ class InteractionRepository(BaseRepository[Interaction]):
         )
         return list((await self.session.execute(stmt)).scalars().all())
 
-    async def owner_superviser_id(self, owner_id: str | None) -> str | None:
-        if owner_id is None:
-            return None
-        stmt = select(Manager.superviser_id).where(Manager.id == owner_id)
-        return await self.session.scalar(stmt)
+    async def ownership(self, interaction: Interaction) -> Ownership:
+        superviser_id = None
+        if interaction.owner_id is not None:
+            superviser_id = await self.session.scalar(
+                select(Manager.superviser_id).where(Manager.id == interaction.owner_id)
+            )
+        former = await self.session.scalars(
+            select(InteractionAssignment.manager_id).where(
+                InteractionAssignment.interaction_id == interaction.id,
+                InteractionAssignment.manager_id.is_not(None),
+            )
+        )
+        return Ownership(interaction.owner_id, superviser_id, frozenset(former))
+
+    async def stage_history(self, interaction_id: int) -> list[InteractionStageHistory]:
+        stmt = (
+            select(InteractionStageHistory)
+            .where(InteractionStageHistory.interaction_id == interaction_id)
+            .order_by(InteractionStageHistory.created_at, InteractionStageHistory.id)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
+
+    async def assignments(self, interaction_id: int) -> list[InteractionAssignment]:
+        stmt = (
+            select(InteractionAssignment)
+            .where(InteractionAssignment.interaction_id == interaction_id)
+            .order_by(InteractionAssignment.assigned_at, InteractionAssignment.id)
+        )
+        return list((await self.session.execute(stmt)).scalars().all())
 
     async def count_capacity_projects(self, manager_id: str) -> int:
         """сколько слотов занято прямо сейчас"""

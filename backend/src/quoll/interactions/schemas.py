@@ -122,3 +122,28 @@ class InteractionDetailRead(InteractionRead):
     vendor: VendorRead
     workflow: WorkflowRead | None = None
     state: StageRead | None = None
+
+
+class StageHistoryRead(AppBaseModel):
+    from_stage_id: int | None
+    to_stage_id: int
+    transition_id: int | None
+    kind: str
+    actor_id: str | None
+    comment: str | None
+    created_at: datetime
+
+
+class AssignmentRead(AppBaseModel):
+    manager_id: str | None
+    assigned_at: datetime
+    released_at: datetime | None
+    reason: str | None
+
+
+class InteractionHistoryRead(AppBaseModel):
+    """два списка, а не одна лента: у записей разные поля, по времени их
+    сливает клиент"""
+
+    stages: list[StageHistoryRead]
+    assignments: list[AssignmentRead]
