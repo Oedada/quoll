@@ -26,6 +26,7 @@ from quoll.interactions.schemas import (
     InteractionDetailRead,
     InteractionRead,
     InteractionUpdate,
+    PauseRequest,
     TransitionRequest,
     UniversityCreate,
     UniversityRead,
@@ -284,6 +285,34 @@ async def move_interaction(
         expected_state_id=body.expected_state_id,
         comment=body.comment,
     )
+
+
+@interactions_router.post(
+    "/{id}/pause",
+    response_model=InteractionRead,
+    summary="Pause an interaction or replace its pause",
+)
+async def pause_interaction(
+    id: InteractionId, body: PauseRequest, user: CurrentUser, session: SessionDep
+):
+    return await project_service.pause(
+        session,
+        interaction_id=id,
+        actor_id=user.id,
+        until=body.until,
+        comment=body.comment,
+    )
+
+
+@interactions_router.post(
+    "/{id}/unpause",
+    response_model=InteractionRead,
+    summary="Resume a paused interaction",
+)
+async def unpause_interaction(
+    id: InteractionId, user: CurrentUser, session: SessionDep
+):
+    return await project_service.unpause(session, interaction_id=id, actor_id=user.id)
 
 
 @interactions_router.get(

@@ -41,6 +41,14 @@ def can_delete(
     )
 
 
+def can_pause(
+    user: User, owner_id: str | None, owner_superviser_id: str | None
+) -> bool:
+    """П11: пока и владелец, и его руководитель. Отдельным именем - если
+    аналитики сузят до руководителя, правка будет здесь одной строкой"""
+    return can_change(user, owner_id, owner_superviser_id)
+
+
 def can_assign(
     actor: User,
     owner: Manager | None,

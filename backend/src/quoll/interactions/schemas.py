@@ -93,6 +93,14 @@ class TransitionRequest(AppBaseModel):
     comment: str | None = None
 
 
+class PauseRequest(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # до какого момента; null - бессрочно
+    until: datetime | None = None
+    comment: str = Field(min_length=1)
+
+
 class InteractionRead(AppBaseModel):
     id: int
     university_id: int

@@ -18,3 +18,5 @@ class SystemDefaults:
     # постраничная выдача списков
     DEFAULT_PAGE_SIZE = 50
     MAX_PAGE_SIZE = 100
+    MIN_PAUSE_HOURS = 1
+    MAX_PAUSE_HOURS = 720
