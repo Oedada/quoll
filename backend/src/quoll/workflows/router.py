@@ -2,7 +2,9 @@ from fastapi import APIRouter, Depends, Path, Query, Response, status
 
 from quoll.auth.dependencies import AdminOnly, get_current_user
 from quoll.core import SystemDefaults
+from quoll.workflows import workflow_service
 from quoll.workflows.dependencies import (
+    SessionDep,
     StageRepoDep,
     TransitionRepoDep,
     WorkflowRepoDep,
@@ -244,10 +246,10 @@ async def get_transition(
 )
 async def update_transition(
     schema: WorkflowTransitionUpdate,
-    repo: TransitionRepoDep,
+    session: SessionDep,
     id: int = Path(..., ge=1, description="Transition ID"),
 ):
-    return await repo.update(id, schema)
+    return await workflow_service.update_transition(session, id, schema)
 
 
 @transitions_router.post(

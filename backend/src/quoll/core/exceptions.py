@@ -124,3 +124,13 @@ class LoginFlowException(AppException):
     def __init__(self, reason: str):
         super().__init__(400, f"Login flow rejected: {reason}")
         logger.warning(self.message)
+
+
+class PublishedGraphChangeException(AppException):
+    def __init__(self, fields: list[str]):
+        super().__init__(
+            409,
+            f"Cannot change {', '.join(fields)} of a published workflow edge: "
+            "deactivate it and create a new one",
+        )
+        logger.warning(self.message)
