@@ -1,16 +1,21 @@
 """Блокировки строк в едином порядке.
 
-Порядок: Superviser -> Manager -> User -> Interaction -> PendingOrgAction ->
-Workflow -> Stage, внутри уровня по возрастанию id. Иначе дедлок.
+Порядок: Superviser -> Admin -> Manager -> User -> Interaction ->
+InteractionRequest -> PendingOrgAction -> Workflow -> WorkflowTransition ->
+Stage, внутри уровня по возрастанию id. Иначе дедлок.
 
 select(Manager).with_for_update() не годится - Manager наследует User, и запрос
-блокирует ещё и строку users, причём раньше. Поэтому везде FOR UPDATE OF.
+блокирует ещё и строку users, причём раньше. Поэтому везде FOR ... OF.
+
+Режим FOR NO KEY UPDATE, а не FOR UPDATE: ключи у нас не меняются, а FOR UPDATE
+конфликтует с FOR KEY SHARE, который берёт проверка внешнего ключа. С ним
+вставка строки со ссылкой на заблокированную ждала бы - и ловила дедлоки
 """
 
 import logging
 from typing import Any
 
-from sqlalchemy import select
+from sqlalchemy import Select, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.db import Base
@@ -18,15 +23,20 @@ from quoll.db import Base
 logger = logging.getLogger(__name__)
 
 
+def lock_stmt[ModelType: Base](model: type[ModelType], ident: Any) -> Select:
+    return (
+        select(model)
+        .where(model.id == ident)  # pyright: ignore [reportAttributeAccessIssue]
+        .with_for_update(of=model.__table__, key_share=True)
+    )
+
+
 async def lock_row[ModelType: Base](
     session: AsyncSession, model: type[ModelType], ident: Any
 ) -> ModelType | None:
     """заблокировать одну строку нужного уровня"""
     logger.debug(f"Locking {model.__name__} id={ident}")
-    stmt = (
-        select(model).where(model.id == ident).with_for_update(of=model.__table__)  # pyright: ignore [reportAttributeAccessIssue]
-    )
-    return (await session.execute(stmt)).scalar_one_or_none()
+    return (await session.execute(lock_stmt(model, ident))).scalar_one_or_none()
 
 
 async def lock_rows[ModelType: Base](
