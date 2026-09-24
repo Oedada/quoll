@@ -1,13 +1,17 @@
+from datetime import datetime
 from typing import TYPE_CHECKING
 
 from sqlalchemy import (
     JSON,
     Boolean,
     CheckConstraint,
+    DateTime,
     ForeignKey,
+    Index,
     Integer,
     Text,
     UniqueConstraint,
+    text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -62,6 +66,10 @@ class Stage(Base, IdMixin, TimestampMixin):
     consumes_capacity: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true", index=True
     )
+    # стадию не удаляют, а архивируют: на неё ссылаются история и документы
+    archived_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     workflow: Mapped[Workflow] = relationship(back_populates="stages")
 
@@ -76,6 +84,29 @@ class TransitionAttachment(Base):
 
 
 class WorkflowTransition(Base, IdMixin, TimestampMixin):
+    __table_args__ = (
+        # петля из стадии в неё же бессмысленна и дала бы цикл блокировок
+        # с архивацией - см. core/locking.py
+        CheckConstraint(
+            "from_stage_id IS DISTINCT FROM to_stage_id", name="chk_transition_no_loop"
+        ),
+        # начальная стадия - цель ребра из NULL, и она одна (П3)
+        Index(
+            "uq_transitions_one_start",
+            "workflow_id",
+            unique=True,
+            postgresql_where=text("from_stage_id IS NULL AND is_active"),
+        ),
+        Index(
+            "uq_transitions_active_edge",
+            "workflow_id",
+            "from_stage_id",
+            "to_stage_id",
+            unique=True,
+            postgresql_where=text("is_active"),
+        ),
+    )
+
     workflow_id: Mapped[int] = mapped_column(
         ForeignKey("workflows.id", ondelete="CASCADE"), index=True
     )

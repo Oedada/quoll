@@ -1,8 +1,12 @@
 """Блокировки строк в едином порядке.
 
 Порядок: Superviser -> Admin -> Manager -> User -> Interaction ->
-InteractionRequest -> PendingOrgAction -> Workflow -> WorkflowTransition ->
-Stage, внутри уровня по возрастанию id. Иначе дедлок.
+InteractionRequest -> PendingOrgAction -> Workflow -> Stage ->
+WorkflowTransition, внутри уровня по возрастанию id. Иначе дедлок.
+
+стадия раньше ребра: переход берёт целевую стадию, потом ребро, а архивация
+стадии деактивирует её рёбра последними. Архивация переносит заявки уже после
+своей стадии - цикла нет, пока петли из стадии в неё же запрещены CHECK-ом
 
 select(Manager).with_for_update() не годится - Manager наследует User, и запрос
 блокирует ещё и строку users, причём раньше. Поэтому везде FOR ... OF.

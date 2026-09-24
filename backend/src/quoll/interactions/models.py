@@ -14,6 +14,7 @@ from sqlalchemy import (
     Integer,
     String,
     Text,
+    UniqueConstraint,
     text,
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
@@ -199,3 +200,121 @@ class InteractionAssignment(Base):
         DateTime(timezone=True), nullable=True
     )
     reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class RequestKind(StrEnum):
+    TRANSFER = "TRANSFER"
+    CLOSE = "CLOSE"
+
+
+class RequestStatus(StrEnum):
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
+
+
+class InteractionRequest(Base):
+    """просьба менеджера руководителю: передать проект или закрыть досрочно.
+    Решает руководитель - кому передать и закрывать ли (П8)"""
+
+    __table_args__ = (
+        CheckConstraint("kind IN ('TRANSFER', 'CLOSE')", name="chk_request_kind"),
+        CheckConstraint(
+            "status IN ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED')",
+            name="chk_request_status",
+        ),
+        # у закрытия цель - стадия, у передачи - предложение менеджера, не стадия
+        CheckConstraint(
+            "kind <> 'CLOSE' OR (target_stage_id IS NOT NULL "
+            "AND target_manager_id IS NULL)",
+            name="chk_request_close_target",
+        ),
+        CheckConstraint(
+            "kind <> 'TRANSFER' OR target_stage_id IS NULL",
+            name="chk_request_transfer_target",
+        ),
+        # решено ровно тогда, когда не ждёт. По времени, а не по decided_by -
+        # его обнулит удаление пользователя
+        CheckConstraint(
+            "(status = 'PENDING') = (decided_at IS NULL)",
+            name="chk_request_decided",
+        ),
+        Index(
+            "uq_interaction_requests_pending",
+            "interaction_id",
+            "kind",
+            unique=True,
+            postgresql_where=text("status = 'PENDING'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    interaction_id: Mapped[int] = mapped_column(
+        ForeignKey("interactions.id", ondelete="CASCADE"), index=True
+    )
+    kind: Mapped[str] = mapped_column(String(20))
+    requested_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    # владелец на момент подачи - сменился, и просьба устарела
+    from_owner_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    target_manager_id: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    target_stage_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stages.id", ondelete="RESTRICT"), nullable=True
+    )
+    reason: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(
+        String(20), default=RequestStatus.PENDING, server_default="PENDING"
+    )
+    decided_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    decision_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[created_at_dt]
+
+
+class InteractionDocument(Base):
+    """файл проекта, приложенный на стадии заявки. Новая версия ссылается на
+    прежнюю, прежняя остаётся - «уходит вниз и сереет»"""
+
+    __table_args__ = (
+        # цель составного ключа ниже: версия - только из той же заявки
+        UniqueConstraint("id", "interaction_id", name="uq_documents_id_interaction"),
+        ForeignKeyConstraint(
+            ["replaces_document_id", "interaction_id"],
+            ["interaction_documents.id", "interaction_documents.interaction_id"],
+            # только ссылку: interaction_id обнулять нельзя
+            ondelete="SET NULL (replaces_document_id)",
+            name="fk_documents_replaces_same_interaction",
+        ),
+        # у версии один преемник - иначе цепочка раздвоится
+        Index(
+            "uq_documents_replaces",
+            "replaces_document_id",
+            unique=True,
+            postgresql_where=text("replaces_document_id IS NOT NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    interaction_id: Mapped[int] = mapped_column(
+        ForeignKey("interactions.id", ondelete="CASCADE"), index=True
+    )
+    # документ без файла бессмыслен, и одно вложение - один документ
+    attachment_id: Mapped[int] = mapped_column(
+        ForeignKey("attachments.id", ondelete="CASCADE"), unique=True
+    )
+    stage_id: Mapped[int] = mapped_column(ForeignKey("stages.id", ondelete="RESTRICT"))
+    uploaded_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    replaces_document_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    created_at: Mapped[created_at_dt]
