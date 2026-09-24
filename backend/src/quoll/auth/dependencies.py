@@ -12,12 +12,8 @@ from fastapi import (
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from quoll.auth.crypto import TokenCipher
-from quoll.auth.models import (
-    IdentitySyncStatus,
-    RoleTransitionStatus,
-    User,
-    UserRole,
-)
+from quoll.auth.identity_policy import identity_denial
+from quoll.auth.models import User, UserRole
 from quoll.auth.repositories import UserRepository
 from quoll.auth.session_service import SessionService
 from quoll.auth.session_store import SessionStore
@@ -26,12 +22,12 @@ from quoll.db import get_db_session
 
 SessionDep = Annotated[AsyncSession, Depends(get_db_session)]
 
-_cipher = TokenCipher(settings.session_secret_key)
+token_cipher = TokenCipher(settings.session_secret_key)
 
 
 def build_session_service(session_maker: async_sessionmaker) -> SessionService:
     """отдельно от Depends - websocket-у Request не отдают"""
-    return SessionService(SessionStore(session_maker), _cipher)
+    return SessionService(SessionStore(session_maker), token_cipher)
 
 
 def get_session_service(req: Request) -> SessionService:
@@ -60,18 +56,6 @@ async def _load_user(
     return await db.get(User, session.user_id)
 
 
-def _identity_denial(user: User | None) -> tuple[int, str] | None:
-    """почему пользователя нельзя пускать, или None, если можно"""
-    if user is None or not user.is_active:
-        return status.HTTP_401_UNAUTHORIZED, "Not authenticated"
-    if user.identity_sync_status != IdentitySyncStatus.OK:
-        return status.HTTP_403_FORBIDDEN, "Account role mapping is inconsistent"
-    # П8 - на время смены роли учётка блокируется полностью, чтение тоже
-    if user.role_transition_status != RoleTransitionStatus.NONE:
-        return status.HTTP_409_CONFLICT, "Role transition in progress"
-    return None
-
-
 async def get_current_user(
     req: Request,
     db: SessionDep,
@@ -83,7 +67,7 @@ async def get_current_user(
     чаще раза в интервал сверки
     """
     user = await _load_user(req.cookies.get(SESSION_COOKIE), session_service, db)
-    denial = _identity_denial(user)
+    denial = identity_denial(user)
     if denial is not None:
         raise HTTPException(*denial)
     return user
@@ -97,7 +81,7 @@ async def get_websocket_user(websocket: WebSocket) -> User:
         user = await _load_user(
             websocket.cookies.get(SESSION_COOKIE), build_session_service(maker), db
         )
-    denial = _identity_denial(user)
+    denial = identity_denial(user)
     if denial is not None:
         raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason=denial[1])
     return user

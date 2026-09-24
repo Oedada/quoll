@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     session_cookie_secure: bool = True
     session_revalidate_seconds: int = 300
     session_revalidate_hard_limit_seconds: int = 900
+    # куда вернуть браузер после входа
+    post_login_redirect_url: str = "/front"
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

@@ -106,3 +106,21 @@ class WorkflowNotPublishedException(AppException):
     def __init__(self, workflow_id: int):
         super().__init__(409, f"Workflow '{workflow_id}' is not published")
         logger.warning(self.message)
+
+
+class IdentityProviderUnavailableException(AppException):
+    def __init__(self, details: str = ""):
+        super().__init__(503, "Identity provider is unavailable")
+        logger.error(f"{self.message}: {details}")
+
+
+class InvalidAuthorizationCodeException(AppException):
+    def __init__(self, provider_status: int):
+        super().__init__(400, "Authorization code is invalid or expired")
+        logger.warning(f"{self.message} (provider answered {provider_status})")
+
+
+class LoginFlowException(AppException):
+    def __init__(self, reason: str):
+        super().__init__(400, f"Login flow rejected: {reason}")
+        logger.warning(self.message)

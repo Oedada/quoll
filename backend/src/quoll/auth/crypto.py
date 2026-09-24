@@ -20,12 +20,12 @@ class TokenCipher:
     def encrypt(self, plaintext: str) -> str:
         return self._fernet.encrypt(plaintext.encode()).decode()
 
-    def decrypt(self, ciphertext: str) -> str | None:
+    def decrypt(self, ciphertext: str, ttl: int | None = None) -> str | None:
         """None, если расшифровать нечем - ключ потеряли
-        закрываем сессию
+        закрываем сессию. ttl в секундах - старше не принимаем
         """
         try:
-            return self._fernet.decrypt(ciphertext.encode()).decode()
+            return self._fernet.decrypt(ciphertext.encode(), ttl=ttl).decode()
         except InvalidToken:
-            logger.warning("Session refresh token could not be decrypted")
+            logger.warning("Encrypted value could not be decrypted or expired")
             return None

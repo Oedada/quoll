@@ -1,9 +1,17 @@
 import logging
 
+from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.keycloak_client import keycloak_client
-from quoll.auth.models import Admin, Manager, Superviser, User, UserRole
+from quoll.auth.models import (
+    Admin,
+    Manager,
+    Superviser,
+    User,
+    UserRole,
+    user_class_for_role,
+)
 from quoll.config import settings
 from quoll.core import (
     InvalidUserRoleException,
@@ -35,6 +43,28 @@ class UserRepository:
                 raise InvalidUserRoleException(manager_id)
         else:
             raise InvalidUserRoleException(manager_id)
+
+    async def ensure_projection(
+        self, user_id: str, role: UserRole, profile: dict[str, str | None]
+    ) -> User:
+        """завести проекцию при первом входе, если её ещё нет.
+
+        идемпотентно: заводят двое - вход и сверщик реестра, и двойной колбэк
+        или гонка с ним иначе дали бы IntegrityError
+        """
+        users = User.__table__
+        inserted = await self.s.scalar(
+            pg_insert(users)
+            .values(id=user_id, role=role, is_active=True, **profile)
+            .on_conflict_do_nothing(index_elements=[users.c.id])
+            .returning(users.c.id)
+        )
+        if inserted is not None:
+            # строку подтипа только если users вставили мы - иначе она уже есть
+            subtype = user_class_for_role(role).__table__
+            await self.s.execute(pg_insert(subtype).values(id=user_id))
+            logger.info(f"Projection created on first login for user_id={user_id}")
+        return await self.s.get(User, user_id)
 
     async def find_id_by_username(self, username: str) -> str | None:
         """Идентификатор выдаёт Keycloak, поэтому найти уже созданную учётку

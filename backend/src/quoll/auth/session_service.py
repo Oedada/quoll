@@ -10,8 +10,13 @@ import httpx
 from quoll.auth.crypto import TokenCipher
 from quoll.auth.keycloak_client import keycloak_client
 from quoll.auth.models import Session
+from quoll.auth.roles import application_roles
 from quoll.auth.session_store import SessionStore, hash_session_key
 from quoll.config import settings
+from quoll.core.exceptions import (
+    IdentityProviderUnavailableException,
+    InvalidAuthorizationCodeException,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,29 +42,38 @@ class SessionService:
         self.store = store
         self.cipher = cipher
 
-    async def create_from_code(self, code: str, redirect_uri: str) -> tuple[str, int]:
-        """обменять код на токены и завести сессию.
-
-        возвращает сырой ключ для куки и её срок.
-        """
+    async def exchange_code(
+        self, code: str, redirect_uri: str, code_verifier: str
+    ) -> dict[str, Any]:
+        """обменять код авторизации на токены"""
         logger.debug("Exchanging authorization code for tokens")
-        response = await keycloak_client.oidc_client.post(
-            keycloak_client.token_url,
-            data={
-                "grant_type": "authorization_code",
-                "code": code,
-                "redirect_uri": redirect_uri,
-                "client_id": keycloak_client.id,
-                "client_secret": keycloak_client.secret,
-            },
-        )
-        response.raise_for_status()
-        tokens = response.json()
+        try:
+            response = await keycloak_client.oidc_client.post(
+                keycloak_client.token_url,
+                data={
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": redirect_uri,
+                    "code_verifier": code_verifier,
+                    "client_id": keycloak_client.id,
+                    "client_secret": keycloak_client.secret,
+                },
+            )
+        except httpx.HTTPError as err:
+            raise IdentityProviderUnavailableException(str(err)) from err
+        if response.status_code >= 500:
+            raise IdentityProviderUnavailableException(str(response.status_code))
+        if response.status_code >= 400:
+            # просроченный или уже использованный код, неверный verifier
+            raise InvalidAuthorizationCodeException(response.status_code)
+        return response.json()
 
-        user_id = decode_unverified_claims(tokens["access_token"])["sub"]
+    async def start_session(
+        self, user_id: str, tokens: dict[str, Any]
+    ) -> tuple[str, int]:
+        """завести сессию. возвращает сырой ключ для куки и её срок"""
         raw_key = secrets.token_urlsafe(64)
         lifetime = self._refresh_lifetime(tokens)
-
         await self.store.create(
             key_hash=hash_session_key(raw_key),
             user_id=user_id,
@@ -155,6 +169,7 @@ class SessionService:
             raise SessionRevokedError
 
         tokens = response.json()
+        self._warn_on_role_count(session.user_id, tokens)
         await self.store.apply_validation(
             session.id,
             refresh_token=self.cipher.encrypt(
@@ -163,6 +178,18 @@ class SessionService:
             expires_at=datetime.now(UTC) + self._refresh_lifetime(tokens),
         )
         session.last_validated_at = datetime.now(UTC)
+
+    @staticmethod
+    def _warn_on_role_count(user_id: str, tokens: dict[str, Any]) -> None:
+        """в 1.2 только сигналим - авторитетно проекцию догоняет сверщик реестра"""
+        access_token = tokens.get("access_token")
+        if access_token is None:
+            return
+        roles = application_roles(decode_unverified_claims(access_token))
+        if len(roles) != 1:
+            logger.warning(
+                f"User {user_id} has {len(roles)} application roles in Keycloak: {roles}"
+            )
 
     @staticmethod
     def _refresh_lifetime(tokens: dict[str, Any]) -> timedelta:
