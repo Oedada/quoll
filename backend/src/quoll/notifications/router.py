@@ -2,7 +2,6 @@ import logging
 
 from fastapi import (
     APIRouter,
-    Depends,
     HTTPException,
     Query,
     Request,
@@ -10,11 +9,9 @@ from fastapi import (
     WebSocketDisconnect,
     status,
 )
-from sqlalchemy.ext.asyncio import AsyncSession
 
-from quoll.auth.dependencies import CurrentUser, build_session_service
-from quoll.auth.models import User, UserRole
-from quoll.db import get_db_session
+from quoll.auth.dependencies import CurrentUser, WebSocketUser
+from quoll.auth.models import UserRole
 from quoll.notifications.connection_storage import ConnectionStorage
 from quoll.notifications.dependencies import NotifyRepoDep
 from quoll.notifications.schemas import NotifyRead
@@ -92,26 +89,7 @@ async def mark_as_read(
 
 
 @ws_router.websocket("/notifications")
-async def websocket_endpoint(
-    websocket: WebSocket,
-    session: AsyncSession = Depends(get_db_session),  # noqa: B008
-) -> None:
-    raw_key = websocket.cookies.get("session")
-    if not raw_key:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-
-    session_service = build_session_service(websocket.app.state.db_session_maker)
-    user_session = await session_service.resolve(raw_key)
-    if user_session is None:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-
-    user = await session.get(User, user_session.user_id)
-    if user is None or not user.is_active:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
-
+async def websocket_endpoint(websocket: WebSocket, user: WebSocketUser) -> None:
     connections: ConnectionStorage = websocket.app.state.connection_storage
     logger.debug(f"WS: adding connection for user {user.id}")
     await websocket.accept()

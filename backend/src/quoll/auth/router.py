@@ -10,6 +10,7 @@ from fastapi import (
 from fastapi.responses import RedirectResponse
 
 from quoll.auth.dependencies import (
+    SESSION_COOKIE,
     AdminUser,
     CurrentUser,
     SessionServiceDep,
@@ -24,8 +25,6 @@ from quoll.core import SystemDefaults
 
 router = APIRouter(tags=["Auth"])
 users_router = APIRouter(prefix="/api/v1/users", tags=["Users"])
-
-SESSION_COOKIE = "session"
 
 
 @router.get("/")

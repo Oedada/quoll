@@ -1,11 +1,23 @@
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Request, status
+from fastapi import (
+    Depends,
+    HTTPException,
+    Request,
+    WebSocket,
+    WebSocketException,
+    status,
+)
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from quoll.auth.crypto import TokenCipher
-from quoll.auth.models import User, UserRole
+from quoll.auth.models import (
+    IdentitySyncStatus,
+    RoleTransitionStatus,
+    User,
+    UserRole,
+)
 from quoll.auth.repositories import UserRepository
 from quoll.auth.session_service import SessionService
 from quoll.auth.session_store import SessionStore
@@ -33,9 +45,31 @@ def get_user_repo(session: SessionDep) -> UserRepository:
 SessionServiceDep = Annotated[SessionService, Depends(get_session_service)]
 UserRepoDep = Annotated[UserRepository, Depends(get_user_repo)]
 
-_NOT_AUTHENTICATED = HTTPException(
-    status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated"
-)
+SESSION_COOKIE = "session"
+
+
+async def _load_user(
+    raw_key: str | None, session_service: SessionService, db: AsyncSession
+) -> User | None:
+    if raw_key is None:
+        return None
+    session = await session_service.resolve(raw_key)
+    if session is None:
+        return None
+    # проекции может не быть, если её ещё никто не завёл
+    return await db.get(User, session.user_id)
+
+
+def _identity_denial(user: User | None) -> tuple[int, str] | None:
+    """почему пользователя нельзя пускать, или None, если можно"""
+    if user is None or not user.is_active:
+        return status.HTTP_401_UNAUTHORIZED, "Not authenticated"
+    if user.identity_sync_status != IdentitySyncStatus.OK:
+        return status.HTTP_403_FORBIDDEN, "Account role mapping is inconsistent"
+    # П8 - на время смены роли учётка блокируется полностью, чтение тоже
+    if user.role_transition_status != RoleTransitionStatus.NONE:
+        return status.HTTP_409_CONFLICT, "Role transition in progress"
+    return None
 
 
 async def get_current_user(
@@ -48,22 +82,29 @@ async def get_current_user(
     в Keycloak на чтении не ходим, сессию он подтверждает внутри resolve и не
     чаще раза в интервал сверки
     """
-    raw_key = req.cookies.get("session")
-    if raw_key is None:
-        raise _NOT_AUTHENTICATED
+    user = await _load_user(req.cookies.get(SESSION_COOKIE), session_service, db)
+    denial = _identity_denial(user)
+    if denial is not None:
+        raise HTTPException(*denial)
+    return user
 
-    session = await session_service.resolve(raw_key)
-    if session is None:
-        raise _NOT_AUTHENTICATED
 
-    user = await db.get(User, session.user_id)
-    # проекции может не быть, если сверка ещё не завела пользователя
-    if user is None or not user.is_active:
-        raise _NOT_AUTHENTICATED
+async def get_websocket_user(websocket: WebSocket) -> User:
+    """то же для сокета - зависимости с Request на нём не заполняются,
+    поэтому и сессию БД открываем сами"""
+    maker = websocket.app.state.db_session_maker
+    async with maker() as db:
+        user = await _load_user(
+            websocket.cookies.get(SESSION_COOKIE), build_session_service(maker), db
+        )
+    denial = _identity_denial(user)
+    if denial is not None:
+        raise WebSocketException(code=status.WS_1008_POLICY_VIOLATION, reason=denial[1])
     return user
 
 
 CurrentUser = Annotated[User, Depends(get_current_user)]
+WebSocketUser = Annotated[User, Depends(get_websocket_user)]
 
 
 def require_roles(*roles: UserRole) -> Callable[[User], User]:
