@@ -203,6 +203,8 @@ class RequestCreate(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["TRANSFER", "CLOSE", "TRANSITION"]
+    # аппрув шага ветки продукта
+    branch_id: int | None = None
     # у закрытия - куда закрыть; у передачи - кому, но это лишь предложение
     target_stage_id: int | None = None
     target_manager_id: str | None = None
@@ -249,6 +251,7 @@ class RequestRead(AppBaseModel):
     target_stage_id: int | None
     target_manager_id: str | None
     transition_id: int | None
+    branch_id: int | None
     reason: str
     decided_by: str | None
     decided_at: datetime | None
@@ -261,6 +264,7 @@ class DocumentRead(AppBaseModel):
     interaction_id: int
     stage_id: int
     uploaded_by: str | None
+    branch_id: int | None
     replaces_document_id: int | None
     title: str
     kind: str | None
@@ -337,6 +341,7 @@ class StageValuesWrite(AppBaseModel):
 
 class StageValuesRead(AppBaseModel):
     stage_id: int
+    branch_id: int | None
     values: dict[str, Any]
     updated_by: str | None
     updated_at: datetime

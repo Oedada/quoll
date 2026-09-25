@@ -26,7 +26,11 @@ from quoll.core.exceptions import (
     OperationForbiddenException,
 )
 from quoll.interactions.access_policy import can_change, can_close, can_read
-from quoll.interactions.models import DocumentStatus, InteractionDocument
+from quoll.interactions.models import (
+    DocumentStatus,
+    InteractionBranch,
+    InteractionDocument,
+)
 from quoll.interactions.notify import notify
 from quoll.interactions.repository import InteractionRepository
 from quoll.interactions.scope import lock_interaction_scope
@@ -52,6 +56,7 @@ async def upload(
     title: str | None,
     kind: str | None,
     meta: dict[str, Any],
+    branch_id: int | None = None,
 ) -> DocumentView:
     """право - дважды: без блокировок до загрузки, чтобы не держать строки на
     время сети, и под блокировкой перед вставкой"""
@@ -59,7 +64,7 @@ async def upload(
     interaction = await repo.get(interaction_id)
     if not can_change(actor, await repo.ownership(interaction)):
         raise OperationForbiddenException("attach documents to this interaction")
-    await _check_stage(session, interaction.workflow_id, stage_id)
+    await _check_stage(session, interaction.workflow_id, stage_id, branch_id)
 
     attachment = await attachments.upload_attachment(file)
     try:
@@ -73,19 +78,24 @@ async def upload(
             )
             # версия живёт на стадии прежней - иначе замена из текущего шага
             # обошла бы аппрув правки пройденного
-            if previous.stage_id != stage_id:
+            if previous.stage_id != stage_id or previous.branch_id != branch_id:
                 raise DomainRuleException(
                     400, "New version goes to the stage of the replaced document"
                 )
+        current = scope.interaction.state_id
+        if branch_id is not None:
+            branch = await session.get(InteractionBranch, branch_id)
+            if branch is None or branch.interaction_id != interaction_id:
+                raise DomainRuleException(404, "Branch is not in this interaction")
+            current = branch.state_id
         # правка файла пройденного шага - с аппрувом руководителя (AS IS)
-        pending = (
-            actor.role == UserRole.MANAGER and stage_id != scope.interaction.state_id
-        )
+        pending = actor.role == UserRole.MANAGER and stage_id != current
         document = InteractionDocument(
             status=DocumentStatus.PENDING if pending else DocumentStatus.ACTIVE,
             interaction_id=interaction_id,
             attachment_id=attachment.id,
             stage_id=stage_id,
+            branch_id=branch_id,
             uploaded_by=actor.id,
             replaces_document_id=replaces_document_id,
             # новая версия того же документа - то же название и тип
@@ -128,7 +138,7 @@ async def upload(
 
 
 async def _check_stage(
-    session: AsyncSession, workflow_id: int | None, stage_id: int
+    session: AsyncSession, workflow_id: int | None, stage_id: int, branch_id: int | None
 ) -> None:
     """только структура: стадия из воркфлоу этого взаимодействия и живая"""
     if workflow_id is None:
@@ -140,6 +150,8 @@ async def _check_stage(
         raise DomainRuleException(400, "Stage belongs to another workflow")
     if stage.archived_at is not None:
         raise DomainRuleException(409, f"Stage '{stage_id}' is archived")
+    if stage.is_branch_stage != (branch_id is not None):
+        raise DomainRuleException(400, "Files of branch stages belong to a branch")
 
 
 async def _check_replaceable(

@@ -109,7 +109,7 @@ async def move_locked(
     if workflow is None or not workflow.is_published:
         raise WorkflowNotPublishedException(workflow_id)
 
-    edge = await _active_edge(session, workflow_id, current, target)
+    edge = await active_edge(session, workflow_id, current, target)
     if edge is None:
         raise DomainRuleException(409, "No active transition between these stages")
     # заявка не едет по нетерминальным стадиям без ответственного
@@ -181,12 +181,16 @@ async def check_step(
     edge: WorkflowTransition,
     *,
     approved: bool,
+    branch_id: int | None = None,
 ) -> None:
-    """правила шага по фактам; нарушено - 409 со всеми причинами сразу"""
+    """правила шага по фактам; нарушено - 409 со всеми причинами сразу.
+    У ветки продукта поля и файлы - свои"""
     values, kinds = {}, set()
     if current is not None:
-        values = await stage_values(session, interaction.id, current.id)
-        kinds = await current_document_kinds(session, interaction.id, current.id)
+        values = await stage_values(session, interaction.id, current.id, branch_id)
+        kinds = await current_document_kinds(
+            session, interaction.id, current.id, branch_id
+        )
     problems = transition_problems(
         requires_approval=edge.requires_approval,
         approved=approved,
@@ -201,25 +205,33 @@ async def check_step(
 
 
 async def stage_values(
-    session: AsyncSession, interaction_id: int, stage_id: int
+    session: AsyncSession,
+    interaction_id: int,
+    stage_id: int,
+    branch_id: int | None = None,
 ) -> dict[str, Any]:
     found = await session.scalar(
         select(InteractionStageValues.values).where(
             InteractionStageValues.interaction_id == interaction_id,
             InteractionStageValues.stage_id == stage_id,
+            InteractionStageValues.branch_id.is_not_distinct_from(branch_id),
         )
     )
     return found or {}
 
 
 async def current_document_kinds(
-    session: AsyncSession, interaction_id: int, stage_id: int
+    session: AsyncSession,
+    interaction_id: int,
+    stage_id: int,
+    branch_id: int | None = None,
 ) -> set[str]:
     """типы актуальных документов стадии - заменённая версия не считается"""
     rows = await session.scalars(
         select(InteractionDocument.kind).where(
             InteractionDocument.interaction_id == interaction_id,
             InteractionDocument.stage_id == stage_id,
+            InteractionDocument.branch_id.is_not_distinct_from(branch_id),
             InteractionDocument.kind.is_not(None),
             InteractionDocument.status == DocumentStatus.ACTIVE,
             ~replaced_expression(),
@@ -473,7 +485,7 @@ async def close_locked(
     return interaction
 
 
-async def _active_edge(
+async def active_edge(
     session: AsyncSession, workflow_id: int, current: Stage | None, target: Stage
 ) -> WorkflowTransition | None:
     """ребро графа; у черновика - из NULL, то есть в начальную стадию (П3)"""

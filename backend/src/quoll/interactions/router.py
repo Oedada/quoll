@@ -29,6 +29,7 @@ from quoll.auth.dependencies import (
 from quoll.core import SystemDefaults
 from quoll.core.exceptions import DomainRuleException
 from quoll.interactions import (
+    branch_service,
     contract_service,
     document_service,
     import_service,
@@ -468,6 +469,7 @@ async def create_request(
         target_stage_id=body.target_stage_id,
         target_manager_id=body.target_manager_id,
         reason=body.reason,
+        branch_id=body.branch_id,
     )
 
 
@@ -490,6 +492,7 @@ def _document(view) -> DocumentRead:
         interaction_id=doc.interaction_id,
         stage_id=doc.stage_id,
         uploaded_by=doc.uploaded_by,
+        branch_id=doc.branch_id,
         replaces_document_id=doc.replaces_document_id,
         title=doc.title,
         kind=doc.kind,
@@ -523,6 +526,8 @@ async def attach_document(
     # стадия - снаружи: приложить можно к любой стадии воркфлоу
     stage_id: Annotated[int, Form()],
     replaces_document_id: Annotated[int | None, Form()] = None,
+    # файл шага ветки продукта
+    branch_id: Annotated[int | None, Form()] = None,
     title: Annotated[str | None, Form(max_length=255)] = None,
     kind: Annotated[str | None, Form(max_length=100)] = None,
     # multipart не несёт вложенных объектов - JSON строкой
@@ -536,6 +541,7 @@ async def attach_document(
         file=file,
         stage_id=stage_id,
         replaces_document_id=replaces_document_id,
+        branch_id=branch_id,
         title=title,
         kind=kind,
         meta=_json_object(metadata),
@@ -628,6 +634,7 @@ async def put_stage_values(
     body: StageValuesWrite,
     user: CurrentUser,
     session: SessionDep,
+    branch_id: int | None = None,
 ):
     return await step_service.set_values(
         session,
@@ -635,6 +642,7 @@ async def put_stage_values(
         stage_id=stage_id,
         values=body.values,
         actor_id=user.id,
+        branch_id=branch_id,
     )
 
 
@@ -644,10 +652,19 @@ async def put_stage_values(
     summary="Supervisor applies a pending edit of a passed step",
 )
 async def approve_stage_values(
-    id: InteractionId, stage_id: int, user: CurrentUser, session: SessionDep
+    id: InteractionId,
+    stage_id: int,
+    user: CurrentUser,
+    session: SessionDep,
+    branch_id: int | None = None,
 ):
     return await step_service.decide(
-        session, interaction_id=id, stage_id=stage_id, actor_id=user.id, approve=True
+        session,
+        interaction_id=id,
+        stage_id=stage_id,
+        actor_id=user.id,
+        approve=True,
+        branch_id=branch_id,
     )
 
 
@@ -657,10 +674,19 @@ async def approve_stage_values(
     summary="Supervisor drops a pending edit of a passed step",
 )
 async def reject_stage_values(
-    id: InteractionId, stage_id: int, user: CurrentUser, session: SessionDep
+    id: InteractionId,
+    stage_id: int,
+    user: CurrentUser,
+    session: SessionDep,
+    branch_id: int | None = None,
 ):
     return await step_service.decide(
-        session, interaction_id=id, stage_id=stage_id, actor_id=user.id, approve=False
+        session,
+        interaction_id=id,
+        stage_id=stage_id,
+        actor_id=user.id,
+        approve=False,
+        branch_id=branch_id,
     )
 
 
@@ -720,6 +746,54 @@ async def remove_contract_product(
         session, interaction_id=id, item_id=item_id, actor_id=user.id
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@interactions_router.post(
+    "/{id}/branches/{branch_id}/transition",
+    response_model=BranchRead,
+    summary="Move a product branch along an active edge",
+)
+async def move_branch(
+    id: InteractionId,
+    branch_id: int,
+    body: TransitionRequest,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    if body.expected_state_id is None:
+        raise DomainRuleException(422, "Branch always stands on a stage")
+    return await branch_service.move(
+        session,
+        interaction_id=id,
+        branch_id=branch_id,
+        actor_id=user.id,
+        to_stage_id=body.to_stage_id,
+        expected_state_id=body.expected_state_id,
+        comment=body.comment,
+    )
+
+
+@interactions_router.post(
+    "/{id}/branches/{branch_id}/rollback",
+    response_model=BranchRead,
+    summary="Owner's supervisor returns a product branch several steps back",
+)
+async def rollback_branch(
+    id: InteractionId,
+    branch_id: int,
+    body: RollbackRequest,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    return await branch_service.rollback(
+        session,
+        interaction_id=id,
+        branch_id=branch_id,
+        actor_id=user.id,
+        to_stage_id=body.to_stage_id,
+        expected_state_id=body.expected_state_id,
+        comment=body.comment,
+    )
 
 
 @interactions_router.get(

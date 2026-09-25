@@ -264,12 +264,19 @@ class InteractionRequest(Base):
             "(status = 'PENDING') = (decided_at IS NULL)",
             name="chk_request_decided",
         ),
+        # аппрувы разных веток ждут параллельно
         Index(
             "uq_interaction_requests_pending",
             "interaction_id",
             "kind",
+            "branch_id",
             unique=True,
             postgresql_where=text("status = 'PENDING'"),
+            postgresql_nulls_not_distinct=True,
+        ),
+        CheckConstraint(
+            "branch_id IS NULL OR kind = 'TRANSITION'",
+            name="chk_request_branch_only_transition",
         ),
     )
 

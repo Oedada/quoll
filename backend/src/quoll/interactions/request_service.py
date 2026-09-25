@@ -20,9 +20,11 @@ from quoll.core.exceptions import (
     OperationForbiddenException,
 )
 from quoll.core.locking import lock_row
+from quoll.interactions import branch_service
 from quoll.interactions.access_policy import can_close
 from quoll.interactions.models import (
     Interaction,
+    InteractionBranch,
     InteractionRequest,
     RequestKind,
     RequestStatus,
@@ -93,6 +95,7 @@ async def create(
     target_stage_id: int | None,
     target_manager_id: str | None,
     reason: str,
+    branch_id: int | None = None,
 ) -> InteractionRequest:
     # под захватом области: просьба не создаётся одновременно со сменой владельца
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
@@ -102,10 +105,18 @@ async def create(
     current = await _open_stage(session, interaction)
 
     transition_id = None
+    if branch_id is not None and kind != RequestKind.TRANSITION:
+        raise DomainRuleException(400, "Only a step approval is asked for a branch")
     if kind == RequestKind.TRANSITION:
+        if branch_id is not None:
+            # шаг ветки: откуда просят - стадия ветки, не договора
+            branch = await branch_service.open_branch(session, scope, branch_id)
+            current = await session.get(Stage, branch.state_id)
         edge = await _approval_edge(session, interaction, current, target_stage_id)
         # руководителю приходит готовый шаг: поля и файлы проверены сразу
-        await check_step(session, interaction, current, edge, approved=True)
+        await check_step(
+            session, interaction, current, edge, approved=True, branch_id=branch_id
+        )
         transition_id = edge.id
     elif kind == RequestKind.CLOSE:
         stage = await _check_close_target(session, interaction, target_stage_id)
@@ -121,6 +132,7 @@ async def create(
         select(InteractionRequest.id).where(
             InteractionRequest.interaction_id == interaction.id,
             InteractionRequest.kind == kind,
+            InteractionRequest.branch_id.is_not_distinct_from(branch_id),
             InteractionRequest.status == RequestStatus.PENDING,
         )
     )
@@ -137,6 +149,7 @@ async def create(
         target_stage_id=target_stage_id,
         target_manager_id=target_manager_id,
         transition_id=transition_id,
+        branch_id=branch_id,
         reason=reason,
     )
     session.add(request)
@@ -219,7 +232,13 @@ async def _stale_reason(
         return "interaction closed"
     if request.kind == RequestKind.TRANSITION:
         edge = await session.get(WorkflowTransition, request.transition_id)
-        if interaction.state_id != edge.from_stage_id:
+        if request.branch_id is not None:
+            branch = await session.get(InteractionBranch, request.branch_id)
+            if branch.closed_at is not None:
+                return "branch closed"
+            if branch.state_id != edge.from_stage_id:
+                return "branch moved"
+        elif interaction.state_id != edge.from_stage_id:
             return "interaction moved"
         if not edge.is_active:
             return "transition deactivated"
@@ -301,6 +320,17 @@ async def approve(
             "target_manager_id": target_manager_id,
             "suggested": request.target_manager_id,
         }
+    elif request.kind == RequestKind.TRANSITION and request.branch_id is not None:
+        branch = await branch_service.open_branch(session, scope, request.branch_id)
+        await branch_service.move_locked(
+            session,
+            scope,
+            branch,
+            to_stage_id=request.target_stage_id,
+            comment=comment or request.reason,
+            approved=True,
+        )
+        outcome = {"target_stage_id": request.target_stage_id}
     elif request.kind == RequestKind.TRANSITION:
         await move_locked(
             session,
@@ -358,15 +388,26 @@ async def _send_back(
     """отказ в аппруве уводит на доработку, если ребро это задаёт и заявка
     всё ещё там, откуда просили. Повторный проход снова потребует аппрува"""
     edge = await session.get(WorkflowTransition, request.transition_id)
-    if (
-        edge.reject_to_stage_id is None
-        or scope.interaction.state_id != edge.from_stage_id
-    ):
+    if edge.reject_to_stage_id is None:
         return
     target = await session.get(Stage, edge.reject_to_stage_id)
     if target is None or target.archived_at is not None:
         return
     await session.flush()
+    if request.branch_id is not None:
+        branch = await session.get(InteractionBranch, request.branch_id)
+        if branch.closed_at is None and branch.state_id == edge.from_stage_id:
+            await branch_service.return_locked(
+                session,
+                scope,
+                branch,
+                to_stage_id=target.id,
+                kind=StageChangeKind.REJECTION,
+                comment=comment,
+            )
+        return
+    if scope.interaction.state_id != edge.from_stage_id:
+        return
     await return_locked(
         session,
         scope,

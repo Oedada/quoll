@@ -16,7 +16,11 @@ from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import UserRole
 from quoll.core.exceptions import DomainRuleException, OperationForbiddenException
 from quoll.interactions.access_policy import can_change, can_close
-from quoll.interactions.models import InteractionStageHistory, InteractionStageValues
+from quoll.interactions.models import (
+    InteractionBranch,
+    InteractionStageHistory,
+    InteractionStageValues,
+)
 from quoll.interactions.notify import notify
 from quoll.interactions.scope import lock_interaction_scope
 from quoll.interactions.step_policy import value_problems
@@ -31,6 +35,7 @@ async def set_values(
     stage_id: int,
     values: dict[str, Any],
     actor_id: str,
+    branch_id: int | None = None,
 ) -> InteractionStageValues:
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     interaction = scope.interaction
@@ -39,10 +44,20 @@ async def set_values(
     stage = await session.get(Stage, stage_id)
     if stage is None or stage.workflow_id != interaction.workflow_id:
         raise DomainRuleException(400, "Stage belongs to another workflow")
+    # у шага ветки - значения своей ветки, у шага договора - общие
+    current = interaction.state_id
+    if branch_id is not None:
+        branch = await session.get(InteractionBranch, branch_id)
+        if branch is None or branch.interaction_id != interaction_id:
+            raise DomainRuleException(404, "Branch is not in this interaction")
+        current = branch.state_id
+    if stage.is_branch_stage != (branch_id is not None):
+        raise DomainRuleException(400, "Branch stages are filled per branch")
     visited = await session.scalar(
         select(
             exists().where(
                 InteractionStageHistory.interaction_id == interaction_id,
+                InteractionStageHistory.branch_id.is_not_distinct_from(branch_id),
                 # пройдена - и та, куда пришли, и та, с которой ушли
                 or_(
                     InteractionStageHistory.to_stage_id == stage_id,
@@ -51,21 +66,17 @@ async def set_values(
             )
         )
     )
-    if stage_id != interaction.state_id and not visited:
+    if stage_id != current and not visited:
         raise DomainRuleException(409, "Stage is not reached yet")
     if problems := value_problems(stage.fields, values):
         raise DomainRuleException(422, "; ".join(problems))
 
-    old = await stage_values(session, interaction_id, stage_id)
+    old = await stage_values(session, interaction_id, stage_id, branch_id)
     gated = {f["key"] for f in stage.fields if f.get("approval_after_pass")}
     changed = {k for k in old.keys() | values.keys() if old.get(k) != values.get(k)}
-    if (
-        scope.actor.role == UserRole.MANAGER
-        and stage_id != interaction.state_id
-        and changed & gated
-    ):
+    if scope.actor.role == UserRole.MANAGER and stage_id != current and changed & gated:
         # правку пройденного шага с такими полями одобряет руководитель
-        row = await _upsert(session, interaction_id, stage_id, old, actor_id)
+        row = await _upsert(session, interaction_id, stage_id, branch_id, old, actor_id)
         row.pending_values = values
         row.pending_by = actor_id
         await session.flush()
@@ -82,7 +93,7 @@ async def set_values(
             )
         return row
 
-    row = await _upsert(session, interaction_id, stage_id, values, actor_id)
+    row = await _upsert(session, interaction_id, stage_id, branch_id, values, actor_id)
     _journal(session, actor_id, interaction_id, stage_id, old, values)
     return row
 
@@ -94,6 +105,7 @@ async def decide(
     stage_id: int,
     actor_id: str,
     approve: bool,
+    branch_id: int | None = None,
 ) -> InteractionStageValues:
     """руководитель владельца решает по ждущей правке пройденного шага"""
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
@@ -104,6 +116,7 @@ async def decide(
         .where(
             InteractionStageValues.interaction_id == interaction_id,
             InteractionStageValues.stage_id == stage_id,
+            InteractionStageValues.branch_id.is_not_distinct_from(branch_id),
         )
         .execution_options(populate_existing=True)
     )
@@ -132,6 +145,7 @@ async def _upsert(
     session: AsyncSession,
     interaction_id: int,
     stage_id: int,
+    branch_id: int | None,
     values: dict[str, Any],
     actor_id: str,
 ) -> InteractionStageValues:
@@ -141,6 +155,7 @@ async def _upsert(
         .values(
             interaction_id=interaction_id,
             stage_id=stage_id,
+            branch_id=branch_id,
             values=values,
             updated_by=actor_id,
         )
