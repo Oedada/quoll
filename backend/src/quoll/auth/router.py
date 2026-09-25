@@ -169,7 +169,7 @@ async def update_user(
     admin_user: AdminUser,
     user_repo: UserRepository = Depends(get_user_repo),  # noqa: B008
 ) -> UserRead:
-    user = await user_repo.update_profile(user_id, user_data)
+    user = await user_repo.update_profile(user_id, user_data, admin_user.id)
     return UserRead.model_validate(user)
 
 

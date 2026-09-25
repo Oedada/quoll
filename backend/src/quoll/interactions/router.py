@@ -503,9 +503,10 @@ async def get_interaction(interaction: ReadableInteraction):
 async def update_interaction(
     schema: InteractionUpdate,
     interaction: ChangeableInteraction,
-    repo: InteractionRepoDep,
+    user: CurrentUser,
+    session: SessionDep,
 ):
-    return await repo.update(interaction.id, schema)
+    return await project_service.update_fields(session, interaction, schema, user.id)
 
 
 @interactions_router.get(
@@ -527,8 +528,12 @@ async def interaction_history(
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Delete a draft that never entered a stage",
 )
-async def delete_interaction(interaction: DeletableInteraction, session: SessionDep):
-    await project_service.delete_draft(session, interaction)
+async def delete_interaction(
+    interaction: DeletableInteraction, user: CurrentUser, session: SessionDep
+):
+    await project_service.delete_draft(
+        session, interaction_id=interaction.id, actor_id=user.id
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

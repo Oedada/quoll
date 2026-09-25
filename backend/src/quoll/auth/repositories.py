@@ -4,6 +4,8 @@ from sqlalchemy import select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quoll.auth.audit import record
+from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.keycloak_client import keycloak_client
 from quoll.auth.models import (
     Admin,
@@ -142,7 +144,9 @@ class UserRepository:
         )
         return list((await self.s.execute(stmt)).scalars().all())
 
-    async def update_profile(self, user_id: str, changes: UserUpdate) -> User:
+    async def update_profile(
+        self, user_id: str, changes: UserUpdate, actor_id: str
+    ) -> User:
         """сначала Keycloak, потом проекция: профиль там главный, и сверщик
         реестра откатил бы правку, сделанную только у нас"""
         user = await self.get(user_id)
@@ -161,8 +165,18 @@ class UserRepository:
         if resp.status_code >= 400:
             raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
 
+        old = {name: getattr(user, name) for name in fields}
         for name, value in fields.items():
             setattr(user, name, value)
+        record(
+            self.s,
+            actor_id=actor_id,
+            event_type=AuditEventType.USER_UPDATED,
+            target_type=TargetType.USER,
+            target_id=user_id,
+            old_value=old,
+            new_value=fields,
+        )
         await self.s.flush()
         logger.info(f"User with id={user_id} updated")
         return user

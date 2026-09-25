@@ -17,7 +17,7 @@ from quoll.core.exceptions import (
     StaleStateException,
     WorkflowNotPublishedException,
 )
-from quoll.interactions.access_policy import can_assign, can_pause
+from quoll.interactions.access_policy import can_assign, can_delete, can_pause
 from quoll.interactions.capacity_policy import (
     assert_can_keep_working,
     assert_can_take_new_work,
@@ -31,7 +31,7 @@ from quoll.interactions.models import (
 )
 from quoll.interactions.repository import InteractionRepository
 from quoll.interactions.requests import cancel_pending_requests
-from quoll.interactions.schemas import InteractionCreate
+from quoll.interactions.schemas import InteractionCreate, InteractionUpdate
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
 from quoll.interactions.transition_service import lock_target_stage, place
 from quoll.workflows.graph_policy import EdgeFacts, reachable_from_start
@@ -275,12 +275,50 @@ def _check_pause_term(until: datetime) -> None:
         )
 
 
-async def delete_draft(session: AsyncSession, interaction: Interaction) -> None:
+async def update_fields(
+    session: AsyncSession,
+    interaction: Interaction,
+    changes: InteractionUpdate,
+    actor_id: str,
+) -> Interaction:
+    """описательные поля: права проверил роутер, блокировка не нужна -
+    на них не опирается ни одно правило"""
+    fields = changes.model_dump(exclude_unset=True)
+    old = {name: getattr(interaction, name) for name in fields}
+    updated = await InteractionRepository(session).update(interaction.id, changes)
+    if fields:
+        record(
+            session,
+            actor_id=actor_id,
+            event_type=AuditEventType.INTERACTION_UPDATED,
+            target_type=TargetType.INTERACTION,
+            target_id=str(interaction.id),
+            old_value=old,
+            new_value=fields,
+        )
+    return updated
+
+
+async def delete_draft(
+    session: AsyncSession, *, interaction_id: int, actor_id: str
+) -> None:
     """удалить можно только черновик, ни разу не встававший на стадию - у него
-    нет истории. Остальное закрывают: каскад стёр бы историю и назначения"""
-    if interaction.state_id is not None:
+    нет истории. Остальное закрывают: каскад стёр бы историю и назначения.
+    Проверки - под блокировкой: черновик могли успеть поставить на стадию"""
+    scope = await lock_interaction_scope(session, interaction_id, actor_id)
+    if not can_delete(scope.actor, scope.ownership):
+        raise OperationForbiddenException("delete this interaction")
+    if scope.interaction.state_id is not None:
         raise DomainRuleException(409, "Only a draft can be deleted, close the rest")
-    await InteractionRepository(session).delete(interaction.id)
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=AuditEventType.INTERACTION_DELETED,
+        target_type=TargetType.INTERACTION,
+        target_id=str(interaction_id),
+        old_value={"owner_id": scope.interaction.owner_id},
+    )
+    await InteractionRepository(session).delete(interaction_id)
 
 
 async def reopen(

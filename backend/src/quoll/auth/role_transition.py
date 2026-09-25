@@ -53,7 +53,12 @@ async def request(
     if actor_id is not None:
         # уровень раньше пользователя - порядок из core/locking.py
         await guard_last_capable(db, current, user_id)
+    # подтип раньше users: apply удаляет строку подтипа, а назначения и набор
+    # держат её и ждут users
+    await lock_row(db, user_class_for_role(current), user_id)
     user = await lock_row(db, User, user_id)
+    if user.role != current:
+        raise DomainRuleException(409, "User role changed concurrently")
     if (denial := identity_denial(user)) is not None:
         raise DomainRuleException(409, f"User cannot change role now: {denial[1]}")
 
@@ -112,9 +117,15 @@ async def apply(
 ) -> Result:
     """применить, если работы старой роли не осталось. Руководитель менеджера
     не блокирует: снимается здесь же, как при увольнении (решение Тимура)"""
+    role = await db.scalar(select(User.role).where(User.id == user_id))
+    if role is None:
+        return Result(Outcome.CANCEL, "user is gone")
+    await lock_row(db, user_class_for_role(role), user_id)
     user = await lock_row(db, User, user_id)
     if user is None or not user.is_active:
         return Result(Outcome.CANCEL, "user is not active")
+    if user.role != role:
+        return Result(Outcome.WAIT, "role changed concurrently")
     old = user.role
     if (reason := await _blocker(db, user)) is not None:
         return Result(Outcome.WAIT, reason)

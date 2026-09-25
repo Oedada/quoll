@@ -22,6 +22,7 @@ from quoll.auth.models import (
     Session,
     User,
     UserRole,
+    user_class_for_role,
 )
 from quoll.auth.pending_actions import (
     PendingActionStatus,
@@ -70,6 +71,10 @@ async def _tick(session_maker: async_sessionmaker) -> None:
 async def reconcile_user(
     db: AsyncSession, user_id: str, entry: Entry | None, started: datetime
 ) -> None:
+    # подтип раньше users - смена роли ниже удаляет его строку
+    role = await db.scalar(select(User.role).where(User.id == user_id))
+    if role is not None:
+        await lock_row(db, user_class_for_role(role), user_id)
     user = await lock_row(db, User, user_id)
     if user is None:
         if entry is not None and entry.enabled and len(entry.roles) == 1:
