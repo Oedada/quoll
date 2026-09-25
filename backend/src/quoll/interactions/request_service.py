@@ -1,6 +1,8 @@
-"""Просьбы менеджера руководителю: передать проект или закрыть досрочно (П8).
+"""Просьбы менеджера руководителю: передать проект, закрыть досрочно (П8),
+пройти шаг с аппрувом.
 
-менеджер просит, руководитель владельца решает - кому передать и закрывать ли
+менеджер просит, руководитель владельца решает - кому передать, закрывать ли,
+пускать ли дальше
 """
 
 from dataclasses import dataclass
@@ -24,24 +26,33 @@ from quoll.interactions.models import (
     InteractionRequest,
     RequestKind,
     RequestStatus,
+    StageChangeKind,
 )
 from quoll.interactions.project_service import assign_locked
 from quoll.interactions.repository import InteractionRepository
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
-from quoll.interactions.transition_service import close_locked
-from quoll.workflows.models import Stage
+from quoll.interactions.transition_service import (
+    check_step,
+    close_locked,
+    move_locked,
+    return_locked,
+)
+from quoll.workflows.models import Stage, WorkflowTransition
 
 _REQUESTED = {
     RequestKind.TRANSFER: AuditEventType.PROJECT_TRANSFER_REQUESTED,
     RequestKind.CLOSE: AuditEventType.PROJECT_CLOSE_REQUESTED,
+    RequestKind.TRANSITION: AuditEventType.TRANSITION_APPROVAL_REQUESTED,
 }
 _APPROVED = {
     RequestKind.TRANSFER: AuditEventType.PROJECT_TRANSFER_APPROVED,
     RequestKind.CLOSE: AuditEventType.PROJECT_CLOSE_APPROVED,
+    RequestKind.TRANSITION: AuditEventType.TRANSITION_APPROVED,
 }
 _REJECTED = {
     RequestKind.TRANSFER: AuditEventType.PROJECT_TRANSFER_REJECTED,
     RequestKind.CLOSE: AuditEventType.PROJECT_CLOSE_REJECTED,
+    RequestKind.TRANSITION: AuditEventType.TRANSITION_REJECTED,
 }
 
 
@@ -88,9 +99,15 @@ async def create(
     interaction = scope.interaction
     if interaction.owner_id != actor_id:
         raise OperationForbiddenException("request for someone else's interaction")
-    await _open_stage(session, interaction)
+    current = await _open_stage(session, interaction)
 
-    if kind == RequestKind.CLOSE:
+    transition_id = None
+    if kind == RequestKind.TRANSITION:
+        edge = await _approval_edge(session, interaction, current, target_stage_id)
+        # руководителю приходит готовый шаг: поля и файлы проверены сразу
+        await check_step(session, interaction, current, edge, approved=True)
+        transition_id = edge.id
+    elif kind == RequestKind.CLOSE:
         stage = await _check_close_target(session, interaction, target_stage_id)
         if stage.archived_at is not None:
             raise DomainRuleException(409, f"Stage '{stage.id}' is archived")
@@ -119,6 +136,7 @@ async def create(
         from_owner_id=interaction.owner_id,
         target_stage_id=target_stage_id,
         target_manager_id=target_manager_id,
+        transition_id=transition_id,
         reason=reason,
     )
     session.add(request)
@@ -138,6 +156,22 @@ async def create(
     )
     await session.refresh(request)
     return request
+
+
+async def _approval_edge(
+    session: AsyncSession, interaction: Interaction, current: Stage, to_stage_id: int
+) -> WorkflowTransition:
+    edge = await session.scalar(
+        select(WorkflowTransition).where(
+            WorkflowTransition.workflow_id == interaction.workflow_id,
+            WorkflowTransition.from_stage_id == current.id,
+            WorkflowTransition.to_stage_id == to_stage_id,
+            WorkflowTransition.is_active.is_(True),
+        )
+    )
+    if edge is None or not edge.requires_approval:
+        raise DomainRuleException(400, "No transition needing approval to this stage")
+    return edge
 
 
 async def _lock_for_decision(
@@ -183,6 +217,12 @@ async def _stale_reason(
     stage = await session.get(Stage, interaction.state_id)
     if stage is None or stage.is_terminal:
         return "interaction closed"
+    if request.kind == RequestKind.TRANSITION:
+        edge = await session.get(WorkflowTransition, request.transition_id)
+        if interaction.state_id != edge.from_stage_id:
+            return "interaction moved"
+        if not edge.is_active:
+            return "transition deactivated"
     if request.kind == RequestKind.CLOSE:
         # FOR SHARE: архивация, начатая раньше, закоммитится, и мы увидим
         # архив здесь, а не упадём позже в закрытии - просьба тогда осталась
@@ -261,6 +301,15 @@ async def approve(
             "target_manager_id": target_manager_id,
             "suggested": request.target_manager_id,
         }
+    elif request.kind == RequestKind.TRANSITION:
+        await move_locked(
+            session,
+            scope,
+            to_stage_id=request.target_stage_id,
+            comment=comment or request.reason,
+            approved=True,
+        )
+        outcome = {"target_stage_id": request.target_stage_id}
     else:
         await close_locked(
             session, scope, to_stage_id=request.target_stage_id, comment=request.reason
@@ -283,8 +332,10 @@ async def approve(
 async def reject(
     session: AsyncSession, *, request_id: int, actor_id: str, comment: str
 ) -> InteractionRequest:
-    _, request = await _lock_for_decision(session, request_id, actor_id)
+    scope, request = await _lock_for_decision(session, request_id, actor_id)
     _decide(request, RequestStatus.REJECTED, actor_id, comment)
+    if request.kind == RequestKind.TRANSITION:
+        await _send_back(session, scope, request, comment)
     record(
         session,
         actor_id=actor_id,
@@ -296,6 +347,33 @@ async def reject(
     await session.flush()
     await session.refresh(request)
     return request
+
+
+async def _send_back(
+    session: AsyncSession,
+    scope: InteractionScope,
+    request: InteractionRequest,
+    comment: str,
+) -> None:
+    """отказ в аппруве уводит на доработку, если ребро это задаёт и заявка
+    всё ещё там, откуда просили. Повторный проход снова потребует аппрува"""
+    edge = await session.get(WorkflowTransition, request.transition_id)
+    if (
+        edge.reject_to_stage_id is None
+        or scope.interaction.state_id != edge.from_stage_id
+    ):
+        return
+    target = await session.get(Stage, edge.reject_to_stage_id)
+    if target is None or target.archived_at is not None:
+        return
+    await session.flush()
+    await return_locked(
+        session,
+        scope,
+        to_stage_id=target.id,
+        kind=StageChangeKind.REJECTION,
+        comment=comment,
+    )
 
 
 async def withdraw(session: AsyncSession, *, request_id: int, actor_id: str) -> None:

@@ -221,6 +221,50 @@ async def accept(
     )
 
 
+async def return_locked(
+    session: AsyncSession,
+    scope: InteractionScope,
+    *,
+    to_stage_id: int,
+    kind: StageChangeKind,
+    comment: str,
+) -> Interaction:
+    """вернуть на стадию без ребра: отказ в аппруве, откат руководителем.
+    Данные шагов не стираются - таймер застоя обнулит новая запись истории"""
+    interaction = scope.interaction
+    current = await session.get(Stage, interaction.state_id)
+    target = await lock_target_stage(session, to_stage_id)
+    if target.workflow_id != interaction.workflow_id or target.is_terminal:
+        raise DomainRuleException(400, "Return goes to a working stage of the workflow")
+    if scope.owner is not None:
+        delta = int(counts_toward_capacity(target, interaction.is_paused)) - int(
+            counts_toward_capacity(current, interaction.is_paused)
+        )
+        await assert_can_keep_working(session, scope.owner, delta)
+    place(
+        session,
+        interaction,
+        current,
+        target,
+        kind=kind,
+        transition_id=None,
+        actor_id=scope.actor.id,
+        comment=comment,
+    )
+    record(
+        session,
+        actor_id=scope.actor.id,
+        event_type=AuditEventType.STAGE_TRANSITIONED,
+        target_type=TargetType.INTERACTION,
+        target_id=interaction.id,
+        old_value={"state_id": current.id},
+        new_value={"state_id": target.id, "kind": kind},
+    )
+    await session.flush()
+    await session.refresh(interaction)
+    return interaction
+
+
 def place(
     session: AsyncSession,
     interaction: Interaction,

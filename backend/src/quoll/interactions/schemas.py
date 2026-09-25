@@ -186,7 +186,7 @@ class InteractionHistoryRead(AppBaseModel):
 class RequestCreate(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["TRANSFER", "CLOSE"]
+    kind: Literal["TRANSFER", "CLOSE", "TRANSITION"]
     # у закрытия - куда закрыть; у передачи - кому, но это лишь предложение
     target_stage_id: int | None = None
     target_manager_id: str | None = None
@@ -200,6 +200,12 @@ class RequestCreate(AppBaseModel):
             raise ValueError("CLOSE needs target_stage_id and no target_manager_id")
         if self.kind == "TRANSFER" and self.target_stage_id is not None:
             raise ValueError("TRANSFER has no target_stage_id")
+        if self.kind == "TRANSITION" and (
+            self.target_stage_id is None or self.target_manager_id
+        ):
+            raise ValueError(
+                "TRANSITION needs target_stage_id and no target_manager_id"
+            )
         return self
 
 
@@ -226,6 +232,7 @@ class RequestRead(AppBaseModel):
     from_owner_id: str | None
     target_stage_id: int | None
     target_manager_id: str | None
+    transition_id: int | None
     reason: str
     decided_by: str | None
     decided_at: datetime | None
