@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 from quoll.auth import role_transition
 from quoll.auth.offboarding import offboard_manager, offboard_superviser
 from quoll.auth.pending_actions import PendingActionType
+from quoll.auth.reconciler import reconcile
 from quoll.auth.session_store import SessionStore
 from quoll.auth.task_queue import run_queue
 from quoll.config import settings
@@ -44,7 +45,11 @@ def background_jobs(session_maker: async_sessionmaker) -> list[Periodic]:
         if processed:
             logger.info(f"Processed {processed} org tasks")
 
+    async def reconcile_tick() -> None:
+        await reconcile(session_maker)
+
     return [
+        Periodic("reconciler", settings.reconciler_interval_seconds, reconcile_tick),
         Periodic("org-queue", settings.org_queue_interval_seconds, run_org_queue),
         Periodic(
             "session-cleanup", settings.session_cleanup_interval_seconds, clean_sessions

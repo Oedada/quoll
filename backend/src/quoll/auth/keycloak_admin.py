@@ -108,3 +108,60 @@ async def set_role(user_id: str, new: UserRole, old: UserRole) -> None:
             f"/users/{user_id}/role-mappings/realm",
             json=[{"id": representation["id"], "name": representation["name"]}],
         )
+
+
+@dataclass
+class Entry:
+    enabled: bool
+    username: str | None
+    email: str | None
+    first_name: str | None
+    last_name: str | None
+    # прямое членство в прикладных ролях - только найти кандидатов;
+    # решения принимаются по эффективным ролям точечным чтением
+    roles: set[str]
+
+
+SNAPSHOT_PAGE = 100
+
+
+async def snapshot() -> dict[str, Entry]:
+    """весь реестр учёток. Любой сбой любой страницы - исключение: неполный
+    снимок превратился бы в массовую деактивацию"""
+    entries: dict[str, Entry] = {}
+    first = 0
+    while True:
+        page = (
+            await _call("GET", "/users", params={"first": first, "max": SNAPSHOT_PAGE})
+        ).json()
+        for user in page:
+            entries[user["id"]] = Entry(
+                enabled=user.get("enabled", False),
+                username=user.get("username"),
+                email=user.get("email"),
+                first_name=user.get("firstName"),
+                last_name=user.get("lastName"),
+                roles=set(),
+            )
+        if len(page) < SNAPSHOT_PAGE:
+            break
+        first += SNAPSHOT_PAGE
+    if not entries:
+        raise IdentityProviderUnavailableException("empty user snapshot")
+    for role in UserRole:
+        first = 0
+        while True:
+            members = (
+                await _call(
+                    "GET",
+                    f"/roles/{role.value}/users",
+                    params={"first": first, "max": SNAPSHOT_PAGE},
+                )
+            ).json()
+            for member in members:
+                if member["id"] in entries:
+                    entries[member["id"]].roles.add(role.value)
+            if len(members) < SNAPSHOT_PAGE:
+                break
+            first += SNAPSHOT_PAGE
+    return entries
