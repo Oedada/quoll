@@ -13,6 +13,7 @@ from quoll.attachments import S3StorageService, attachments_router
 from quoll.auth import auth_router, users_router
 from quoll.auth.bootstrap import ensure_admin_account
 from quoll.auth.repositories import UserRepository
+from quoll.catalog import catalog_router
 from quoll.config import settings
 from quoll.core import AppException
 from quoll.core.worker import Workers
@@ -161,6 +162,7 @@ app.include_router(interactions_router)
 app.include_router(requests_router)
 app.include_router(documents_router)
 app.include_router(org_router)
+app.include_router(catalog_router)
 app.include_router(admin_router)
 app.include_router(notifications_router)
 app.include_router(notifications_ws_router)
