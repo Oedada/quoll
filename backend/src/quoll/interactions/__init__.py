@@ -12,6 +12,7 @@ from quoll.interactions.repository import (
 )
 from quoll.interactions.router import (
     interactions_router,
+    requests_router,
     universities_router,
     vendors_router,
 )

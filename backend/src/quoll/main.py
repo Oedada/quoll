@@ -16,6 +16,7 @@ from quoll.config import settings
 from quoll.core import AppException
 from quoll.interactions import (
     interactions_router,
+    requests_router,
     universities_router,
     vendors_router,
 )
@@ -146,6 +147,7 @@ app.include_router(attachments_router)
 app.include_router(universities_router)
 app.include_router(vendors_router)
 app.include_router(interactions_router)
+app.include_router(requests_router)
 app.include_router(org_router)
 app.include_router(notifications_router)
 app.include_router(notifications_ws_router)

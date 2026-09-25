@@ -30,6 +30,7 @@ from quoll.interactions.models import (
     StageChangeKind,
 )
 from quoll.interactions.repository import InteractionRepository
+from quoll.interactions.requests import cancel_pending_requests
 from quoll.interactions.schemas import InteractionCreate
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
 from quoll.interactions.transition_service import lock_target_stage, place
@@ -68,7 +69,27 @@ async def assign(
     scope = await lock_interaction_scope(
         session, interaction_id, actor_id, target_manager_ids=[manager_id]
     )
+    return await assign_locked(
+        session,
+        scope,
+        manager_id=manager_id,
+        expected_owner_id=expected_owner_id,
+        reason=reason,
+    )
+
+
+async def assign_locked(
+    session: AsyncSession,
+    scope: InteractionScope,
+    *,
+    manager_id: str,
+    expected_owner_id: str | None,
+    reason: str | None,
+) -> Interaction:
+    """назначение под уже захваченной областью - его зовёт и одобрение
+    просьбы о передаче. Цель в Keycloak проверена до блокировок"""
     interaction = scope.interaction
+    actor_id = scope.actor.id
     if interaction.owner_id != expected_owner_id:
         raise StaleStateException("Interaction owner", interaction.owner_id)
 
@@ -97,6 +118,10 @@ async def assign(
     if previous is not None:
         interaction.last_owner_id = previous
     await _hand_over(session, interaction.id, manager_id, reason)
+    # у нового владельца свои просьбы - старые устарели
+    await cancel_pending_requests(
+        session, interaction.id, actor_id, "interaction owner changed"
+    )
     record(
         session,
         actor_id=actor_id,

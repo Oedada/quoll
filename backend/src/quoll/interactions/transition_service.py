@@ -25,7 +25,8 @@ from quoll.interactions.models import (
     PauseState,
     StageChangeKind,
 )
-from quoll.interactions.scope import lock_interaction_scope
+from quoll.interactions.requests import cancel_pending_requests
+from quoll.interactions.scope import InteractionScope, lock_interaction_scope
 from quoll.workflows.models import Stage, Workflow, WorkflowTransition
 
 
@@ -89,6 +90,10 @@ async def transition(
         actor_id=actor_id,
         comment=comment,
     )
+    if target.is_terminal:
+        await cancel_pending_requests(
+            session, interaction.id, actor_id, "interaction closed"
+        )
     record(
         session,
         actor_id=actor_id,
@@ -149,9 +154,17 @@ async def close(
     Дееспособность владельца не проверяется - иначе офбординг не дождался бы
     нуля незакрытых"""
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
+    if scope.interaction.state_id != expected_state_id:
+        raise StaleStateException("Interaction stage", scope.interaction.state_id)
+    return await close_locked(session, scope, to_stage_id=to_stage_id, comment=comment)
+
+
+async def close_locked(
+    session: AsyncSession, scope: InteractionScope, *, to_stage_id: int, comment: str
+) -> Interaction:
+    """закрытие под уже захваченной областью - его зовёт и одобрение просьбы"""
     interaction = scope.interaction
-    if interaction.state_id != expected_state_id:
-        raise StaleStateException("Interaction stage", interaction.state_id)
+    actor_id = scope.actor.id
     if not can_close(scope.actor, scope.ownership):
         raise OperationForbiddenException("close this interaction")
 
@@ -177,6 +190,9 @@ async def close(
         transition_id=None,
         actor_id=actor_id,
         comment=comment,
+    )
+    await cancel_pending_requests(
+        session, interaction.id, actor_id, "interaction closed"
     )
     record(
         session,

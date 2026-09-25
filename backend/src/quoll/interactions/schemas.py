@@ -1,7 +1,7 @@
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, model_validator
 
 from quoll.core.schemas import AppBaseModel
 from quoll.workflows.schemas import StageRead, WorkflowRead
@@ -166,3 +166,53 @@ class InteractionHistoryRead(AppBaseModel):
 
     stages: list[StageHistoryRead]
     assignments: list[AssignmentRead]
+
+
+class RequestCreate(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    kind: Literal["TRANSFER", "CLOSE"]
+    # у закрытия - куда закрыть; у передачи - кому, но это лишь предложение
+    target_stage_id: int | None = None
+    target_manager_id: str | None = None
+    reason: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _targets_fit_kind(self):
+        if self.kind == "CLOSE" and (
+            self.target_stage_id is None or self.target_manager_id
+        ):
+            raise ValueError("CLOSE needs target_stage_id and no target_manager_id")
+        if self.kind == "TRANSFER" and self.target_stage_id is not None:
+            raise ValueError("TRANSFER has no target_stage_id")
+        return self
+
+
+class RequestApprove(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # у передачи обязателен: решает руководитель, а не предложение менеджера
+    target_manager_id: str | None = None
+    comment: str | None = None
+
+
+class RequestReject(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comment: str = Field(min_length=1)
+
+
+class RequestRead(AppBaseModel):
+    id: int
+    interaction_id: int
+    kind: str
+    status: str
+    requested_by: str | None
+    from_owner_id: str | None
+    target_stage_id: int | None
+    target_manager_id: str | None
+    reason: str
+    decided_by: str | None
+    decided_at: datetime | None
+    decision_comment: str | None
+    created_at: datetime

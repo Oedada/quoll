@@ -1,0 +1,339 @@
+"""Просьбы менеджера руководителю: передать проект или закрыть досрочно (П8).
+
+менеджер просит, руководитель владельца решает - кому передать и закрывать ли
+"""
+
+from dataclasses import dataclass
+
+from sqlalchemy import func, select, update
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from quoll.auth.audit import record
+from quoll.auth.audit_models import AuditEventType, TargetType
+from quoll.auth.keycloak_admin import verify_target
+from quoll.auth.models import Manager, User, UserRole
+from quoll.core.exceptions import (
+    DomainRuleException,
+    IdNotExistsException,
+    OperationForbiddenException,
+)
+from quoll.core.locking import lock_row
+from quoll.interactions.access_policy import can_close
+from quoll.interactions.models import (
+    Interaction,
+    InteractionRequest,
+    RequestKind,
+    RequestStatus,
+)
+from quoll.interactions.project_service import assign_locked
+from quoll.interactions.scope import InteractionScope, lock_interaction_scope
+from quoll.interactions.transition_service import close_locked
+from quoll.workflows.models import Stage
+
+_REQUESTED = {
+    RequestKind.TRANSFER: AuditEventType.PROJECT_TRANSFER_REQUESTED,
+    RequestKind.CLOSE: AuditEventType.PROJECT_CLOSE_REQUESTED,
+}
+_APPROVED = {
+    RequestKind.TRANSFER: AuditEventType.PROJECT_TRANSFER_APPROVED,
+    RequestKind.CLOSE: AuditEventType.PROJECT_CLOSE_APPROVED,
+}
+_REJECTED = {
+    RequestKind.TRANSFER: AuditEventType.PROJECT_TRANSFER_REJECTED,
+    RequestKind.CLOSE: AuditEventType.PROJECT_CLOSE_REJECTED,
+}
+
+
+@dataclass(frozen=True)
+class Decision:
+    request: InteractionRequest
+    # просьба устарела и отменена - отказ, который надо закоммитить, а не откатить
+    refused: str | None = None
+
+
+async def _open_stage(session: AsyncSession, interaction: Interaction) -> Stage:
+    """просят по заявке в работе: черновик удаляют, закрытую переоткрывают"""
+    if interaction.state_id is None:
+        raise DomainRuleException(409, "Draft interaction has no requests")
+    stage = await session.get(Stage, interaction.state_id)
+    if stage.is_terminal:
+        raise DomainRuleException(409, "Interaction is already closed")
+    return stage
+
+
+async def _check_close_target(
+    session: AsyncSession, interaction: Interaction, stage_id: int
+) -> Stage:
+    stage = await session.get(Stage, stage_id)
+    if stage is None or stage.workflow_id != interaction.workflow_id:
+        raise DomainRuleException(400, "Stage belongs to another workflow")
+    if not stage.is_terminal:
+        raise DomainRuleException(400, "Interaction is closed into a terminal stage")
+    return stage
+
+
+async def create(
+    session: AsyncSession,
+    *,
+    interaction_id: int,
+    actor_id: str,
+    kind: RequestKind,
+    target_stage_id: int | None,
+    target_manager_id: str | None,
+    reason: str,
+) -> InteractionRequest:
+    # под захватом области: просьба не создаётся одновременно со сменой владельца
+    scope = await lock_interaction_scope(session, interaction_id, actor_id)
+    interaction = scope.interaction
+    if interaction.owner_id != actor_id:
+        raise OperationForbiddenException("request for someone else's interaction")
+    await _open_stage(session, interaction)
+
+    if kind == RequestKind.CLOSE:
+        stage = await _check_close_target(session, interaction, target_stage_id)
+        if stage.archived_at is not None:
+            raise DomainRuleException(409, f"Stage '{stage.id}' is archived")
+    elif (
+        target_manager_id is not None
+        and await session.get(Manager, target_manager_id) is None
+    ):
+        raise DomainRuleException(400, f"User '{target_manager_id}' is not a manager")
+
+    pending = await session.scalar(
+        select(InteractionRequest.id).where(
+            InteractionRequest.interaction_id == interaction.id,
+            InteractionRequest.kind == kind,
+            InteractionRequest.status == RequestStatus.PENDING,
+        )
+    )
+    if pending is not None:
+        raise DomainRuleException(
+            409, f"Request '{pending}' of this kind is already pending"
+        )
+
+    request = InteractionRequest(
+        interaction_id=interaction.id,
+        kind=kind,
+        requested_by=actor_id,
+        from_owner_id=interaction.owner_id,
+        target_stage_id=target_stage_id,
+        target_manager_id=target_manager_id,
+        reason=reason,
+    )
+    session.add(request)
+    await session.flush()
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=_REQUESTED[kind],
+        target_type=TargetType.REQUEST,
+        target_id=request.id,
+        new_value={
+            "interaction_id": interaction.id,
+            "target_stage_id": target_stage_id,
+            "target_manager_id": target_manager_id,
+            "reason": reason,
+        },
+    )
+    await session.refresh(request)
+    return request
+
+
+async def _lock_for_decision(
+    session: AsyncSession,
+    request_id: int,
+    actor_id: str,
+    target_manager_ids: list[str] = (),
+) -> tuple[InteractionScope, InteractionRequest]:
+    """заявка раньше просьбы - порядок из core/locking.py"""
+    found = await session.get(InteractionRequest, request_id)
+    if found is None:
+        raise IdNotExistsException(InteractionRequest.__name__)
+    scope = await lock_interaction_scope(
+        session, found.interaction_id, actor_id, target_manager_ids
+    )
+    request = await lock_row(session, InteractionRequest, request_id)
+    if request.status != RequestStatus.PENDING:
+        raise DomainRuleException(409, f"Request is already {request.status}")
+    if not can_close(scope.actor, scope.ownership):
+        raise OperationForbiddenException("decide on this request")
+    return scope, request
+
+
+def _decide(
+    request: InteractionRequest,
+    status: RequestStatus,
+    actor_id: str | None,
+    comment: str | None,
+) -> None:
+    request.status = status
+    request.decided_by = actor_id
+    request.decided_at = func.now()
+    request.decision_comment = comment
+
+
+async def _stale_reason(
+    session: AsyncSession, scope: InteractionScope, request: InteractionRequest
+) -> str | None:
+    """просьба сама стала недействительной - это не ошибка руководителя"""
+    interaction = scope.interaction
+    if interaction.owner_id != request.from_owner_id:
+        return "interaction owner changed"
+    stage = await session.get(Stage, interaction.state_id)
+    if stage is None or stage.is_terminal:
+        return "interaction closed"
+    if request.kind == RequestKind.CLOSE:
+        target = await session.get(Stage, request.target_stage_id)
+        if target.archived_at is not None:
+            return "target stage archived"
+    return None
+
+
+async def approve(
+    session: AsyncSession,
+    *,
+    request_id: int,
+    actor_id: str,
+    target_manager_id: str | None,
+    comment: str | None,
+) -> Decision:
+    """ошибки по цели, которую выбрал руководитель, - 409, просьба ждёт дальше.
+    Устаревшая просьба отменяется, и отмена коммитится"""
+    found = await session.get(InteractionRequest, request_id)
+    if found is None:
+        raise IdNotExistsException(InteractionRequest.__name__)
+    if found.kind == RequestKind.TRANSFER:
+        if target_manager_id is None:
+            raise DomainRuleException(422, "Transfer approval needs target_manager_id")
+        # до блокировок: поход в сеть под блокировкой держал бы строки
+        await verify_target(target_manager_id, UserRole.MANAGER)
+    scope, request = await _lock_for_decision(
+        session, request_id, actor_id, [target_manager_id] if target_manager_id else []
+    )
+
+    stale = await _stale_reason(session, scope, request)
+    if stale is not None:
+        _decide(request, RequestStatus.CANCELLED, actor_id, stale)
+        record(
+            session,
+            actor_id=actor_id,
+            event_type=AuditEventType.REQUEST_CANCELLED,
+            target_type=TargetType.REQUEST,
+            target_id=request.id,
+            new_value={"reason": stale},
+        )
+        await session.flush()
+        return Decision(request, refused=f"Request is no longer valid: {stale}")
+
+    # решаем раньше операции: она отменяет открытые просьбы по заявке, и эта
+    # попала бы под отмену. Упадёт операция - откатится и решение
+    _decide(request, RequestStatus.APPROVED, actor_id, comment)
+    await session.flush()
+    if request.kind == RequestKind.TRANSFER:
+        await assign_locked(
+            session,
+            scope,
+            manager_id=target_manager_id,
+            expected_owner_id=request.from_owner_id,
+            reason=request.reason,
+        )
+        outcome = {
+            "target_manager_id": target_manager_id,
+            "suggested": request.target_manager_id,
+        }
+    else:
+        await close_locked(
+            session, scope, to_stage_id=request.target_stage_id, comment=request.reason
+        )
+        outcome = {"target_stage_id": request.target_stage_id}
+
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=_APPROVED[request.kind],
+        target_type=TargetType.REQUEST,
+        target_id=request.id,
+        new_value={**outcome, "comment": comment},
+    )
+    await session.flush()
+    await session.refresh(request)
+    return Decision(request)
+
+
+async def reject(
+    session: AsyncSession, *, request_id: int, actor_id: str, comment: str
+) -> InteractionRequest:
+    _, request = await _lock_for_decision(session, request_id, actor_id)
+    _decide(request, RequestStatus.REJECTED, actor_id, comment)
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=_REJECTED[request.kind],
+        target_type=TargetType.REQUEST,
+        target_id=request.id,
+        new_value={"comment": comment},
+    )
+    await session.flush()
+    await session.refresh(request)
+    return request
+
+
+async def withdraw(session: AsyncSession, *, request_id: int, actor_id: str) -> None:
+    """автор отзывает сам: CAS одной строки, заявку не блокируем"""
+    withdrawn = await session.scalar(
+        update(InteractionRequest)
+        .where(
+            InteractionRequest.id == request_id,
+            InteractionRequest.requested_by == actor_id,
+            InteractionRequest.status == RequestStatus.PENDING,
+        )
+        .values(
+            status=RequestStatus.CANCELLED,
+            decided_by=actor_id,
+            decided_at=func.now(),
+            decision_comment="withdrawn by author",
+        )
+        .returning(InteractionRequest.id)
+    )
+    if withdrawn is None:
+        request = await session.get(InteractionRequest, request_id)
+        if request is None:
+            raise IdNotExistsException(InteractionRequest.__name__)
+        if request.requested_by != actor_id:
+            raise OperationForbiddenException("withdraw someone else's request")
+        raise DomainRuleException(409, f"Request is already {request.status}")
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=AuditEventType.REQUEST_CANCELLED,
+        target_type=TargetType.REQUEST,
+        target_id=request_id,
+        new_value={"reason": "withdrawn by author"},
+    )
+
+
+async def visible(
+    session: AsyncSession,
+    viewer: User,
+    status: RequestStatus | None,
+    limit: int,
+    offset: int,
+) -> list[InteractionRequest]:
+    """руководитель - по заявкам своей команды, менеджер - свои, админ - все"""
+    stmt = select(InteractionRequest)
+    if viewer.role == UserRole.MANAGER:
+        stmt = stmt.where(InteractionRequest.requested_by == viewer.id)
+    elif viewer.role == UserRole.SUPERVISER:
+        team = select(Manager.id).where(Manager.superviser_id == viewer.id)
+        owned = select(Interaction.id).where(Interaction.owner_id.in_(team))
+        stmt = stmt.where(InteractionRequest.interaction_id.in_(owned))
+    if status is not None:
+        stmt = stmt.where(InteractionRequest.status == status)
+    stmt = (
+        stmt.order_by(
+            InteractionRequest.created_at.desc(), InteractionRequest.id.desc()
+        )
+        .limit(limit)
+        .offset(offset)
+    )
+    return list((await session.scalars(stmt)).all())

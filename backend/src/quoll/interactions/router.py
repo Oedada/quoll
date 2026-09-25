@@ -1,13 +1,17 @@
+from typing import Annotated
+
 from fastapi import APIRouter, Depends, Path, Query, Response, status
+from fastapi.responses import JSONResponse
 
 from quoll.auth.dependencies import (
     AdminOnly,
     CurrentUser,
+    ManagerUser,
     SupervisorUser,
     get_current_user,
 )
 from quoll.core import SystemDefaults
-from quoll.interactions import project_service, transition_service
+from quoll.interactions import project_service, request_service, transition_service
 from quoll.interactions.access_policy import readable_filter
 from quoll.interactions.dependencies import (
     ChangeableInteraction,
@@ -19,6 +23,7 @@ from quoll.interactions.dependencies import (
     UniversityRepoDep,
     VendorRepoDep,
 )
+from quoll.interactions.models import RequestKind, RequestStatus
 from quoll.interactions.schemas import (
     AssignRequest,
     CloseRequest,
@@ -29,6 +34,10 @@ from quoll.interactions.schemas import (
     InteractionUpdate,
     PauseRequest,
     ReopenRequest,
+    RequestApprove,
+    RequestCreate,
+    RequestRead,
+    RequestReject,
     TransitionRequest,
     UniversityCreate,
     UniversityRead,
@@ -334,6 +343,29 @@ async def reopen_interaction(
 
 
 @interactions_router.post(
+    "/{id}/requests",
+    response_model=RequestRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Ask the supervisor to transfer or close the interaction",
+)
+async def create_request(
+    id: InteractionId,
+    body: RequestCreate,
+    user: ManagerUser,
+    session: SessionDep,
+):
+    return await request_service.create(
+        session,
+        interaction_id=id,
+        actor_id=user.id,
+        kind=RequestKind(body.kind),
+        target_stage_id=body.target_stage_id,
+        target_manager_id=body.target_manager_id,
+        reason=body.reason,
+    )
+
+
+@interactions_router.post(
     "/{id}/pause",
     response_model=InteractionRead,
     summary="Pause an interaction or replace its pause",
@@ -404,4 +436,56 @@ async def interaction_history(
 )
 async def delete_interaction(interaction: DeletableInteraction, session: SessionDep):
     await project_service.delete_draft(session, interaction)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+requests_router = APIRouter(
+    prefix="/api/v1/requests",
+    tags=["Interaction requests"],
+    dependencies=[Depends(get_current_user)],
+)
+
+
+@requests_router.get("/", response_model=list[RequestRead])
+async def list_requests(
+    user: CurrentUser,
+    session: SessionDep,
+    status_filter: Annotated[RequestStatus | None, Query(alias="status")] = None,
+    limit: int = Query(
+        default=SystemDefaults.DEFAULT_PAGE_SIZE, ge=1, le=SystemDefaults.MAX_PAGE_SIZE
+    ),
+    offset: int = Query(default=0, ge=0),
+):
+    return await request_service.visible(session, user, status_filter, limit, offset)
+
+
+@requests_router.post("/{id}/approve", response_model=RequestRead)
+async def approve_request(
+    id: int, body: RequestApprove, user: SupervisorUser, session: SessionDep
+):
+    decision = await request_service.approve(
+        session,
+        request_id=id,
+        actor_id=user.id,
+        target_manager_id=body.target_manager_id,
+        comment=body.comment,
+    )
+    if decision.refused is not None:
+        # без исключения: сессия закоммитит отмену устаревшей просьбы
+        return JSONResponse(status_code=409, content={"detail": decision.refused})
+    return decision.request
+
+
+@requests_router.post("/{id}/reject", response_model=RequestRead)
+async def reject_request(
+    id: int, body: RequestReject, user: SupervisorUser, session: SessionDep
+):
+    return await request_service.reject(
+        session, request_id=id, actor_id=user.id, comment=body.comment
+    )
+
+
+@requests_router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
+async def withdraw_request(id: int, user: ManagerUser, session: SessionDep):
+    await request_service.withdraw(session, request_id=id, actor_id=user.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
