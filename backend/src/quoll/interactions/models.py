@@ -17,6 +17,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from quoll.core.mixins import IdMixin, TimestampMixin
@@ -317,4 +318,13 @@ class InteractionDocument(Base):
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     replaces_document_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
+    # внутреннее название - не имя файла: «Договор №12» вместо scan_0042.pdf
+    title: Mapped[str_255]
+    # тип документа: договор, акт, протокол. Пока строка - справочником и
+    # правилами «обязателен на шаге» займётся слой выше
+    kind: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    # metadata в декларативной модели занято самим SQLAlchemy
+    meta: Mapped[dict[str, Any]] = mapped_column(
+        "metadata", JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
     created_at: Mapped[created_at_dt]

@@ -1,10 +1,14 @@
-"""Документы заявки: файлы проекта, приложенные на её стадии, с версиями.
+"""Документы взаимодействия: файлы проекта, привязанные к стадии, с версиями.
 
-новая версия ссылается на прежнюю, прежняя остаётся - «уходит вниз и сереет».
-Удаляет только админ - единственное исключение из запрета доменных операций
+стадию задаёт вызывающий - к любой стадии воркфлоу этого взаимодействия, не
+только к текущей. Что на каком шаге обязательно, решает слой выше, здесь -
+только структура. Новая версия ссылается на прежнюю, прежняя остаётся -
+«уходит вниз и сереет». Удаляет только админ - единственное исключение из
+запрета доменных операций
 """
 
 from dataclasses import dataclass
+from typing import Any
 
 from fastapi import UploadFile
 from sqlalchemy import delete, exists, select
@@ -25,7 +29,7 @@ from quoll.interactions.access_policy import can_change, can_read
 from quoll.interactions.models import InteractionDocument
 from quoll.interactions.repository import InteractionRepository
 from quoll.interactions.scope import lock_interaction_scope
-from quoll.workflows.models import TransitionAttachment
+from quoll.workflows.models import Stage, TransitionAttachment
 
 
 @dataclass(frozen=True)
@@ -42,7 +46,11 @@ async def upload(
     interaction_id: int,
     actor: User,
     file: UploadFile,
+    stage_id: int,
     replaces_document_id: int | None,
+    title: str | None,
+    kind: str | None,
+    meta: dict[str, Any],
 ) -> DocumentView:
     """право - дважды: без блокировок до загрузки, чтобы не держать строки на
     время сети, и под блокировкой перед вставкой"""
@@ -50,22 +58,28 @@ async def upload(
     interaction = await repo.get(interaction_id)
     if not can_change(actor, await repo.ownership(interaction)):
         raise OperationForbiddenException("attach documents to this interaction")
-    if interaction.state_id is None:
-        raise DomainRuleException(409, "Documents are attached from the first stage on")
+    await _check_stage(session, interaction.workflow_id, stage_id)
 
     attachment = await attachments.upload_attachment(file)
     try:
         scope = await lock_interaction_scope(session, interaction_id, actor.id)
         if not can_change(scope.actor, scope.ownership):
             raise OperationForbiddenException("attach documents to this interaction")
+        previous = None
         if replaces_document_id is not None:
-            await _check_replaceable(session, interaction_id, replaces_document_id)
+            previous = await _check_replaceable(
+                session, interaction_id, replaces_document_id
+            )
         document = InteractionDocument(
             interaction_id=interaction_id,
             attachment_id=attachment.id,
-            stage_id=scope.interaction.state_id,
+            stage_id=stage_id,
             uploaded_by=actor.id,
             replaces_document_id=replaces_document_id,
+            # новая версия того же документа - то же название и тип
+            title=title or (previous.title if previous else attachment.filename),
+            kind=kind or (previous.kind if previous else None),
+            meta=meta,
         )
         session.add(document)
         await session.flush()
@@ -82,6 +96,9 @@ async def upload(
         target_id=document.id,
         new_value={
             "interaction_id": interaction_id,
+            "stage_id": stage_id,
+            "title": document.title,
+            "kind": document.kind,
             "filename": attachment.filename,
             "replaces_document_id": replaces_document_id,
         },
@@ -90,9 +107,24 @@ async def upload(
     return DocumentView(document, attachment, is_current=True)
 
 
+async def _check_stage(
+    session: AsyncSession, workflow_id: int | None, stage_id: int
+) -> None:
+    """только структура: стадия из воркфлоу этого взаимодействия и живая"""
+    if workflow_id is None:
+        raise DomainRuleException(
+            409, "Interaction has no workflow yet, no stages to attach to"
+        )
+    stage = await session.get(Stage, stage_id)
+    if stage is None or stage.workflow_id != workflow_id:
+        raise DomainRuleException(400, "Stage belongs to another workflow")
+    if stage.archived_at is not None:
+        raise DomainRuleException(409, f"Stage '{stage_id}' is archived")
+
+
 async def _check_replaceable(
     session: AsyncSession, interaction_id: int, document_id: int
-) -> None:
+) -> InteractionDocument:
     previous = await session.get(InteractionDocument, document_id)
     if previous is None or previous.interaction_id != interaction_id:
         raise DomainRuleException(
@@ -107,6 +139,7 @@ async def _check_replaceable(
         raise DomainRuleException(
             409, f"Document is already replaced by '{successor}', replace that one"
         )
+    return previous
 
 
 async def documents(session: AsyncSession, interaction_id: int) -> list[DocumentView]:

@@ -1,3 +1,4 @@
+import json
 from typing import Annotated
 
 from fastapi import (
@@ -25,6 +26,7 @@ from quoll.auth.dependencies import (
     get_current_user,
 )
 from quoll.core import SystemDefaults
+from quoll.core.exceptions import DomainRuleException
 from quoll.interactions import (
     document_service,
     project_service,
@@ -385,6 +387,18 @@ async def create_request(
     )
 
 
+def _json_object(raw: str | None) -> dict:
+    if raw is None:
+        return {}
+    try:
+        value = json.loads(raw)
+    except json.JSONDecodeError as err:
+        raise DomainRuleException(422, "metadata must be a JSON object") from err
+    if not isinstance(value, dict):
+        raise DomainRuleException(422, "metadata must be a JSON object")
+    return value
+
+
 def _document(view) -> DocumentRead:
     doc = view.document
     return DocumentRead(
@@ -393,6 +407,9 @@ def _document(view) -> DocumentRead:
         stage_id=doc.stage_id,
         uploaded_by=doc.uploaded_by,
         replaces_document_id=doc.replaces_document_id,
+        title=doc.title,
+        kind=doc.kind,
+        metadata=doc.meta,
         is_current=view.is_current,
         created_at=doc.created_at,
         attachment=AttachmentRead.model_validate(view.attachment),
@@ -418,7 +435,13 @@ async def attach_document(
     session: SessionDep,
     attachments: AttachmentServiceDep,
     file: Annotated[UploadFile, File()],
+    # стадия - снаружи: приложить можно к любой стадии воркфлоу
+    stage_id: Annotated[int, Form()],
     replaces_document_id: Annotated[int | None, Form()] = None,
+    title: Annotated[str | None, Form(max_length=255)] = None,
+    kind: Annotated[str | None, Form(max_length=100)] = None,
+    # multipart не несёт вложенных объектов - JSON строкой
+    metadata: Annotated[str | None, Form()] = None,
 ):
     view = await document_service.upload(
         session,
@@ -426,7 +449,11 @@ async def attach_document(
         interaction_id=id,
         actor=user,
         file=file,
+        stage_id=stage_id,
         replaces_document_id=replaces_document_id,
+        title=title,
+        kind=kind,
+        meta=_json_object(metadata),
     )
     return _document(view)
 

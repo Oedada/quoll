@@ -225,6 +225,9 @@ class DocumentRead(AppBaseModel):
     stage_id: int
     uploaded_by: str | None
     replaces_document_id: int | None
+    title: str
+    kind: str | None
+    metadata: dict[str, Any]
     # прежние версии не пропадают, а перестают быть актуальными
     is_current: bool
     created_at: datetime
