@@ -7,6 +7,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from quoll.auth import role_transition
 from quoll.auth.offboarding import offboard_manager, offboard_superviser
 from quoll.auth.pending_actions import PendingActionType
 from quoll.auth.session_store import SessionStore
@@ -34,10 +35,12 @@ def background_jobs(session_maker: async_sessionmaker) -> list[Periodic]:
     handlers = {
         PendingActionType.OFFBOARDING_MANAGER: offboard_manager,
         PendingActionType.OFFBOARDING_SUPERVISER: offboard_superviser,
+        PendingActionType.ROLE_TRANSITION: role_transition.handle,
     }
+    on_failed = {PendingActionType.ROLE_TRANSITION: role_transition.on_failed}
 
     async def run_org_queue() -> None:
-        processed = await run_queue(session_maker, handlers, on_failed={})
+        processed = await run_queue(session_maker, handlers, on_failed)
         if processed:
             logger.info(f"Processed {processed} org tasks")
 

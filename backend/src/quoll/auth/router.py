@@ -10,7 +10,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from quoll.auth import identity_service, login_service, oidc
+from quoll.auth import identity_service, login_service, oidc, role_transition
 from quoll.auth.dependencies import (
     SESSION_COOKIE,
     AdminUser,
@@ -24,7 +24,13 @@ from quoll.auth.dependencies import (
 from quoll.auth.login_service import LoginDenied
 from quoll.auth.models import user_class_for_role
 from quoll.auth.repositories import UserRepository
-from quoll.auth.schemas import UserCreate, UserListRead, UserRead, UserUpdate
+from quoll.auth.schemas import (
+    RoleChange,
+    UserCreate,
+    UserListRead,
+    UserRead,
+    UserUpdate,
+)
 from quoll.config import settings
 from quoll.core import LoginFlowException, SystemDefaults
 from quoll.core.exceptions import DomainRuleException
@@ -178,6 +184,18 @@ async def deactivate_user(user_id: str, admin: AdminUser, session: SessionDep):
         # у нас уже выключен, а Keycloak мог не успеть - иначе сверщик вернул бы
         await identity_service.push_disabled(user_id)
     return Response(status_code=204)
+
+
+@users_router.patch("/{user_id}/role")
+async def change_role(
+    user_id: str, body: RoleChange, admin: AdminUser, session: SessionDep
+):
+    """200 - роль сменилась сразу; 202 - учётка заблокирована, ждём, пока
+    руководитель разберёт работу старой роли"""
+    if admin.id == user_id:
+        raise DomainRuleException(409, "Cannot change your own role")
+    applied = await role_transition.request(session, user_id, body.role, admin.id)
+    return Response(status_code=200 if applied else 202)
 
 
 @users_router.post("/{user_id}/reactivate", status_code=204)

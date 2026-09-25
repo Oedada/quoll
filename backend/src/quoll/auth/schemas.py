@@ -43,3 +43,9 @@ class UserListRead(AppBaseModel):
     users: list[UserRead]
     limit: int
     offset: int
+
+
+class RoleChange(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    role: UserRole
