@@ -80,15 +80,17 @@ class StorageException(AppException):
         logger.error(self.message)
 
 
+# не в строю и «не беру новые» - конфликт с состоянием, а не плохой запрос:
+# 409, как у оргопераций
 class ManagerNotActiveException(AppException):
     def __init__(self, manager_id: str, reason: str = "inactive"):
-        super().__init__(400, f"Manager '{manager_id}' cannot work: {reason}")
+        super().__init__(409, f"Manager '{manager_id}' cannot work: {reason}")
         logger.warning(self.message)
 
 
 class ManagerUnavailableException(AppException):
     def __init__(self, manager_id: str):
-        super().__init__(400, f"Manager '{manager_id}' is not accepting new projects")
+        super().__init__(409, f"Manager '{manager_id}' is not accepting new projects")
         logger.warning(self.message)
 
 
