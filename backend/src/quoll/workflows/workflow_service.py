@@ -216,12 +216,27 @@ async def _check_ends(
             raise DomainRuleException(409, f"Stage '{stage_id}' is archived")
 
 
+def _check_rules(edge: WorkflowTransition) -> None:
+    # то же держат CHECK-и, но здесь - с понятной причиной вместо 409
+    if edge.requires_approval and edge.from_stage_id is None:
+        raise DomainRuleException(
+            400, "Entry transition cannot require approval: it is the acceptance"
+        )
+    if edge.reject_to_stage_id is not None and not edge.requires_approval:
+        raise DomainRuleException(400, "reject_to_stage_id needs requires_approval")
+
+
 async def create_transition(
     session: AsyncSession, schema: WorkflowTransitionCreate, actor_id: str
 ) -> WorkflowTransition:
     workflow = await lock_workflow(session, schema.workflow_id)
-    await _check_ends(session, workflow.id, [schema.from_stage_id, schema.to_stage_id])
+    await _check_ends(
+        session,
+        workflow.id,
+        [schema.from_stage_id, schema.to_stage_id, schema.reject_to_stage_id],
+    )
     edge = WorkflowTransition(**schema.model_dump())
+    _check_rules(edge)
     session.add(edge)
     await session.flush()
     await check_graph(session, workflow)
@@ -261,11 +276,14 @@ async def update_transition(
     moved = _EDGE_ENDS & new.keys()
     if moved and workflow.is_published:
         raise PublishedGraphChangeException(sorted(moved))
-    await _check_ends(session, workflow.id, [new.get(f) for f in moved])
+    await _check_ends(
+        session, workflow.id, [new.get(f) for f in moved | {"reject_to_stage_id"}]
+    )
 
     old = {field: getattr(edge, field) for field in new}
     for field, value in new.items():
         setattr(edge, field, value)
+    _check_rules(edge)
     await session.flush()
     # имя и описание граф не ломают, концы у опубликованного не меняются
     if "is_active" in new:

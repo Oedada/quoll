@@ -134,6 +134,8 @@ class StageChangeKind(StrEnum):
     CLOSE = "CLOSE"  # досрочное закрытие, без ребра
     REOPEN = "REOPEN"  # переоткрытие закрытой
     RELOCATION = "RELOCATION"  # перенос при архивации стадии
+    REJECTION = "REJECTION"  # отказ в аппруве увёл на доработку
+    ROLLBACK = "ROLLBACK"  # откат руководителем на несколько шагов
 
 
 class InteractionStageHistory(Base):
@@ -146,7 +148,8 @@ class InteractionStageHistory(Base):
     __tablename__ = "interaction_stage_history"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('TRANSITION', 'CLOSE', 'REOPEN', 'RELOCATION')",
+            "kind IN ('TRANSITION', 'CLOSE', 'REOPEN', 'RELOCATION', "
+            "'REJECTION', 'ROLLBACK')",
             name="chk_stage_history_kind",
         ),
         Index("ix_stage_history_interaction_created", "interaction_id", "created_at"),
@@ -206,6 +209,8 @@ class InteractionAssignment(Base):
 class RequestKind(StrEnum):
     TRANSFER = "TRANSFER"
     CLOSE = "CLOSE"
+    # аппрув перехода по ребру с requires_approval
+    TRANSITION = "TRANSITION"
 
 
 class RequestStatus(StrEnum):
@@ -220,7 +225,19 @@ class InteractionRequest(Base):
     Решает руководитель - кому передать и закрывать ли (П8)"""
 
     __table_args__ = (
-        CheckConstraint("kind IN ('TRANSFER', 'CLOSE')", name="chk_request_kind"),
+        CheckConstraint(
+            "kind IN ('TRANSFER', 'CLOSE', 'TRANSITION')", name="chk_request_kind"
+        ),
+        # у перехода - ребро и его цель; у остальных ребра нет
+        CheckConstraint(
+            "(kind = 'TRANSITION') = (transition_id IS NOT NULL)",
+            name="chk_request_transition_edge",
+        ),
+        CheckConstraint(
+            "kind <> 'TRANSITION' OR (target_stage_id IS NOT NULL "
+            "AND target_manager_id IS NULL)",
+            name="chk_request_transition_target",
+        ),
         CheckConstraint(
             "status IN ('PENDING', 'APPROVED', 'REJECTED', 'CANCELLED')",
             name="chk_request_status",
@@ -267,6 +284,9 @@ class InteractionRequest(Base):
     )
     target_stage_id: Mapped[int | None] = mapped_column(
         ForeignKey("stages.id", ondelete="RESTRICT"), nullable=True
+    )
+    transition_id: Mapped[int | None] = mapped_column(
+        ForeignKey("workflow_transitions.id", ondelete="RESTRICT"), nullable=True
     )
     reason: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(
@@ -328,3 +348,30 @@ class InteractionDocument(Base):
         "metadata", JSONB, default=dict, server_default=text("'{}'::jsonb")
     )
     created_at: Mapped[created_at_dt]
+
+
+class InteractionStageValues(Base):
+    """значения полей шага: одна строка на заявку и стадию. История правок -
+    в журнале, поэтому не EAV и не версии"""
+
+    __tablename__ = "interaction_stage_values"
+    __table_args__ = (
+        UniqueConstraint(
+            "interaction_id", "stage_id", name="uq_stage_values_interaction_stage"
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    interaction_id: Mapped[int] = mapped_column(
+        ForeignKey("interactions.id", ondelete="CASCADE"), index=True
+    )
+    stage_id: Mapped[int] = mapped_column(ForeignKey("stages.id", ondelete="RESTRICT"))
+    values: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    updated_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()")
+    )

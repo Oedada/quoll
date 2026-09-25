@@ -1,8 +1,7 @@
 from datetime import datetime
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 from sqlalchemy import (
-    JSON,
     Boolean,
     CheckConstraint,
     DateTime,
@@ -13,6 +12,7 @@ from sqlalchemy import (
     UniqueConstraint,
     text,
 )
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from quoll.core.mixins import IdMixin, TimestampMixin
@@ -70,6 +70,11 @@ class Stage(Base, IdMixin, TimestampMixin):
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
+    # поля шага: [{key, label, type, required}] - заполняет менеджер,
+    # обязательные проверяются при уходе со стадии вперёд
+    fields: Mapped[list[dict[str, Any]]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
 
     workflow: Mapped[Workflow] = relationship(back_populates="stages")
 
@@ -97,6 +102,15 @@ class WorkflowTransition(Base, IdMixin, TimestampMixin):
             unique=True,
             postgresql_where=text("from_stage_id IS NULL AND is_active"),
         ),
+        # в начальную стадию ставит принятие заявки - аппрува там нет
+        CheckConstraint(
+            "NOT (requires_approval AND from_stage_id IS NULL)",
+            name="chk_transition_approval_not_on_entry",
+        ),
+        CheckConstraint(
+            "reject_to_stage_id IS NULL OR requires_approval",
+            name="chk_transition_reject_needs_approval",
+        ),
         Index(
             "uq_transitions_active_edge",
             "workflow_id",
@@ -119,7 +133,26 @@ class WorkflowTransition(Base, IdMixin, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     name: Mapped[str_255]
     comments: Mapped[str | None] = mapped_column(Text, nullable=True)
-    required_actions: Mapped[list[str]] = mapped_column(JSON, default=list)
+    # менеджер не проходит сам, а просит руководителя
+    requires_approval: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    # куда уводит отказ в аппруве; без неё отказ оставляет на месте
+    reject_to_stage_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stages.id", ondelete="SET NULL"), nullable=True
+    )
+    # возврат назад - только с комментарием
+    is_backward: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    # точка невозврата: откат руководителем не уходит раньше неё
+    is_irreversible: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    # какие типы актуальных документов нужны на стадии-источнике
+    required_document_kinds: Mapped[list[str]] = mapped_column(
+        JSONB, default=list, server_default=text("'[]'::jsonb")
+    )
 
     workflow: Mapped[Workflow] = relationship(back_populates="transitions")
     from_stage: Mapped["Stage | None"] = relationship(foreign_keys=[from_stage_id])

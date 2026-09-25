@@ -33,6 +33,7 @@ from quoll.interactions import (
     import_service,
     project_service,
     request_service,
+    step_service,
     transition_service,
 )
 from quoll.interactions.access_policy import readable_filter
@@ -65,6 +66,8 @@ from quoll.interactions.schemas import (
     RequestCreate,
     RequestRead,
     RequestReject,
+    StageValuesRead,
+    StageValuesWrite,
     TransitionRequest,
     UniversityCreate,
     UniversityRead,
@@ -576,6 +579,36 @@ async def interaction_history(
     return InteractionHistoryRead(
         stages=await repo.stage_history(interaction.id),
         assignments=await repo.assignments(interaction.id),
+    )
+
+
+@interactions_router.get(
+    "/{id}/stage-values",
+    response_model=list[StageValuesRead],
+    summary="Filled fields of every stage of an interaction",
+)
+async def list_stage_values(interaction: ReadableInteraction, session: SessionDep):
+    return await step_service.all_values(session, interaction.id)
+
+
+@interactions_router.put(
+    "/{id}/stage-values/{stage_id}",
+    response_model=StageValuesRead,
+    summary="Replace field values of the current or a passed stage",
+)
+async def put_stage_values(
+    id: InteractionId,
+    stage_id: int,
+    body: StageValuesWrite,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    return await step_service.set_values(
+        session,
+        interaction_id=id,
+        stage_id=stage_id,
+        values=body.values,
+        actor_id=user.id,
     )
 
 

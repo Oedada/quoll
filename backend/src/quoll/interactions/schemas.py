@@ -301,3 +301,17 @@ class InteractionImportResult(AppBaseModel):
 
     errors: dict[int, InteractionImportValidationError]
     imported: dict[int, InteractionImportAction]
+
+
+class StageValuesWrite(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # целиком, не слиянием: убрать поле - прислать без него
+    values: dict[str, Any]
+
+
+class StageValuesRead(AppBaseModel):
+    stage_id: int
+    values: dict[str, Any]
+    updated_by: str | None
+    updated_at: datetime

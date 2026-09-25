@@ -3,8 +3,11 @@
 досрочное закрытие и переоткрытие идут без ребра, это отдельные операции
 """
 
-from sqlalchemy import select
+from typing import Any
+
+from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
@@ -21,12 +24,15 @@ from quoll.interactions.capacity_policy import (
 )
 from quoll.interactions.models import (
     Interaction,
+    InteractionDocument,
     InteractionStageHistory,
+    InteractionStageValues,
     PauseState,
     StageChangeKind,
 )
 from quoll.interactions.requests import cancel_pending_requests
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
+from quoll.interactions.step_policy import transition_problems
 from quoll.workflows.models import Stage, Workflow, WorkflowTransition
 
 
@@ -54,7 +60,23 @@ async def transition(
         )
     if accepting and interaction.owner_id != actor_id:
         raise OperationForbiddenException("accept this interaction")
+    return await move_locked(
+        session, scope, to_stage_id=to_stage_id, comment=comment, approved=False
+    )
 
+
+async def move_locked(
+    session: AsyncSession,
+    scope: InteractionScope,
+    *,
+    to_stage_id: int,
+    comment: str | None,
+    approved: bool,
+) -> Interaction:
+    """переход по ребру под уже захваченной областью - его зовёт и одобрение
+    просьбы об аппруве. approved - ребро с аппрувом разрешено"""
+    interaction = scope.interaction
+    actor_id = scope.actor.id
     current = (
         await session.get(Stage, interaction.state_id) if interaction.state_id else None
     )
@@ -82,6 +104,9 @@ async def transition(
     # заявка не едет по нетерминальным стадиям без ответственного
     if not target.is_terminal and interaction.owner_id is None:
         raise DomainRuleException(409, "Assign a manager before moving the interaction")
+    if edge.is_backward and not comment:
+        raise DomainRuleException(422, "Backward transition needs a comment")
+    await check_step(session, interaction, current, edge, approved=approved)
 
     if scope.owner is not None:
         # закрытие сбрасывает паузу, поэтому вклад цели считаем без неё
@@ -118,6 +143,61 @@ async def transition(
     await session.flush()
     await session.refresh(interaction)
     return interaction
+
+
+async def check_step(
+    session: AsyncSession,
+    interaction: Interaction,
+    current: Stage | None,
+    edge: WorkflowTransition,
+    *,
+    approved: bool,
+) -> None:
+    """правила шага по фактам; нарушено - 409 со всеми причинами сразу"""
+    values, kinds = {}, set()
+    if current is not None:
+        values = await stage_values(session, interaction.id, current.id)
+        kinds = await current_document_kinds(session, interaction.id, current.id)
+    problems = transition_problems(
+        requires_approval=edge.requires_approval,
+        approved=approved,
+        forward=not edge.is_backward,
+        fields=current.fields if current is not None else [],
+        values=values,
+        required_kinds=edge.required_document_kinds,
+        present_kinds=kinds,
+    )
+    if problems:
+        raise DomainRuleException(409, "Step is not done: " + "; ".join(problems))
+
+
+async def stage_values(
+    session: AsyncSession, interaction_id: int, stage_id: int
+) -> dict[str, Any]:
+    found = await session.scalar(
+        select(InteractionStageValues.values).where(
+            InteractionStageValues.interaction_id == interaction_id,
+            InteractionStageValues.stage_id == stage_id,
+        )
+    )
+    return found or {}
+
+
+async def current_document_kinds(
+    session: AsyncSession, interaction_id: int, stage_id: int
+) -> set[str]:
+    """типы актуальных документов стадии - заменённая версия не считается"""
+    successor = aliased(InteractionDocument)
+    replaced = exists().where(successor.replaces_document_id == InteractionDocument.id)
+    rows = await session.scalars(
+        select(InteractionDocument.kind).where(
+            InteractionDocument.interaction_id == interaction_id,
+            InteractionDocument.stage_id == stage_id,
+            InteractionDocument.kind.is_not(None),
+            ~replaced,
+        )
+    )
+    return set(rows)
 
 
 async def accept(

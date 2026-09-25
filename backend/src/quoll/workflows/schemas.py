@@ -1,12 +1,31 @@
 from datetime import datetime
+from typing import Annotated, Literal
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import AfterValidator, ConfigDict, Field, model_validator
 
 from quoll.attachments.schemas import AttachmentRead
 from quoll.core.schemas import AppBaseModel
 
 
 # Stage
+class StageField(AppBaseModel):
+    """поле шага: номер договора, срок лицензии, число обученных"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    key: str = Field(pattern=r"^[a-z][a-z0-9_]{0,49}$")
+    label: str = Field(min_length=1)
+    type: Literal["string", "text", "date", "number", "bool"]
+    required: bool = False
+
+
+def _unique_keys(fields: list[StageField] | None) -> list[StageField] | None:
+    keys = [f.key for f in fields or []]
+    if len(keys) != len(set(keys)):
+        raise ValueError("Stage field keys must be unique")
+    return fields
+
+
 class StageBase(AppBaseModel):
     name: str
     description: str | None = None
@@ -15,6 +34,9 @@ class StageBase(AppBaseModel):
     # без дефолтов: иначе черновая стадия случайно начнёт занимать слот
     is_terminal: bool
     consumes_capacity: bool
+    fields: Annotated[list[StageField], AfterValidator(_unique_keys)] = Field(
+        default_factory=list
+    )
 
     @model_validator(mode="after")
     def check_terminal_semantics(self):
@@ -37,6 +59,14 @@ class StageUpdate(AppBaseModel):
     name: str | None = None
     description: str | None = None
     position: int | None = None
+    # поля шага меняются: правило «флаги не меняются» про слоты и закрытие
+    fields: Annotated[list[StageField] | None, AfterValidator(_unique_keys)] = None
+
+    @model_validator(mode="after")
+    def _fields_not_null(self):
+        if "fields" in self.model_fields_set and self.fields is None:
+            raise ValueError("fields cannot be null, send [] to clear")
+        return self
 
 
 class StageRead(StageBase):
@@ -61,7 +91,11 @@ class WorkflowTransitionBase(AppBaseModel):
     to_stage_id: int
     is_active: bool = True
     comments: str | None = None
-    required_actions: list[str] = Field(default_factory=list)
+    requires_approval: bool = False
+    reject_to_stage_id: int | None = None
+    is_backward: bool = False
+    is_irreversible: bool = False
+    required_document_kinds: list[str] = Field(default_factory=list)
 
 
 class WorkflowTransitionCreate(WorkflowTransitionBase):
@@ -77,13 +111,25 @@ class WorkflowTransitionUpdate(AppBaseModel):
     @model_validator(mode="after")
     def _no_nulls_for_required(self):
         # явный null ушёл бы в NOT NULL и вернулся 409 вместо 422
-        for field in ("name", "to_stage_id", "is_active"):
+        for field in (
+            "name",
+            "to_stage_id",
+            "is_active",
+            "requires_approval",
+            "is_backward",
+            "is_irreversible",
+            "required_document_kinds",
+        ):
             if field in self.model_fields_set and getattr(self, field) is None:
                 raise ValueError(f"{field} cannot be null")
         return self
 
     comments: str | None = None
-    required_actions: list[str] | None = None
+    requires_approval: bool | None = None
+    reject_to_stage_id: int | None = None
+    is_backward: bool | None = None
+    is_irreversible: bool | None = None
+    required_document_kinds: list[str] | None = None
 
 
 class WorkflowTransitionRead(WorkflowTransitionBase):
