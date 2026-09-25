@@ -71,6 +71,12 @@ async def upload(
             previous = await _check_replaceable(
                 session, interaction_id, replaces_document_id
             )
+            # версия живёт на стадии прежней - иначе замена из текущего шага
+            # обошла бы аппрув правки пройденного
+            if previous.stage_id != stage_id:
+                raise DomainRuleException(
+                    400, "New version goes to the stage of the replaced document"
+                )
         # правка файла пройденного шага - с аппрувом руководителя (AS IS)
         pending = (
             actor.role == UserRole.MANAGER and stage_id != scope.interaction.state_id

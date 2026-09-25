@@ -101,3 +101,12 @@ def reachable_from_start(edges: list[EdgeFacts]) -> set[int]:
     return _reachable(
         [e.to_stage_id for e in edges if e.from_stage_id is None], forward
     )
+
+
+def leads_to(edges: list[EdgeFacts], source: int, dest: int) -> bool:
+    """из source можно дойти до dest по данным рёбрам"""
+    forward: dict[int, set[int]] = defaultdict(set)
+    for e in edges:
+        if e.from_stage_id is not None:
+            forward[e.from_stage_id].add(e.to_stage_id)
+    return dest in _reachable([source], forward)

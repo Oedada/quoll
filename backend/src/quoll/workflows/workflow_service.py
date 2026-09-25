@@ -216,6 +216,14 @@ async def _check_ends(
             raise DomainRuleException(409, f"Stage '{stage_id}' is archived")
 
 
+async def _check_reject_to(session: AsyncSession, edge: WorkflowTransition) -> None:
+    # отказ уводит на доработку, а не закрывает - иначе отклонить было бы нельзя
+    if edge.reject_to_stage_id is not None:
+        stage = await _stage(session, edge.reject_to_stage_id)
+        if stage.is_terminal:
+            raise DomainRuleException(400, "reject_to_stage_id must be a working stage")
+
+
 def _check_rules(edge: WorkflowTransition) -> None:
     # то же держат CHECK-и, но здесь - с понятной причиной вместо 409
     if edge.requires_approval and edge.from_stage_id is None:
@@ -237,6 +245,7 @@ async def create_transition(
     )
     edge = WorkflowTransition(**schema.model_dump())
     _check_rules(edge)
+    await _check_reject_to(session, edge)
     session.add(edge)
     await session.flush()
     await check_graph(session, workflow)
@@ -284,6 +293,7 @@ async def update_transition(
     for field, value in new.items():
         setattr(edge, field, value)
     _check_rules(edge)
+    await _check_reject_to(session, edge)
     await session.flush()
     # имя и описание граф не ломают, концы у опубликованного не меняются
     if "is_active" in new:

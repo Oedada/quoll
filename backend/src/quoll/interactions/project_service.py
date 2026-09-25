@@ -29,11 +29,16 @@ from quoll.interactions.models import (
     PauseState,
     StageChangeKind,
 )
+from quoll.interactions.notify import notify
 from quoll.interactions.repository import InteractionRepository
 from quoll.interactions.requests import cancel_pending_requests
 from quoll.interactions.schemas import InteractionCreate, InteractionUpdate
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
-from quoll.interactions.transition_service import lock_target_stage, place
+from quoll.interactions.transition_service import (
+    lock_target_stage,
+    place,
+    reached_since_no_return,
+)
 from quoll.workflows.graph_policy import EdgeFacts, reachable_from_start
 from quoll.workflows.models import Stage, WorkflowTransition
 from quoll.workflows.repository import WorkflowRepository
@@ -190,6 +195,14 @@ async def decline(
     await _release(session, interaction.id)
     await cancel_pending_requests(
         session, interaction.id, actor_id, "interaction declined"
+    )
+    # причину видит автор: журнал читает только админ
+    notify(
+        session,
+        interaction.created_by,
+        "Менеджер отказался от заявки",
+        f"Взаимодействие {interaction.id}: {comment}",
+        {"interaction_id": interaction.id},
     )
     record(
         session,
@@ -412,6 +425,12 @@ async def reopen(
     )
     if stage.id not in reachable:
         raise DomainRuleException(409, "Stage is not reachable from the start")
+    # только туда, где заявка уже была: иначе переоткрытие перескочило бы
+    # аппрувы и обязательные файлы, а после подписания - вернуло бы в первую часть
+    if not await reached_since_no_return(session, interaction.id, stage.id):
+        raise DomainRuleException(
+            409, "Reopen goes only to a stage passed after the point of no return"
+        )
     if target.superviser_id is None:
         raise DomainRuleException(409, f"Manager '{manager_id}' has no supervisor")
     await assert_can_take_new_work(

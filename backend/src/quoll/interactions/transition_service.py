@@ -19,6 +19,7 @@ from quoll.core.exceptions import (
 from quoll.interactions.access_policy import can_change, can_close
 from quoll.interactions.capacity_policy import (
     assert_can_keep_working,
+    assert_can_take_new_work,
     counts_toward_capacity,
 )
 from quoll.interactions.document_service import replaced_expression
@@ -35,6 +36,7 @@ from quoll.interactions.notify import notify
 from quoll.interactions.requests import cancel_pending_requests
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
 from quoll.interactions.step_policy import transition_problems
+from quoll.workflows.graph_policy import EdgeFacts, leads_to
 from quoll.workflows.models import Stage, Workflow, WorkflowTransition
 
 
@@ -63,7 +65,12 @@ async def transition(
     if accepting and interaction.owner_id != actor_id:
         raise OperationForbiddenException("accept this interaction")
     return await move_locked(
-        session, scope, to_stage_id=to_stage_id, comment=comment, approved=False
+        session,
+        scope,
+        to_stage_id=to_stage_id,
+        comment=comment,
+        approved=False,
+        new_work=accepting,
     )
 
 
@@ -74,6 +81,7 @@ async def move_locked(
     to_stage_id: int,
     comment: str | None,
     approved: bool,
+    new_work: bool = False,
 ) -> Interaction:
     """переход по ребру под уже захваченной областью - его зовёт и одобрение
     просьбы об аппруве. approved - ребро с аппрувом разрешено"""
@@ -116,7 +124,9 @@ async def move_locked(
         delta = int(counts_toward_capacity(target, paused_after)) - int(
             counts_toward_capacity(current, interaction.is_paused)
         )
-        await assert_can_keep_working(session, scope.owner, delta)
+        # принятие - новая работа: «не давать новых» его тоже закрывает
+        check = assert_can_take_new_work if new_work else assert_can_keep_working
+        await check(session, scope.owner, delta)
 
     interaction.workflow_id = workflow_id
     place(
@@ -255,10 +265,24 @@ async def rollback(
         raise DomainRuleException(409, "Only an interaction in work is rolled back")
     if to_stage_id == current.id:
         raise DomainRuleException(409, "Interaction is already on this stage")
-    if not await _reached_since_no_return(session, interaction.id, to_stage_id):
+    if not await reached_since_no_return(session, interaction.id, to_stage_id):
         raise DomainRuleException(
             409, "Rollback goes only to a stage passed after the point of no return"
         )
+    # откат - только назад: вперёд шаг проходят по ребру, с его проверками
+    edges = await session.scalars(
+        select(WorkflowTransition).where(
+            WorkflowTransition.workflow_id == interaction.workflow_id,
+            WorkflowTransition.is_active.is_(True),
+            WorkflowTransition.is_backward.is_(False),
+        )
+    )
+    if not leads_to(
+        [EdgeFacts(e.from_stage_id, e.to_stage_id) for e in edges],
+        to_stage_id,
+        current.id,
+    ):
+        raise DomainRuleException(409, "Rollback goes back, not forward")
     return await return_locked(
         session,
         scope,
@@ -268,7 +292,7 @@ async def rollback(
     )
 
 
-async def _reached_since_no_return(
+async def reached_since_no_return(
     session: AsyncSession, interaction_id: int, stage_id: int
 ) -> bool:
     history = InteractionStageHistory

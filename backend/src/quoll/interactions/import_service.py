@@ -14,8 +14,9 @@ from pydantic import ValidationError
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quoll.auth.models import Manager
+from quoll.auth.models import Manager, User
 from quoll.core.exceptions import AppException, WorkflowNotPublishedException
+from quoll.core.locking import lock_rows
 from quoll.interactions import project_service
 from quoll.interactions.models import Interaction
 from quoll.interactions.repository import UniversityRepository, VendorRepository
@@ -62,6 +63,9 @@ async def import_rows(
     workflow = await WorkflowRepository(session).get(workflow_id)
     if not workflow.is_published:
         raise WorkflowNotPublishedException(workflow_id)
+
+    if not dry_run:
+        await _lock_managers(session, rows, actor_id)
 
     errors: dict[int, InteractionImportValidationError] = {}
     imported: dict[int, InteractionImportAction] = {}
@@ -143,6 +147,24 @@ async def _import_one(
         by_import=True,
     )
     return "created"
+
+
+async def _lock_managers(
+    session: AsyncSession, rows: list[dict[str, Any]], actor_id: str
+) -> None:
+    """транзакция одна на файл, и блокировки строк копятся до конца. Берём
+    всех менеджеров сразу по возрастанию id - иначе порядок задал бы файл,
+    и встречная передача между двумя из них дала бы дедлок"""
+    ids = set()
+    for raw in rows:
+        try:
+            name = InteractionImport.model_validate(raw).manager_full_name
+            ids.add(await _find_manager(session, name))
+        except (ValidationError, RowError):
+            continue
+    managers = await lock_rows(session, Manager, list(ids))
+    supervisers = [m.superviser_id for m in managers.values()]
+    await lock_rows(session, User, [*ids, *supervisers, actor_id])
 
 
 async def _find_manager(session: AsyncSession, full_name: str) -> str:
