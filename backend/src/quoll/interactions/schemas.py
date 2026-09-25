@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Any
 
-from pydantic import ConfigDict, Field
+from pydantic import ConfigDict, Field, ValidationError
 
 from quoll.core.schemas import AppBaseModel
 from quoll.workflows.schemas import StageRead, WorkflowRead
@@ -157,3 +157,54 @@ class InteractionHistoryRead(AppBaseModel):
 
     stages: list[StageHistoryRead]
     assignments: list[AssignmentRead]
+
+class InteractionImport(AppBaseModel):
+    university_name: str
+    vendor_name: str
+    it_program: str
+    it_product: str
+    contract_number: str
+    license_singed: bool
+    license_expired_at: int
+    manager_full_name: str
+    comment: str
+
+class InteractionImportError(AppBaseModel):
+    """одна ошибка валидации строки импорта: колонка + понятный текст"""
+
+    column: str
+    message: str
+
+
+class InteractionImportValidationError(AppBaseModel):
+    """человекочитаемый результат pydantic ValidationError"""
+
+    errors: list[InteractionImportError]
+
+    @classmethod
+    def from_validation_error(
+        cls, exc: ValidationError
+    ) -> "InteractionImportValidationError":
+        return cls(
+            errors=[
+                InteractionImportError(
+                    column=".".join(str(part) for part in err["loc"]),
+                    message=err["msg"],
+                )
+                for err in exc.errors()
+            ]
+        )
+
+class InteractionImportRow(AppBaseModel):
+    error: InteractionImportValidationError | None = None
+    interaction_import: InteractionImport | None
+
+class InteractionImportAction(InteractionImportRow):
+    action: str | None
+
+
+class InteractionImportResult(AppBaseModel):
+    """результат импорта: ошибки и удавшиеся операции, по номеру строки"""
+
+    errors: dict[int, InteractionImportValidationError]
+    imported: dict[int, InteractionImportAction]

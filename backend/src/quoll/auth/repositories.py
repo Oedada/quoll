@@ -150,16 +150,20 @@ class UserRepository:
         if not fields:
             return user
 
-        resp = await self.client.put(
-            url=f"{self.base_url}/users/{user_id}",
-            json={
-                _KEYCLOAK_PROFILE_FIELDS[name]: value for name, value in fields.items()
-            },
-        )
-        if resp.status_code == 404:
-            raise UserNotFoundException(user_id)
-        if resp.status_code >= 400:
-            raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
+        kc_fields = {
+            _KEYCLOAK_PROFILE_FIELDS[name]: value
+            for name, value in fields.items()
+            if name in _KEYCLOAK_PROFILE_FIELDS
+        }
+        if kc_fields:
+            resp = await self.client.put(
+                url=f"{self.base_url}/users/{user_id}",
+                json=kc_fields,
+            )
+            if resp.status_code == 404:
+                raise UserNotFoundException(user_id)
+            if resp.status_code >= 400:
+                raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
 
         for name, value in fields.items():
             setattr(user, name, value)

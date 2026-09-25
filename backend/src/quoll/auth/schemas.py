@@ -9,6 +9,7 @@ class UserBase(AppBaseModel):
     email: str
     first_name: str = ""
     last_name: str = ""
+    patronymic: str
 
 
 class UserCreate(UserBase):
@@ -24,6 +25,7 @@ class UserUpdate(AppBaseModel):
     email: str | None = None
     first_name: str | None = None
     last_name: str | None = None
+    patronymic: str | None = None
 
 
 class UserRead(AppBaseModel):
@@ -33,6 +35,7 @@ class UserRead(AppBaseModel):
     email: str | None
     first_name: str
     last_name: str
+    patronymic: str
     role: UserRole
     # есть только у менеджера, у остальных - значение по умолчанию
     superviser_id: str | None = None

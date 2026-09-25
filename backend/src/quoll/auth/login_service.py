@@ -92,4 +92,5 @@ def _profile(claims: dict[str, Any]) -> dict[str, str | None]:
         # колонки имени NOT NULL, а в Keycloak имя не обязательно
         "first_name": claims.get("given_name") or "",
         "last_name": claims.get("family_name") or "",
+        "patronymic": "",
     }

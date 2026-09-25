@@ -21,6 +21,7 @@ def _admin(user_id: str) -> Admin:
         email=settings.app_admin_email,
         first_name="admin",
         last_name="admin",
+        patronymic="admin",
         is_active=True,
     )
 
