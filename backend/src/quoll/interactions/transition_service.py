@@ -16,6 +16,7 @@ from quoll.core.exceptions import (
     StaleStateException,
     WorkflowNotPublishedException,
 )
+from quoll.interactions import contract_service
 from quoll.interactions.access_policy import can_change, can_close
 from quoll.interactions.capacity_policy import (
     assert_can_keep_working,
@@ -117,6 +118,13 @@ async def move_locked(
     if edge.is_backward and not comment:
         raise DomainRuleException(422, "Backward transition needs a comment")
     await check_step(session, interaction, current, edge, approved=approved)
+    # договор закрывается, когда закрыты все ветки продуктов
+    if target.is_terminal and await contract_service.open_branch_count(
+        session, interaction.id
+    ):
+        raise DomainRuleException(409, "Close product branches first")
+    if edge.is_irreversible:
+        await contract_service.open_branches(session, interaction, actor_id)
 
     if scope.owner is not None:
         # закрытие сбрасывает паузу, поэтому вклад цели считаем без неё
@@ -301,11 +309,14 @@ async def reached_since_no_return(
         .join(WorkflowTransition, WorkflowTransition.id == history.transition_id)
         .where(
             history.interaction_id == interaction_id,
+            history.branch_id.is_(None),
             WorkflowTransition.is_irreversible.is_(True),
         )
     )
     reached = select(history.id).where(
-        history.interaction_id == interaction_id, history.to_stage_id == stage_id
+        history.interaction_id == interaction_id,
+        history.branch_id.is_(None),
+        history.to_stage_id == stage_id,
     )
     if sealed_at is not None:
         # по id, а не по времени: в одной транзакции now() у записей общий
@@ -326,7 +337,11 @@ async def return_locked(
     interaction = scope.interaction
     current = await session.get(Stage, interaction.state_id)
     target = await lock_target_stage(session, to_stage_id)
-    if target.workflow_id != interaction.workflow_id or target.is_terminal:
+    if (
+        target.workflow_id != interaction.workflow_id
+        or target.is_terminal
+        or target.is_branch_stage
+    ):
         raise DomainRuleException(400, "Return goes to a working stage of the workflow")
     if scope.owner is not None:
         delta = int(counts_toward_capacity(target, interaction.is_paused)) - int(
@@ -427,9 +442,10 @@ async def close_locked(
     target = await lock_target_stage(session, to_stage_id)
     if target.workflow_id != interaction.workflow_id:
         raise DomainRuleException(400, "Stage belongs to another workflow")
-    if not target.is_terminal:
+    if not target.is_terminal or target.is_branch_stage:
         raise DomainRuleException(400, "Interaction is closed into a terminal stage")
 
+    await contract_service.close_all_branches(session, interaction.id)
     place(
         session,
         interaction,

@@ -36,9 +36,18 @@ class StageBase(AppBaseModel):
     # без дефолтов: иначе черновая стадия случайно начнёт занимать слот
     is_terminal: bool
     consumes_capacity: bool
+    # флаги веток, как и остальные, после создания не меняются
+    is_branch_stage: bool = False
+    is_branch_start: bool = False
     fields: Annotated[list[StageField], AfterValidator(_unique_keys)] = Field(
         default_factory=list
     )
+
+    @model_validator(mode="after")
+    def check_branch_start(self):
+        if self.is_branch_start and not self.is_branch_stage:
+            raise ValueError("Branch start must be a branch stage")
+        return self
 
     @model_validator(mode="after")
     def check_terminal_semantics(self):

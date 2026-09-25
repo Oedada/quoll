@@ -16,6 +16,8 @@ class StageFacts:
     id: int
     is_terminal: bool
     archived: bool
+    branch: bool = False
+    branch_start: bool = False
 
 
 @dataclass(frozen=True)
@@ -66,6 +68,27 @@ def graph_problems(
     # иначе черновик первым же переходом стал бы закрытой заявкой без владельца
     if any(live[s].is_terminal for s in starts):
         problems.append("start stage cannot be terminal")
+    if any(live[s].branch for s in starts):
+        problems.append("start stage cannot be a branch stage")
+
+    # ветки продуктов - свой подграф: свой вход, рёбра границу не пересекают
+    branch_starts = [s.id for s in live.values() if s.branch_start]
+    if any(s.branch for s in live.values()) and len(branch_starts) != 1:
+        problems.append(
+            f"expected exactly one branch start stage, found {len(branch_starts)}"
+        )
+    if any(live[s].is_terminal for s in branch_starts):
+        problems.append("branch start stage cannot be terminal")
+    crossing = [
+        e
+        for e in edges
+        if e.from_stage_id in live
+        and e.to_stage_id in live
+        and live[e.from_stage_id].branch != live[e.to_stage_id].branch
+    ]
+    if crossing:
+        problems.append("transitions cross between contract and branch stages")
+    starts = [*starts, *branch_starts]
 
     forward: dict[int, set[int]] = defaultdict(set)
     backward: dict[int, set[int]] = defaultdict(set)

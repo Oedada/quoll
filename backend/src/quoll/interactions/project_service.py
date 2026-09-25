@@ -409,7 +409,7 @@ async def reopen(
     # текущую закрытую стадию держал бы заявку на ней и ждал бы её саму, а
     # архивация этой стадии - наоборот
     requested = await session.get(Stage, to_stage_id)
-    if requested is not None and requested.is_terminal:
+    if requested is not None and (requested.is_terminal or requested.is_branch_stage):
         raise DomainRuleException(400, "Interaction is reopened into a working stage")
     stage = await lock_target_stage(session, to_stage_id)
     if stage.workflow_id != interaction.workflow_id:

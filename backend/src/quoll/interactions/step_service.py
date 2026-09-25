@@ -145,7 +145,7 @@ async def _upsert(
             updated_by=actor_id,
         )
         .on_conflict_do_update(
-            constraint="uq_stage_values_interaction_stage",
+            index_elements=["interaction_id", "stage_id", "branch_id"],
             set_={"values": values, "updated_by": actor_id, "updated_at": func.now()},
         )
         .returning(table.c.id)

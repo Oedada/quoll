@@ -29,6 +29,7 @@ from quoll.auth.dependencies import (
 from quoll.core import SystemDefaults
 from quoll.core.exceptions import DomainRuleException
 from quoll.interactions import (
+    contract_service,
     document_service,
     import_service,
     project_service,
@@ -51,7 +52,11 @@ from quoll.interactions.models import RequestKind, RequestStatus
 from quoll.interactions.schemas import (
     AcceptRequest,
     AssignRequest,
+    BranchRead,
     CloseRequest,
+    ContractProductAdd,
+    ContractProductRead,
+    ContractProductStatusWrite,
     DeclineRequest,
     DocumentDecision,
     DocumentRead,
@@ -657,6 +662,73 @@ async def reject_stage_values(
     return await step_service.decide(
         session, interaction_id=id, stage_id=stage_id, actor_id=user.id, approve=False
     )
+
+
+@interactions_router.get(
+    "/{id}/products",
+    response_model=list[ContractProductRead],
+    summary="Contract products",
+)
+async def list_contract_products(interaction: ReadableInteraction, session: SessionDep):
+    return await contract_service.products(session, interaction.id)
+
+
+@interactions_router.post(
+    "/{id}/products",
+    response_model=ContractProductRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Propose a catalog product for the contract, before signing",
+)
+async def add_contract_product(
+    id: InteractionId, body: ContractProductAdd, user: CurrentUser, session: SessionDep
+):
+    return await contract_service.add_product(
+        session, interaction_id=id, product_id=body.product_id, actor_id=user.id
+    )
+
+
+@interactions_router.patch(
+    "/{id}/products/{item_id}",
+    response_model=ContractProductRead,
+    summary="Mark a contract product proposed, approved or rejected by the university",
+)
+async def set_contract_product_status(
+    id: InteractionId,
+    item_id: int,
+    body: ContractProductStatusWrite,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    return await contract_service.set_status(
+        session,
+        interaction_id=id,
+        item_id=item_id,
+        status=body.status,
+        actor_id=user.id,
+    )
+
+
+@interactions_router.delete(
+    "/{id}/products/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    summary="Drop a product from the contract, before signing",
+)
+async def remove_contract_product(
+    id: InteractionId, item_id: int, user: CurrentUser, session: SessionDep
+):
+    await contract_service.remove_product(
+        session, interaction_id=id, item_id=item_id, actor_id=user.id
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@interactions_router.get(
+    "/{id}/branches",
+    response_model=list[BranchRead],
+    summary="Product branches opened when the contract was signed",
+)
+async def list_branches(interaction: ReadableInteraction, session: SessionDep):
+    return await contract_service.branches(session, interaction.id)
 
 
 @interactions_router.delete(

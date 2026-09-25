@@ -79,7 +79,7 @@ async def _check_close_target(
     stage = await session.get(Stage, stage_id)
     if stage is None or stage.workflow_id != interaction.workflow_id:
         raise DomainRuleException(400, "Stage belongs to another workflow")
-    if not stage.is_terminal:
+    if not stage.is_terminal or stage.is_branch_stage:
         raise DomainRuleException(400, "Interaction is closed into a terminal stage")
     return stage
 

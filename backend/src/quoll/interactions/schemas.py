@@ -179,6 +179,8 @@ class StageHistoryRead(AppBaseModel):
     kind: str
     actor_id: str | None
     comment: str | None
+    # ход ветки продукта; null - ход самого взаимодействия
+    branch_id: int | None
     created_at: datetime
 
 
@@ -341,3 +343,33 @@ class StageValuesRead(AppBaseModel):
     # правка пройденного шага на одобрении у руководителя
     pending_values: dict[str, Any] | None
     pending_by: str | None
+
+
+class ContractProductAdd(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    product_id: int
+
+
+class ContractProductStatusWrite(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    status: Literal["PROPOSED", "APPROVED", "REJECTED"]
+
+
+class ContractProductRead(AppBaseModel):
+    id: int
+    interaction_id: int
+    product_id: int
+    status: str
+    added_by: str | None
+    created_at: datetime
+
+
+class BranchRead(AppBaseModel):
+    id: int
+    interaction_id: int
+    interaction_product_id: int
+    state_id: int
+    created_at: datetime
+    closed_at: datetime | None

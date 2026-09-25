@@ -51,6 +51,16 @@ class Stage(Base, IdMixin, TimestampMixin):
         # дублирует первичный ключ, но нужна как цель составного ключа
         # из interactions - чтобы стадия не оказалась из чужого воркфлоу
         UniqueConstraint("id", "workflow_id", name="uq_stages_id_workflow_id"),
+        CheckConstraint(
+            "NOT is_branch_start OR is_branch_stage", name="chk_stage_branch_start"
+        ),
+        # после подписания ветки встают в одну стадию
+        Index(
+            "uq_stages_one_branch_start",
+            "workflow_id",
+            unique=True,
+            postgresql_where=text("is_branch_start AND archived_at IS NULL"),
+        ),
     )
 
     workflow_id: Mapped[int] = mapped_column(
@@ -70,6 +80,13 @@ class Stage(Base, IdMixin, TimestampMixin):
     # стадию не удаляют, а архивируют: на неё ссылаются история и документы
     archived_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    # стадия ветки продукта: после подписания шаги идут по каждому продукту
+    is_branch_stage: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    is_branch_start: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
     )
     # поля шага: [{key, label, type, required}] - заполняет менеджер,
     # обязательные проверяются при уходе со стадии вперёд

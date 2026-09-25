@@ -41,7 +41,7 @@ async def check_graph(
     if not (workflow.is_published or full):
         return
     # здесь, а не наверху: модели заявок сами импортируют модели воркфлоу
-    from quoll.interactions.models import Interaction
+    from quoll.interactions.models import Interaction, InteractionBranch
 
     stages = (
         await session.scalars(select(Stage).where(Stage.workflow_id == workflow.id))
@@ -64,8 +64,28 @@ async def check_graph(
             .distinct()
         )
     )
+    occupied |= set(
+        await session.scalars(
+            select(InteractionBranch.state_id)
+            .join(Interaction, Interaction.id == InteractionBranch.interaction_id)
+            .where(
+                Interaction.workflow_id == workflow.id,
+                InteractionBranch.closed_at.is_(None),
+            )
+            .distinct()
+        )
+    )
     problems = graph_problems(
-        [StageFacts(s.id, s.is_terminal, s.archived_at is not None) for s in stages],
+        [
+            StageFacts(
+                s.id,
+                s.is_terminal,
+                s.archived_at is not None,
+                s.is_branch_stage,
+                s.is_branch_start,
+            )
+            for s in stages
+        ],
         [EdgeFacts(e.from_stage_id, e.to_stage_id) for e in edges],
         occupied,
         full=full,
@@ -388,6 +408,7 @@ def _fits(target: Stage, archived: Stage) -> bool:
         and target.workflow_id == archived.workflow_id
         and target.archived_at is None
         and target.is_terminal == archived.is_terminal
+        and target.is_branch_stage == archived.is_branch_stage
         and (archived.consumes_capacity or not target.consumes_capacity)
     )
 
@@ -425,6 +446,7 @@ async def archive_stage(
     """
     from quoll.interactions.models import (
         Interaction,
+        InteractionBranch,
         InteractionStageHistory,
         StageChangeKind,
     )
@@ -449,16 +471,38 @@ async def archive_stage(
         raise DomainRuleException(409, "Stage is already archived")
     await session.refresh(stage)
 
-    standing = list(
+    # ветки своих блокировок не имеют - берём их взаимодействия
+    on_branch = (
+        select(InteractionBranch.interaction_id)
+        .where(
+            InteractionBranch.state_id == stage.id,
+            InteractionBranch.closed_at.is_(None),
+        )
+        .scalar_subquery()
+    )
+    locked = list(
         await session.scalars(
             select(Interaction.id)
-            .where(Interaction.state_id == stage.id)
+            .where((Interaction.state_id == stage.id) | Interaction.id.in_(on_branch))
             .order_by(Interaction.id)
             .with_for_update(of=Interaction.__table__, key_share=True)
         )
     )
+    standing = list(
+        await session.scalars(
+            select(Interaction.id).where(Interaction.state_id == stage.id)
+        )
+    )
+    branches = list(
+        await session.execute(
+            select(InteractionBranch.id, InteractionBranch.interaction_id).where(
+                InteractionBranch.state_id == stage.id,
+                InteractionBranch.closed_at.is_(None),
+            )
+        )
+    )
     target = None
-    if standing:
+    if locked:
         target = (
             await _stage(session, relocate_to_stage_id)
             if relocate_to_stage_id is not None
@@ -486,6 +530,24 @@ async def archive_stage(
             )
             for interaction_id in standing
         )
+        if branches:
+            await session.execute(
+                update(InteractionBranch)
+                .where(InteractionBranch.id.in_([b.id for b in branches]))
+                .values(state_id=target.id)
+            )
+            session.add_all(
+                InteractionStageHistory(
+                    interaction_id=b.interaction_id,
+                    branch_id=b.id,
+                    from_stage_id=stage.id,
+                    to_stage_id=target.id,
+                    kind=StageChangeKind.RELOCATION,
+                    actor_id=actor_id,
+                    comment=f"stage '{stage.name}' archived",
+                )
+                for b in branches
+            )
 
     edges = await session.scalars(
         select(WorkflowTransition)
@@ -508,7 +570,11 @@ async def archive_stage(
         AuditEventType.STAGE_ARCHIVED,
         TargetType.STAGE,
         stage.id,
-        new={"relocated": len(standing), "to_stage_id": target.id if target else None},
+        new={
+            "relocated": len(standing),
+            "relocated_branches": len(branches),
+            "to_stage_id": target.id if target else None,
+        },
     )
     return stage
 
