@@ -38,6 +38,7 @@ async def transition(
     to_stage_id: int,
     expected_state_id: int | None,
     comment: str | None,
+    accepting: bool = False,
 ) -> Interaction:
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     interaction = scope.interaction
@@ -46,6 +47,13 @@ async def transition(
 
     if not can_change(scope.actor, scope.ownership):
         raise OperationForbiddenException("move this interaction")
+    # в начальную стадию ставит только принятие заявки её владельцем
+    if interaction.state_id is None and not accepting:
+        raise DomainRuleException(
+            409, "The owner starts the interaction by accepting it"
+        )
+    if accepting and interaction.owner_id != actor_id:
+        raise OperationForbiddenException("accept this interaction")
 
     current = (
         await session.get(Stage, interaction.state_id) if interaction.state_id else None
@@ -110,6 +118,27 @@ async def transition(
     await session.flush()
     await session.refresh(interaction)
     return interaction
+
+
+async def accept(
+    session: AsyncSession,
+    *,
+    interaction_id: int,
+    actor_id: str,
+    to_stage_id: int,
+    comment: str | None,
+) -> Interaction:
+    """менеджер принимает назначенную заявку: она встаёт в начальную стадию
+    и только теперь занимает слот - мест нет, и принять нельзя"""
+    return await transition(
+        session,
+        interaction_id=interaction_id,
+        actor_id=actor_id,
+        to_stage_id=to_stage_id,
+        expected_state_id=None,
+        comment=comment,
+        accepting=True,
+    )
 
 
 def place(

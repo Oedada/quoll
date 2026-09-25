@@ -85,9 +85,13 @@ async def assign_locked(
     manager_id: str,
     expected_owner_id: str | None,
     reason: str | None,
+    by_import: bool = False,
 ) -> Interaction:
     """назначение под уже захваченной областью - его зовёт и одобрение
-    просьбы о передаче. Цель в Keycloak проверена до блокировок"""
+    просьбы о передаче. Цель в Keycloak проверена до блокировок.
+
+    by_import - перенос реестра админом: право руководителя не проверяется,
+    остальные правила те же"""
     interaction = scope.interaction
     actor_id = scope.actor.id
     if interaction.owner_id != expected_owner_id:
@@ -96,7 +100,7 @@ async def assign_locked(
     target = scope.managers.get(manager_id)
     if target is None:
         raise DomainRuleException(400, f"User '{manager_id}' is not a manager")
-    if not can_assign(scope.actor, scope.ownership, target):
+    if not by_import and not can_assign(scope.actor, scope.ownership, target):
         raise OperationForbiddenException("assign this interaction")
     if manager_id == interaction.owner_id:
         raise DomainRuleException(
@@ -144,11 +148,7 @@ async def _stage_of(session: AsyncSession, interaction: Interaction) -> Stage | 
     return await session.get(Stage, interaction.state_id)
 
 
-async def _hand_over(
-    session: AsyncSession, interaction_id: int, manager_id: str, reason: str | None
-) -> None:
-    """единственное место, где пишется история назначений: закрыть открытую
-    запись и открыть новую. Открытая запись всегда совпадает с владельцем"""
+async def _release(session: AsyncSession, interaction_id: int) -> None:
     await session.execute(
         update(InteractionAssignment)
         .where(
@@ -157,11 +157,52 @@ async def _hand_over(
         )
         .values(released_at=func.now())
     )
+
+
+async def _hand_over(
+    session: AsyncSession, interaction_id: int, manager_id: str, reason: str | None
+) -> None:
+    """единственное место, где пишется история назначений: закрыть открытую
+    запись и открыть новую. Открытая запись всегда совпадает с владельцем"""
+    await _release(session, interaction_id)
     session.add(
         InteractionAssignment(
             interaction_id=interaction_id, manager_id=manager_id, reason=reason
         )
     )
+
+
+async def decline(
+    session: AsyncSession, *, interaction_id: int, actor_id: str, comment: str
+) -> Interaction:
+    """менеджер отказывается от ещё не принятой заявки - она возвращается
+    черновиком к автору. От принятой отказываются просьбой о передаче"""
+    scope = await lock_interaction_scope(session, interaction_id, actor_id)
+    interaction = scope.interaction
+    if interaction.owner_id != actor_id:
+        raise OperationForbiddenException("decline this interaction")
+    if interaction.state_id is not None:
+        raise DomainRuleException(
+            409, "Accepted interaction is not declined, ask for a transfer"
+        )
+    interaction.owner_id = None
+    interaction.last_owner_id = actor_id
+    await _release(session, interaction.id)
+    await cancel_pending_requests(
+        session, interaction.id, actor_id, "interaction declined"
+    )
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=AuditEventType.PROJECT_DECLINED,
+        target_type=TargetType.INTERACTION,
+        target_id=interaction.id,
+        old_value={"owner_id": actor_id},
+        new_value={"owner_id": None, "comment": comment},
+    )
+    await session.flush()
+    await session.refresh(interaction)
+    return interaction
 
 
 async def pause(

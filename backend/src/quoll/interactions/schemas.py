@@ -85,6 +85,20 @@ class AssignRequest(AppBaseModel):
     reason: str | None = None
 
 
+class AcceptRequest(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    # начальная стадия воркфлоу - у заявки без воркфлоу она его и задаёт
+    to_stage_id: int
+    comment: str | None = None
+
+
+class DeclineRequest(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comment: str = Field(min_length=1)
+
+
 class TransitionRequest(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -245,6 +259,7 @@ class InteractionImport(AppBaseModel):
     manager_full_name: str
     comment: str
 
+
 class InteractionImportError(AppBaseModel):
     """одна ошибка валидации строки импорта: колонка + понятный текст"""
 
@@ -271,9 +286,11 @@ class InteractionImportValidationError(AppBaseModel):
             ]
         )
 
+
 class InteractionImportRow(AppBaseModel):
     error: InteractionImportValidationError | None = None
     interaction_import: InteractionImport | None
+
 
 class InteractionImportAction(InteractionImportRow):
     action: str | None

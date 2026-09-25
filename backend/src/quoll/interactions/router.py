@@ -1,8 +1,5 @@
 import json
-from io import BytesIO
 from typing import Annotated
-
-import pandas as pd
 
 from fastapi import (
     APIRouter,
@@ -18,7 +15,6 @@ from fastapi import (
     status,
 )
 from fastapi.responses import JSONResponse
-from pydantic import ValidationError
 
 from quoll.attachments.dependencies import AttachmentServiceDep
 from quoll.attachments.schemas import AttachmentRead
@@ -34,6 +30,7 @@ from quoll.core import SystemDefaults
 from quoll.core.exceptions import DomainRuleException
 from quoll.interactions import (
     document_service,
+    import_service,
     project_service,
     request_service,
     transition_service,
@@ -51,16 +48,15 @@ from quoll.interactions.dependencies import (
 )
 from quoll.interactions.models import RequestKind, RequestStatus
 from quoll.interactions.schemas import (
+    AcceptRequest,
     AssignRequest,
     CloseRequest,
+    DeclineRequest,
     DocumentRead,
     InteractionCreate,
     InteractionDetailRead,
     InteractionHistoryRead,
-    InteractionImport,
-    InteractionImportAction,
     InteractionImportResult,
-    InteractionImportValidationError,
     InteractionRead,
     InteractionUpdate,
     PauseRequest,
@@ -246,52 +242,25 @@ async def delete_vendor(
 # Interactions Endpoints
 
 
-def _excel_engine(filename: str | None) -> str:
-    """движок pandas по расширению: .xlsx -> openpyxl, .xls -> xlrd"""
-    name = (filename or "").lower()
-    if name.endswith(".xlsx"):
-        return "openpyxl"
-    if name.endswith(".xls"):
-        return "xlrd"
-    raise ValueError("Unsupported format, expected .xls or .xlsx")
-
-
 @interactions_router.post(
-    "/import", summary="import interactions by xls/xlsx files", dependencies=[AdminOnly]
+    "/import",
+    response_model=InteractionImportResult,
+    summary="Import interactions from an xls/xlsx registry, each offered to its manager",
 )
-async def import_interections(
-    interactions_repo: InteractionRepoDep,
-    file: UploadFile = File(...),
-    workflow_id: int = Form(...),
+async def import_interactions(
+    admin: AdminUser,
+    session: SessionDep,
+    file: Annotated[UploadFile, File()],
+    workflow_id: Annotated[int, Form()],
     dry_run: bool = False,
 ):
     try:
-        content = await file.read()
-        df = pd.read_excel(BytesIO(content), engine=_excel_engine(file.filename))
-        df = df.where(pd.notnull(df), "")
+        rows = import_service.read_rows(await file.read(), file.filename)
     except Exception as e:
-        raise HTTPException(400, detail=f"Invalid excel file, error: {e}")
-
-    errors: dict[int, InteractionImportValidationError] = {}
-    valide: dict[int, InteractionImport] = {}
-    for i, row in enumerate(df.to_dict(orient="records"), start=1):
-        try:
-            valide[i] = InteractionImport.model_validate(row)
-        except ValidationError as e:
-            errors[i] = InteractionImportValidationError.from_validation_error(e)
-
-    imported: dict[int, InteractionImportAction] = {}
-    for i, action in (
-        await interactions_repo.import_interactions(
-            valide, dry_run=dry_run, workflow_id=workflow_id
-        )
-    ).items():
-        if action.error is not None:
-            errors[i] = action.error
-        else:
-            imported[i] = action
-
-    return InteractionImportResult(errors=errors, imported=imported)
+        raise HTTPException(400, detail=f"Invalid excel file: {e}") from e
+    return await import_service.import_rows(
+        session, rows, workflow_id=workflow_id, actor_id=admin.id, dry_run=dry_run
+    )
 
 
 @interactions_router.post(
@@ -375,6 +344,36 @@ async def move_interaction(
         to_stage_id=body.to_stage_id,
         expected_state_id=body.expected_state_id,
         comment=body.comment,
+    )
+
+
+@interactions_router.post(
+    "/{id}/accept",
+    response_model=InteractionRead,
+    summary="Owner accepts an assigned interaction and puts it on the start stage",
+)
+async def accept_interaction(
+    id: InteractionId, body: AcceptRequest, user: CurrentUser, session: SessionDep
+):
+    return await transition_service.accept(
+        session,
+        interaction_id=id,
+        actor_id=user.id,
+        to_stage_id=body.to_stage_id,
+        comment=body.comment,
+    )
+
+
+@interactions_router.post(
+    "/{id}/decline",
+    response_model=InteractionRead,
+    summary="Owner declines an interaction not accepted yet, it returns to the author",
+)
+async def decline_interaction(
+    id: InteractionId, body: DeclineRequest, user: CurrentUser, session: SessionDep
+):
+    return await project_service.decline(
+        session, interaction_id=id, actor_id=user.id, comment=body.comment
     )
 
 

@@ -1525,8 +1525,15 @@
                 if (edges.length) {
                     const options = await Promise.all(edges.map(async e =>
                         `<option value="${e.to_stage_id}">${escapeHtml(e.name)} → ${escapeHtml(await stageName(e.workflow_id, e.to_stage_id))}</option>`));
-                    parts.push(`<select id="move-${i.id}">${options.join('')}</select>
-                        <button class="btn btn-sm" onclick="moveInteraction(${i.id}, ${i.state_id || 'null'})">Перевести</button>`);
+                    const mine = i.owner_id === currentUser.id;
+                    // не принятую двигает только её владелец - принятием
+                    if (i.state_id || mine) {
+                        parts.push(`<select id="move-${i.id}">${options.join('')}</select>
+                            <button class="btn btn-sm" onclick="moveInteraction(${i.id}, ${i.state_id || 'null'})">${i.state_id ? 'Перевести' : 'Принять'}</button>`);
+                    }
+                }
+                if (!i.state_id && i.owner_id === currentUser.id) {
+                    parts.push(`<button class="btn btn-sm btn-danger" onclick="declineInteraction(${i.id})">Отказаться</button>`);
                 }
                 if (i.state_id) {
                     parts.push(i.pause_state === 'ACTIVE'
@@ -1557,8 +1564,20 @@
         async function moveInteraction(id, expectedState) {
             const to = Number(document.getElementById(`move-${id}`).value);
             const comment = prompt('Комментарий к переходу (можно пусто)') || null;
+            // в начальную стадию заявку ставит только принятие её владельцем
+            if (expectedState === null) {
+                const body = { to_stage_id: to, comment };
+                await interactionAction(await api('POST', `/interactions/${id}/accept`, body), 'Заявка принята');
+                return;
+            }
             const body = { to_stage_id: to, expected_state_id: expectedState, comment };
             await interactionAction(await api('POST', `/interactions/${id}/transition`, body), 'Заявка переведена');
+        }
+
+        async function declineInteraction(id) {
+            const comment = prompt('Почему отказываетесь?');
+            if (!comment) return;
+            await interactionAction(await api('POST', `/interactions/${id}/decline`, { comment }), 'Заявка возвращена автору');
         }
 
         async function pauseInteraction(id) {
