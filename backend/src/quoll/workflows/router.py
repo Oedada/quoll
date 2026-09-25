@@ -1,9 +1,18 @@
+from typing import Annotated, Literal
+
 from fastapi import APIRouter, Depends, Path, Query, Response, status
 
-from quoll.auth.dependencies import AdminOnly, AdminUser, get_current_user
+from quoll.auth.dependencies import (
+    AdminOnly,
+    AdminUser,
+    SupervisorUser,
+    get_current_user,
+    require_roles,
+)
+from quoll.auth.models import User, UserRole
 from quoll.core import SystemDefaults
 from quoll.core.exceptions import DomainRuleException
-from quoll.workflows import workflow_service
+from quoll.workflows import change_requests, workflow_service
 from quoll.workflows.dependencies import (
     SessionDep,
     StageRepoDep,
@@ -16,6 +25,9 @@ from quoll.workflows.schemas import (
     StageRead,
     StageUpdate,
     StartStageRequest,
+    WorkflowChangeCreate,
+    WorkflowChangeDecision,
+    WorkflowChangeRead,
     WorkflowCreate,
     WorkflowDetailRead,
     WorkflowRead,
@@ -351,3 +363,54 @@ async def delete_transition(
 ):
     await workflow_service.delete_transition(session, id, admin.id)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+change_requests_router = APIRouter(
+    prefix="/api/v1/workflow-change-requests",
+    tags=["Workflow change requests"],
+    dependencies=[Depends(get_current_user)],
+)
+
+
+@change_requests_router.post(
+    "/", response_model=WorkflowChangeRead, status_code=status.HTTP_201_CREATED
+)
+async def request_workflow_change(
+    body: WorkflowChangeCreate, user: SupervisorUser, session: SessionDep
+):
+    return await change_requests.create(
+        session, workflow_id=body.workflow_id, text=body.text, actor_id=user.id
+    )
+
+
+@change_requests_router.get("/", response_model=list[WorkflowChangeRead])
+async def list_workflow_changes(
+    user: Annotated[User, Depends(require_roles(UserRole.SUPERVISER, UserRole.ADMIN))],
+    session: SessionDep,
+    status_filter: Annotated[
+        Literal["PENDING", "APPROVED", "REJECTED"] | None, Query(alias="status")
+    ] = None,
+    limit: int = Query(
+        default=SystemDefaults.DEFAULT_PAGE_SIZE, ge=1, le=SystemDefaults.MAX_PAGE_SIZE
+    ),
+    offset: int = Query(default=0, ge=0),
+):
+    return await change_requests.visible(session, user, status_filter, limit, offset)
+
+
+@change_requests_router.post("/{id}/approve", response_model=WorkflowChangeRead)
+async def approve_workflow_change(
+    id: int, body: WorkflowChangeDecision, admin: AdminUser, session: SessionDep
+):
+    return await change_requests.decide(
+        session, request_id=id, actor_id=admin.id, approve=True, comment=body.comment
+    )
+
+
+@change_requests_router.post("/{id}/reject", response_model=WorkflowChangeRead)
+async def reject_workflow_change(
+    id: int, body: WorkflowChangeDecision, admin: AdminUser, session: SessionDep
+):
+    return await change_requests.decide(
+        session, request_id=id, actor_id=admin.id, approve=False, comment=body.comment
+    )

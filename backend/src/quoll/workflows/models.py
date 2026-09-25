@@ -8,6 +8,7 @@ from sqlalchemy import (
     ForeignKey,
     Index,
     Integer,
+    String,
     Text,
     UniqueConstraint,
     text,
@@ -16,7 +17,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from quoll.core.mixins import IdMixin, TimestampMixin
-from quoll.db import Base, str_255
+from quoll.db import Base, created_at_dt, str_255
 
 if TYPE_CHECKING:
     from quoll.attachments.models import Attachment
@@ -162,3 +163,41 @@ class WorkflowTransition(Base, IdMixin, TimestampMixin):
         secondary="transition_attachments",
         lazy="selectin",
     )
+
+
+class WorkflowChangeRequest(Base):
+    """просьба руководителя изменить воркфлоу (Q11). Решает админ; саму
+    правку он делает в редакторе графа - правки слишком разные, чтобы
+    описывать их структурой ради одной кнопки"""
+
+    __tablename__ = "workflow_change_requests"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('PENDING', 'APPROVED', 'REJECTED')",
+            name="chk_workflow_change_status",
+        ),
+        CheckConstraint(
+            "(status = 'PENDING') = (decided_at IS NULL)",
+            name="chk_workflow_change_decided",
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    workflow_id: Mapped[int] = mapped_column(
+        ForeignKey("workflows.id", ondelete="CASCADE"), index=True
+    )
+    requested_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    text: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(
+        String(20), default="PENDING", server_default="PENDING", index=True
+    )
+    decided_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    decision_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[created_at_dt]

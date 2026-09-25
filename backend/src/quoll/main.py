@@ -29,6 +29,7 @@ from quoll.notifications import ws_router as notifications_ws_router
 from quoll.notifications.connection_storage import ConnectionStorage
 from quoll.org import org_router
 from quoll.workflows import (
+    change_requests_router,
     stages_router,
     transitions_router,
     workflows_router,
@@ -152,6 +153,7 @@ app.include_router(users_router)
 app.include_router(workflows_router)
 app.include_router(stages_router)
 app.include_router(transitions_router)
+app.include_router(change_requests_router)
 app.include_router(attachments_router)
 app.include_router(universities_router)
 app.include_router(vendors_router)

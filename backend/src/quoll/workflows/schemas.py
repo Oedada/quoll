@@ -173,3 +173,28 @@ class StartStageRequest(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     stage_id: int
+
+
+class WorkflowChangeCreate(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    workflow_id: int
+    text: str = Field(min_length=1)
+
+
+class WorkflowChangeDecision(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comment: str | None = None
+
+
+class WorkflowChangeRead(AppBaseModel):
+    id: int
+    workflow_id: int
+    requested_by: str | None
+    text: str
+    status: str
+    decided_by: str | None
+    decided_at: datetime | None
+    decision_comment: str | None
+    created_at: datetime

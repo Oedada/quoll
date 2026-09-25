@@ -10,6 +10,7 @@ from quoll.workflows.repository import (
     WorkflowTransitionRepository,
 )
 from quoll.workflows.router import (
+    change_requests_router,
     stages_router,
     transitions_router,
     workflows_router,
@@ -47,6 +48,7 @@ __all__ = [
     "WorkflowTransitionRepository",
     "WorkflowTransitionUpdate",
     "WorkflowUpdate",
+    "change_requests_router",
     "stages_router",
     "transitions_router",
     "workflows_router",
