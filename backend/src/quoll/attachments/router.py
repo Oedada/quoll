@@ -20,7 +20,9 @@ from quoll.attachments.dependencies import (
     AttachmentServiceDep,
 )
 from quoll.attachments.schemas import AttachmentRead, PresignedUrlResponse
-from quoll.auth.dependencies import AdminOnly, CurrentUser, get_current_user
+from quoll.auth.audit import record
+from quoll.auth.audit_models import AuditEventType, TargetType
+from quoll.auth.dependencies import AdminOnly, AdminUser, CurrentUser, get_current_user
 from quoll.core.exceptions import DomainRuleException
 from quoll.db import SessionDep
 from quoll.interactions import document_service
@@ -45,6 +47,17 @@ async def _readable(
 ReadableAttachmentId = Annotated[int, Depends(_readable)]
 
 
+def _journal(session, actor_id: str, event: AuditEventType, attachment) -> None:
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=event,
+        target_type=TargetType.ATTACHMENT,
+        target_id=attachment.id,
+        new_value={"filename": attachment.filename},
+    )
+
+
 @attachments_router.post(
     "/",
     response_model=AttachmentRead,
@@ -54,12 +67,16 @@ ReadableAttachmentId = Annotated[int, Depends(_readable)]
 )
 async def upload_attachment(
     service: AttachmentServiceDep,
+    admin: AdminUser,
+    session: SessionDep,
     file: Annotated[UploadFile, File(description="Binary file to upload")],
     preview: Annotated[
         str | None, Form(description="Optional short preview or thumbnail")
     ] = None,
 ):
-    return await service.upload_attachment(file=file, preview=preview)
+    attachment = await service.upload_attachment(file=file, preview=preview)
+    _journal(session, admin.id, AuditEventType.ATTACHMENT_UPLOADED, attachment)
+    return attachment
 
 
 @attachments_router.get(
@@ -119,6 +136,7 @@ async def get_attachment_presigned_url(
 )
 async def delete_attachment(
     service: AttachmentServiceDep,
+    admin: AdminUser,
     session: SessionDep,
     background: BackgroundTasks,
     id: int = Path(..., ge=1, description="Attachment ID"),
@@ -126,6 +144,8 @@ async def delete_attachment(
     # иначе каскад удалил бы документ заявки мимо журнала
     if await document_service.is_interaction_document(session, id):
         raise DomainRuleException(409, "Interaction document is deleted via /documents")
+    attachment = await service.repo.get(id)
+    _journal(session, admin.id, AuditEventType.ATTACHMENT_DELETED, attachment)
     storage_key = await service.delete_attachment(id)
     # после коммита: строка без файла хуже, чем файл без строки
     background.add_task(service.s3.delete, storage_key)

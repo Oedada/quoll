@@ -73,6 +73,15 @@ class WorkflowTransitionUpdate(AppBaseModel):
     from_stage_id: int | None = None
     to_stage_id: int | None = None
     is_active: bool | None = None
+
+    @model_validator(mode="after")
+    def _no_nulls_for_required(self):
+        # явный null ушёл бы в NOT NULL и вернулся 409 вместо 422
+        for field in ("name", "to_stage_id", "is_active"):
+            if field in self.model_fields_set and getattr(self, field) is None:
+                raise ValueError(f"{field} cannot be null")
+        return self
+
     comments: str | None = None
     required_actions: list[str] | None = None
 

@@ -81,10 +81,9 @@ async def change_start_stage(
     dependencies=[AdminOnly],
 )
 async def create_workflow(
-    schema: WorkflowCreate,
-    repo: WorkflowRepoDep,
+    schema: WorkflowCreate, admin: AdminUser, session: SessionDep
 ):
-    return await repo.create(schema)
+    return await workflow_service.create_workflow(session, schema, admin.id)
 
 
 @workflows_router.get(
@@ -124,10 +123,11 @@ async def get_workflow(
 )
 async def update_workflow(
     schema: WorkflowUpdate,
-    repo: WorkflowRepoDep,
+    admin: AdminUser,
+    session: SessionDep,
     id: int = Path(..., ge=1, description="Workflow ID"),
 ):
-    return await repo.update(id, schema)
+    return await workflow_service.update_workflow(session, id, schema, admin.id)
 
 
 @workflows_router.delete(
@@ -298,6 +298,7 @@ async def update_transition(
 )
 async def link_attachment(
     repo: TransitionRepoDep,
+    admin: AdminUser,
     id: int = Path(..., ge=1, description="Transition ID"),
     attachment_id: int = Path(..., ge=1, description="Attachment ID"),
 ):
@@ -311,6 +312,9 @@ async def link_attachment(
     if await is_interaction_document(repo.session, attachment_id):
         raise DomainRuleException(409, "Interaction document cannot become a template")
     await repo.link_attachment(id, attachment_id)
+    workflow_service.journal_template(
+        repo.session, admin.id, id, attachment_id, linked=True
+    )
     return Response(status_code=status.HTTP_201_CREATED)
 
 
@@ -322,11 +326,15 @@ async def link_attachment(
 )
 async def unlink_attachment(
     repo: TransitionRepoDep,
+    admin: AdminUser,
     id: int = Path(..., ge=1, description="Transition ID"),
     attachment_id: int = Path(..., ge=1, description="Attachment ID"),
 ):
     await repo.get(id)
     await repo.unlink_attachment(id, attachment_id)
+    workflow_service.journal_template(
+        repo.session, admin.id, id, attachment_id, linked=False
+    )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 

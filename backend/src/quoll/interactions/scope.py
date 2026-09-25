@@ -39,7 +39,11 @@ class InteractionScope:
 
     @property
     def ownership(self) -> Ownership:
-        """факты для правил - из заблокированных строк, а не прочитанных раньше"""
+        """факты для правил - из заблокированных строк, а не прочитанных раньше.
+
+        бывших владельцев здесь нет: они нужны только чтению, а область берут
+        для изменений. can_read по этим фактам бывшему владельцу откажет
+        """
         return Ownership(
             self.interaction.owner_id,
             self.owner.superviser_id if self.owner else None,

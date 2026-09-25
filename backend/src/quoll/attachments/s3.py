@@ -175,7 +175,8 @@ class S3StorageService:
                 await s3.delete_object(Bucket=self.bucket_name, Key=key)
             return True
         except Exception as e:  # noqa: BLE001
-            logger.warning(f"Could not delete S3 key '{key}': {e}")
+            # LOG_ALERT: строки уже нет, в хранилище остался осиротевший файл
+            logger.error(f"Could not delete S3 key '{key}': {e}")
             return False
 
     async def exists(self, key: str) -> bool:

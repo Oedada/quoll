@@ -52,6 +52,10 @@ async def transition(
     )
     if current is not None and current.is_terminal:
         raise DomainRuleException(409, "Closed interaction is reopened, not moved")
+    # до блокировки: иначе мы держали бы заявку на S и ждали S, а архивация S
+    # - наоборот. Петли запрещены, так что такой переход всё равно отказ
+    if to_stage_id == interaction.state_id:
+        raise DomainRuleException(409, "Interaction is already on this stage")
 
     target = await lock_target_stage(session, to_stage_id)
 

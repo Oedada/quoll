@@ -17,8 +17,10 @@ from quoll.workflows.models import Stage, Workflow, WorkflowTransition
 from quoll.workflows.schemas import (
     StageCreate,
     StageUpdate,
+    WorkflowCreate,
     WorkflowTransitionCreate,
     WorkflowTransitionUpdate,
+    WorkflowUpdate,
 )
 
 # концы ребра - то, на что ссылается история переходов заявок
@@ -481,3 +483,66 @@ async def archive_stage(
         new={"relocated": len(standing), "to_stage_id": target.id if target else None},
     )
     return stage
+
+
+# --- воркфлоу и шаблоны на рёбрах
+
+
+async def create_workflow(
+    session: AsyncSession, schema: WorkflowCreate, actor_id: str
+) -> Workflow:
+    workflow = Workflow(**schema.model_dump())
+    session.add(workflow)
+    await session.flush()
+    _journal(
+        session,
+        actor_id,
+        AuditEventType.WORKFLOW_CREATED,
+        TargetType.WORKFLOW,
+        workflow.id,
+        new=schema.model_dump(mode="json"),
+    )
+    await session.refresh(workflow)
+    return workflow
+
+
+async def update_workflow(
+    session: AsyncSession, workflow_id: int, changes: WorkflowUpdate, actor_id: str
+) -> Workflow:
+    workflow = await lock_workflow(session, workflow_id)
+    new = changes.model_dump(exclude_unset=True)
+    old = {field: getattr(workflow, field) for field in new}
+    for field, value in new.items():
+        setattr(workflow, field, value)
+    _journal(
+        session,
+        actor_id,
+        AuditEventType.WORKFLOW_UPDATED,
+        TargetType.WORKFLOW,
+        workflow.id,
+        old,
+        new,
+    )
+    await session.flush()
+    await session.refresh(workflow)
+    return workflow
+
+
+def journal_template(
+    session: AsyncSession,
+    actor_id: str,
+    transition_id: int,
+    attachment_id: int,
+    *,
+    linked: bool,
+) -> None:
+    _journal(
+        session,
+        actor_id,
+        AuditEventType.TEMPLATE_ATTACHMENT_LINKED
+        if linked
+        else AuditEventType.TEMPLATE_ATTACHMENT_UNLINKED,
+        TargetType.TRANSITION,
+        transition_id,
+        new={"attachment_id": attachment_id},
+    )

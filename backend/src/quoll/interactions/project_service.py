@@ -306,11 +306,15 @@ async def reopen(
     current = await _stage_of(session, interaction)
     if current is None or not current.is_terminal:
         raise DomainRuleException(409, "Only a closed interaction is reopened")
+    # флаги стадии неизменны (Р15) - проверяем до блокировки. Иначе запрос в
+    # текущую закрытую стадию держал бы заявку на ней и ждал бы её саму, а
+    # архивация этой стадии - наоборот
+    requested = await session.get(Stage, to_stage_id)
+    if requested is not None and requested.is_terminal:
+        raise DomainRuleException(400, "Interaction is reopened into a working stage")
     stage = await lock_target_stage(session, to_stage_id)
     if stage.workflow_id != interaction.workflow_id:
         raise DomainRuleException(400, "Stage belongs to another workflow")
-    if stage.is_terminal:
-        raise DomainRuleException(400, "Interaction is reopened into a working stage")
     edges = await session.scalars(
         select(WorkflowTransition).where(
             WorkflowTransition.workflow_id == stage.workflow_id,

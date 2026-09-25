@@ -26,6 +26,7 @@ from quoll.interactions.models import (
     RequestStatus,
 )
 from quoll.interactions.project_service import assign_locked
+from quoll.interactions.repository import InteractionRepository
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
 from quoll.interactions.transition_service import close_locked
 from quoll.workflows.models import Stage
@@ -183,7 +184,17 @@ async def _stale_reason(
     if stage is None or stage.is_terminal:
         return "interaction closed"
     if request.kind == RequestKind.CLOSE:
-        target = await session.get(Stage, request.target_stage_id)
+        # FOR SHARE: архивация, начатая раньше, закоммитится, и мы увидим
+        # архив здесь, а не упадём позже в закрытии - просьба тогда осталась
+        # бы висеть вместо отмены
+        target = (
+            await session.execute(
+                select(Stage)
+                .where(Stage.id == request.target_stage_id)
+                .with_for_update(read=True)
+                .execution_options(populate_existing=True)
+            )
+        ).scalar_one()
         if target.archived_at is not None:
             return "target stage archived"
     return None
@@ -202,6 +213,15 @@ async def approve(
     found = await session.get(InteractionRequest, request_id)
     if found is None:
         raise IdNotExistsException(InteractionRequest.__name__)
+    # предварительно, без блокировок: чужому руководителю - 403, решённой -
+    # 409, и Keycloak не дёргаем зря. Под блокировкой проверится ещё раз
+    if found.status != RequestStatus.PENDING:
+        raise DomainRuleException(409, f"Request is already {found.status}")
+    repo = InteractionRepository(session)
+    actor = await session.get(User, actor_id)
+    ownership = await repo.ownership(await repo.get(found.interaction_id))
+    if not can_close(actor, ownership):
+        raise OperationForbiddenException("decide on this request")
     if found.kind == RequestKind.TRANSFER:
         if target_manager_id is None:
             raise DomainRuleException(422, "Transfer approval needs target_manager_id")

@@ -135,6 +135,9 @@ async def delete_document(
     document = await session.get(
         InteractionDocument, document_id, populate_existing=True
     )
+    if document is None:
+        # удалили параллельно, пока ждали блокировку
+        raise IdNotExistsException(InteractionDocument.__name__)
     attachment = await session.get(Attachment, document.attachment_id)
     successor = await session.scalar(
         select(InteractionDocument).where(

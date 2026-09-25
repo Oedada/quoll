@@ -63,6 +63,9 @@ def graph_problems(
     ]
     if len(starts) != 1:
         problems.append(f"expected exactly one start stage, found {len(starts)}")
+    # иначе черновик первым же переходом стал бы закрытой заявкой без владельца
+    if any(live[s].is_terminal for s in starts):
+        problems.append("start stage cannot be terminal")
 
     forward: dict[int, set[int]] = defaultdict(set)
     backward: dict[int, set[int]] = defaultdict(set)
