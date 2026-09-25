@@ -633,6 +633,32 @@ async def put_stage_values(
     )
 
 
+@interactions_router.post(
+    "/{id}/stage-values/{stage_id}/approve",
+    response_model=StageValuesRead,
+    summary="Supervisor applies a pending edit of a passed step",
+)
+async def approve_stage_values(
+    id: InteractionId, stage_id: int, user: CurrentUser, session: SessionDep
+):
+    return await step_service.decide(
+        session, interaction_id=id, stage_id=stage_id, actor_id=user.id, approve=True
+    )
+
+
+@interactions_router.post(
+    "/{id}/stage-values/{stage_id}/reject",
+    response_model=StageValuesRead,
+    summary="Supervisor drops a pending edit of a passed step",
+)
+async def reject_stage_values(
+    id: InteractionId, stage_id: int, user: CurrentUser, session: SessionDep
+):
+    return await step_service.decide(
+        session, interaction_id=id, stage_id=stage_id, actor_id=user.id, approve=False
+    )
+
+
 @interactions_router.delete(
     "/{id}",
     status_code=status.HTTP_204_NO_CONTENT,

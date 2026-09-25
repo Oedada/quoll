@@ -17,6 +17,8 @@ class StageField(AppBaseModel):
     label: str = Field(min_length=1)
     type: Literal["string", "text", "date", "number", "bool"]
     required: bool = False
+    # правку на пройденном шаге менеджером одобряет руководитель
+    approval_after_pass: bool = False
 
 
 def _unique_keys(fields: list[StageField] | None) -> list[StageField] | None:

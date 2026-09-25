@@ -389,3 +389,8 @@ class InteractionStageValues(Base):
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()")
     )
+    # правка пройденного шага, ждущая руководителя; действуют values
+    pending_values: Mapped[dict[str, Any] | None] = mapped_column(JSONB, nullable=True)
+    pending_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )

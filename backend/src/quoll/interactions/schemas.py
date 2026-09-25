@@ -338,3 +338,6 @@ class StageValuesRead(AppBaseModel):
     values: dict[str, Any]
     updated_by: str | None
     updated_at: datetime
+    # правка пройденного шага на одобрении у руководителя
+    pending_values: dict[str, Any] | None
+    pending_by: str | None
