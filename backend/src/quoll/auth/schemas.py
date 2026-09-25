@@ -34,6 +34,7 @@ class UserRead(AppBaseModel):
     first_name: str
     last_name: str
     role: UserRole
+    is_active: bool
     # есть только у менеджера, у остальных - значение по умолчанию
     superviser_id: str | None = None
 

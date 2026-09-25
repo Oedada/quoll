@@ -7,7 +7,10 @@ import logging
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from quoll.auth.offboarding import offboard_manager, offboard_superviser
+from quoll.auth.pending_actions import PendingActionType
 from quoll.auth.session_store import SessionStore
+from quoll.auth.task_queue import run_queue
 from quoll.config import settings
 from quoll.core.worker import Periodic
 from quoll.interactions.pause_worker import expire_pauses
@@ -28,7 +31,18 @@ def background_jobs(session_maker: async_sessionmaker) -> list[Periodic]:
         if resumed:
             logger.info(f"Resumed {resumed} interactions after their pause")
 
+    handlers = {
+        PendingActionType.OFFBOARDING_MANAGER: offboard_manager,
+        PendingActionType.OFFBOARDING_SUPERVISER: offboard_superviser,
+    }
+
+    async def run_org_queue() -> None:
+        processed = await run_queue(session_maker, handlers, on_failed={})
+        if processed:
+            logger.info(f"Processed {processed} org tasks")
+
     return [
+        Periodic("org-queue", settings.org_queue_interval_seconds, run_org_queue),
         Periodic(
             "session-cleanup", settings.session_cleanup_interval_seconds, clean_sessions
         ),

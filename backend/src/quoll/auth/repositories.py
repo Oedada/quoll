@@ -166,18 +166,3 @@ class UserRepository:
         await self.s.flush()
         logger.info(f"User with id={user_id} updated")
         return user
-
-    async def delete(self, user_id: str) -> None:
-        logger.debug(f"Deleting user with id={user_id}")
-        user = await self.s.get(User, user_id)
-        if user is None:
-            raise UserNotFoundException(user_id)
-        # Сначала БД: если удаление упрётся в RESTRICT, транзакция откатится
-        # строку подтипа нужно снять раньше строки users
-        await self.s.delete(user)
-        await self.s.flush()
-        resp = await self.client.delete(url=f"{self.base_url}/users/{user_id}")
-        # 404 - в Keycloak учётки уже нет:
-        if resp.status_code >= 400 and resp.status_code != 404:
-            raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
-        logger.info(f"User with id={user_id} deleted")

@@ -905,7 +905,9 @@
                                 <td class="action-btns">
                                     <button onclick="editUser('${u.id}')" class="btn btn-sm">Ред.</button>
                                     ${['manager', 'superviser'].includes(u.role.toLowerCase()) ? `<button onclick="editLimits('${u.id}', '${u.role.toLowerCase()}')" class="btn btn-sm btn-secondary">Пределы</button>` : ''}
-                                    <button onclick="deleteUser('${u.id}', '${escapeHtml(u.username)}')" class="btn btn-sm btn-danger">Удал.</button>
+                                    ${u.is_active
+                                        ? `<button onclick="setActive('${u.id}', '${escapeHtml(u.username)}', false)" class="btn btn-sm btn-danger">Отключить</button>`
+                                        : `<button onclick="setActive('${u.id}', '${escapeHtml(u.username)}', true)" class="btn btn-sm btn-success">Включить</button>`}
                                 </td>
                             </tr>
                             <tr id="edit-row-${u.id}" class="hidden inline-edit-row">
@@ -995,35 +997,15 @@
             }
         }
 
-        async function deleteUser(id, username) {
-            if (!confirm(`Удалить пользователя ${username}?`)) return;
-
+        // удаления учёток нет: увольнение - отключение, портфель разбирает руководитель
+        async function setActive(id, username, active) {
+            const verb = active ? 'Включить' : 'Отключить';
+            if (!confirm(`${verb} пользователя ${username}?`)) return;
             const errorDiv = document.getElementById('users-error');
-            errorDiv.classList.add('hidden');
-
-            try {
-                const response = await fetch(`${API_BASE}/users/${id}`, {
-                    method: 'DELETE',
-                    credentials: 'include'
-                });
-
-                if (response.ok) {
-                    await loadUsers();
-                } else if (response.status === 403) {
-                    errorDiv.textContent = 'Доступ запрещён';
-                    errorDiv.classList.remove('hidden');
-                } else if (response.status === 418) {
-                    errorDiv.textContent = 'Нельзя удалить себя';
-                    errorDiv.classList.remove('hidden');
-                } else {
-                    const error = await response.json();
-                    errorDiv.textContent = `Ошибка: ${escapeHtml(error.detail || 'Unknown')}`;
-                    errorDiv.classList.remove('hidden');
-                }
-            } catch (e) {
-                errorDiv.textContent = `Ошибка сети: ${escapeHtml(e.message)}`;
-                errorDiv.classList.remove('hidden');
-            }
+            const result = await api('POST', `/users/${id}/${active ? 'reactivate' : 'deactivate'}`);
+            errorDiv.textContent = result.ok ? '' : `Ошибка: ${describeError(result)}`;
+            errorDiv.classList.toggle('hidden', result.ok);
+            if (result.ok) await loadUsers();
         }
 
         async function logout() {

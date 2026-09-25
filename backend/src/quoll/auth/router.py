@@ -3,7 +3,6 @@ import secrets
 from fastapi import (
     APIRouter,
     Depends,
-    HTTPException,
     Query,
     Request,
     Response,
@@ -11,7 +10,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from quoll.auth import login_service, oidc
+from quoll.auth import identity_service, login_service, oidc
 from quoll.auth.dependencies import (
     SESSION_COOKIE,
     AdminUser,
@@ -28,6 +27,7 @@ from quoll.auth.repositories import UserRepository
 from quoll.auth.schemas import UserCreate, UserListRead, UserRead, UserUpdate
 from quoll.config import settings
 from quoll.core import LoginFlowException, SystemDefaults
+from quoll.core.exceptions import DomainRuleException
 
 router = APIRouter(tags=["Auth"])
 users_router = APIRouter(
@@ -167,16 +167,20 @@ async def update_user(
     return UserRead.model_validate(user)
 
 
-@users_router.delete("/{user_id}", status_code=204)
-async def delete_user(
-    user_id: str,
-    admin_user: AdminUser,
-    user: CurrentUser,
-    user_repo: UserRepository = Depends(get_user_repo),  # noqa: B008
-) -> None:
-    if user.id == user_id:
-        raise HTTPException(
-            status_code=418,
-            detail="The server refuses to delete the admin. It is a teapot.",
-        )
-    await user_repo.delete(user_id)
+# увольнения нет как удаления (Р16): учётка выключается, портфель разбирают
+
+
+@users_router.post("/{user_id}/deactivate", status_code=204)
+async def deactivate_user(user_id: str, admin: AdminUser, session: SessionDep):
+    if admin.id == user_id:
+        raise DomainRuleException(409, "Cannot deactivate yourself")
+    if not await identity_service.deactivate(session, user_id, admin.id):
+        # у нас уже выключен, а Keycloak мог не успеть - иначе сверщик вернул бы
+        await identity_service.push_disabled(user_id)
+    return Response(status_code=204)
+
+
+@users_router.post("/{user_id}/reactivate", status_code=204)
+async def reactivate_user(user_id: str, admin: AdminUser, session: SessionDep):
+    await identity_service.reactivate(session, user_id, admin.id)
+    return Response(status_code=204)

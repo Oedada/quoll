@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     workers_enabled: bool = True
     session_cleanup_interval_seconds: int = 3600
     pause_expiry_interval_seconds: int = 30
+    org_queue_interval_seconds: int = 30
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

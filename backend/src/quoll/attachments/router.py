@@ -25,7 +25,6 @@ from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.dependencies import AdminOnly, AdminUser, CurrentUser, get_current_user
 from quoll.core.exceptions import DomainRuleException
 from quoll.db import SessionDep
-from quoll.interactions import document_service
 
 attachments_router = APIRouter(
     prefix="/api/v1/attachments",
@@ -40,11 +39,19 @@ async def _readable(
     id: int = Path(..., ge=1, description="Attachment ID"),
 ) -> int:
     # id последовательные: без проверки документ заявки скачали бы перебором
-    await document_service.check_attachment_readable(session, user, id)
+    await _documents().check_attachment_readable(session, user, id)
     return id
 
 
 ReadableAttachmentId = Annotated[int, Depends(_readable)]
+
+
+def _documents():
+    # здесь, а не наверху: модели взаимодействий через пакет воркфлоу
+    # импортируют этот роутер - на уровне модуля вышел бы круговой импорт
+    from quoll.interactions import document_service
+
+    return document_service
 
 
 def _journal(session, actor_id: str, event: AuditEventType, attachment) -> None:
@@ -142,7 +149,7 @@ async def delete_attachment(
     id: int = Path(..., ge=1, description="Attachment ID"),
 ):
     # иначе каскад удалил бы документ заявки мимо журнала
-    if await document_service.is_interaction_document(session, id):
+    if await _documents().is_interaction_document(session, id):
         raise DomainRuleException(409, "Interaction document is deleted via /documents")
     attachment = await service.repo.get(id)
     _journal(session, admin.id, AuditEventType.ATTACHMENT_DELETED, attachment)
