@@ -93,6 +93,15 @@ class TransitionRequest(AppBaseModel):
     comment: str | None = None
 
 
+class ReopenRequest(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    manager_id: str
+    to_stage_id: int
+    expected_owner_id: str | None
+    comment: str = Field(min_length=1)
+
+
 class CloseRequest(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 

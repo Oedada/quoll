@@ -28,6 +28,7 @@ from quoll.interactions.schemas import (
     InteractionRead,
     InteractionUpdate,
     PauseRequest,
+    ReopenRequest,
     TransitionRequest,
     UniversityCreate,
     UniversityRead,
@@ -306,6 +307,28 @@ async def close_interaction(
         actor_id=user.id,
         to_stage_id=body.to_stage_id,
         expected_state_id=body.expected_state_id,
+        comment=body.comment,
+    )
+
+
+@interactions_router.post(
+    "/{id}/reopen",
+    response_model=InteractionRead,
+    summary="Return a closed interaction to work with a chosen manager and stage",
+)
+async def reopen_interaction(
+    id: InteractionId,
+    body: ReopenRequest,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    return await project_service.reopen(
+        session,
+        interaction_id=id,
+        actor_id=user.id,
+        manager_id=body.manager_id,
+        to_stage_id=body.to_stage_id,
+        expected_owner_id=body.expected_owner_id,
         comment=body.comment,
     )
 

@@ -3,7 +3,7 @@
 
 from datetime import UTC, datetime
 
-from sqlalchemy import func, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.audit import record
@@ -27,11 +27,14 @@ from quoll.interactions.models import (
     Interaction,
     InteractionAssignment,
     PauseState,
+    StageChangeKind,
 )
 from quoll.interactions.repository import InteractionRepository
 from quoll.interactions.schemas import InteractionCreate
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
-from quoll.workflows.models import Stage
+from quoll.interactions.transition_service import lock_target_stage, place
+from quoll.workflows.graph_policy import EdgeFacts, reachable_from_start
+from quoll.workflows.models import Stage, WorkflowTransition
 from quoll.workflows.repository import WorkflowRepository
 
 
@@ -246,3 +249,86 @@ async def delete_draft(session: AsyncSession, interaction: Interaction) -> None:
     if interaction.state_id is not None:
         raise DomainRuleException(409, "Only a draft can be deleted, close the rest")
     await InteractionRepository(session).delete(interaction.id)
+
+
+async def reopen(
+    session: AsyncSession,
+    *,
+    interaction_id: int,
+    actor_id: str,
+    manager_id: str,
+    to_stage_id: int,
+    expected_owner_id: str | None,
+    comment: str,
+) -> Interaction:
+    """вернуть закрытую заявку в работу: владелец и стадия выбираются явно -
+    за время простоя прежний мог уволиться или заполниться. Ребро не нужно,
+    но стадия должна быть достижима из начальной - иначе тупик"""
+    await verify_target(manager_id, UserRole.MANAGER)
+    scope = await lock_interaction_scope(
+        session, interaction_id, actor_id, target_manager_ids=[manager_id]
+    )
+    interaction = scope.interaction
+    if interaction.owner_id != expected_owner_id:
+        raise StaleStateException("Interaction owner", interaction.owner_id)
+    target = scope.managers.get(manager_id)
+    if target is None:
+        raise DomainRuleException(400, f"User '{manager_id}' is not a manager")
+    # права те же, что у назначения: иначе чужую закрытую забирали бы перебором id
+    if not can_assign(scope.actor, scope.ownership, target):
+        raise OperationForbiddenException("reopen this interaction")
+
+    current = await _stage_of(session, interaction)
+    if current is None or not current.is_terminal:
+        raise DomainRuleException(409, "Only a closed interaction is reopened")
+    stage = await lock_target_stage(session, to_stage_id)
+    if stage.workflow_id != interaction.workflow_id:
+        raise DomainRuleException(400, "Stage belongs to another workflow")
+    if stage.is_terminal:
+        raise DomainRuleException(400, "Interaction is reopened into a working stage")
+    edges = await session.scalars(
+        select(WorkflowTransition).where(
+            WorkflowTransition.workflow_id == stage.workflow_id,
+            WorkflowTransition.is_active.is_(True),
+        )
+    )
+    reachable = reachable_from_start(
+        [EdgeFacts(e.from_stage_id, e.to_stage_id) for e in edges]
+    )
+    if stage.id not in reachable:
+        raise DomainRuleException(409, "Stage is not reachable from the start")
+    if target.superviser_id is None:
+        raise DomainRuleException(409, f"Manager '{manager_id}' has no supervisor")
+    await assert_can_take_new_work(
+        session, target, int(counts_toward_capacity(stage, False))
+    )
+
+    previous_owner = interaction.owner_id
+    if manager_id != previous_owner:
+        # на прежнего - без новой записи: открытая запись и так его
+        interaction.owner_id = manager_id
+        if previous_owner is not None:
+            interaction.last_owner_id = previous_owner
+        await _hand_over(session, interaction.id, manager_id, comment)
+    place(
+        session,
+        interaction,
+        current,
+        stage,
+        kind=StageChangeKind.REOPEN,
+        transition_id=None,
+        actor_id=actor_id,
+        comment=comment,
+    )
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=AuditEventType.PROJECT_REOPENED,
+        target_type=TargetType.INTERACTION,
+        target_id=interaction.id,
+        old_value={"state_id": current.id, "owner_id": previous_owner},
+        new_value={"state_id": stage.id, "owner_id": manager_id, "comment": comment},
+    )
+    await session.flush()
+    await session.refresh(interaction)
+    return interaction

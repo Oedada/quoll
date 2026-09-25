@@ -87,3 +87,14 @@ def graph_problems(
         if unreachable:
             problems.append(f"stages {unreachable} are unreachable from the start")
     return problems
+
+
+def reachable_from_start(edges: list[EdgeFacts]) -> set[int]:
+    """куда можно попасть от начальной по активным рёбрам"""
+    forward: dict[int, set[int]] = defaultdict(set)
+    for e in edges:
+        if e.from_stage_id is not None:
+            forward[e.from_stage_id].add(e.to_stage_id)
+    return _reachable(
+        [e.to_stage_id for e in edges if e.from_stage_id is None], forward
+    )
