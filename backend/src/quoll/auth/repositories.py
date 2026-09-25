@@ -53,7 +53,8 @@ class UserRepository:
         users = User.__table__
         inserted = await self.s.scalar(
             pg_insert(users)
-            .values(id=user_id, role=role, is_active=True, **profile)
+            # отчества в Keycloak нет - у заведённых оттуда оно пустое
+            .values(id=user_id, role=role, is_active=True, patronymic="", **profile)
             .on_conflict_do_nothing(index_elements=[users.c.id])
             .returning(users.c.id)
         )
@@ -154,16 +155,20 @@ class UserRepository:
         if not fields:
             return user
 
-        resp = await self.client.put(
-            url=f"{self.base_url}/users/{user_id}",
-            json={
-                _KEYCLOAK_PROFILE_FIELDS[name]: value for name, value in fields.items()
-            },
-        )
-        if resp.status_code == 404:
-            raise UserNotFoundException(user_id)
-        if resp.status_code >= 400:
-            raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
+        kc_fields = {
+            _KEYCLOAK_PROFILE_FIELDS[name]: value
+            for name, value in fields.items()
+            if name in _KEYCLOAK_PROFILE_FIELDS
+        }
+        if kc_fields:
+            resp = await self.client.put(
+                url=f"{self.base_url}/users/{user_id}",
+                json=kc_fields,
+            )
+            if resp.status_code == 404:
+                raise UserNotFoundException(user_id)
+            if resp.status_code >= 400:
+                raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
 
         old = {name: getattr(user, name) for name in fields}
         for name, value in fields.items():

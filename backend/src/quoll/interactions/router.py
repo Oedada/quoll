@@ -1,5 +1,8 @@
 import json
+from io import BytesIO
 from typing import Annotated
+
+import pandas as pd
 
 from fastapi import (
     APIRouter,
@@ -7,6 +10,7 @@ from fastapi import (
     Depends,
     File,
     Form,
+    HTTPException,
     Path,
     Query,
     Response,
@@ -14,6 +18,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from quoll.attachments.dependencies import AttachmentServiceDep
 from quoll.attachments.schemas import AttachmentRead
@@ -52,6 +57,10 @@ from quoll.interactions.schemas import (
     InteractionCreate,
     InteractionDetailRead,
     InteractionHistoryRead,
+    InteractionImport,
+    InteractionImportAction,
+    InteractionImportResult,
+    InteractionImportValidationError,
     InteractionRead,
     InteractionUpdate,
     PauseRequest,
@@ -235,6 +244,54 @@ async def delete_vendor(
 
 
 # Interactions Endpoints
+
+
+def _excel_engine(filename: str | None) -> str:
+    """движок pandas по расширению: .xlsx -> openpyxl, .xls -> xlrd"""
+    name = (filename or "").lower()
+    if name.endswith(".xlsx"):
+        return "openpyxl"
+    if name.endswith(".xls"):
+        return "xlrd"
+    raise ValueError("Unsupported format, expected .xls or .xlsx")
+
+
+@interactions_router.post(
+    "/import", summary="import interactions by xls/xlsx files", dependencies=[AdminOnly]
+)
+async def import_interections(
+    interactions_repo: InteractionRepoDep,
+    file: UploadFile = File(...),
+    workflow_id: int = Form(...),
+    dry_run: bool = False,
+):
+    try:
+        content = await file.read()
+        df = pd.read_excel(BytesIO(content), engine=_excel_engine(file.filename))
+        df = df.where(pd.notnull(df), "")
+    except Exception as e:
+        raise HTTPException(400, detail=f"Invalid excel file, error: {e}")
+
+    errors: dict[int, InteractionImportValidationError] = {}
+    valide: dict[int, InteractionImport] = {}
+    for i, row in enumerate(df.to_dict(orient="records"), start=1):
+        try:
+            valide[i] = InteractionImport.model_validate(row)
+        except ValidationError as e:
+            errors[i] = InteractionImportValidationError.from_validation_error(e)
+
+    imported: dict[int, InteractionImportAction] = {}
+    for i, action in (
+        await interactions_repo.import_interactions(
+            valide, dry_run=dry_run, workflow_id=workflow_id
+        )
+    ).items():
+        if action.error is not None:
+            errors[i] = action.error
+        else:
+            imported[i] = action
+
+    return InteractionImportResult(errors=errors, imported=imported)
 
 
 @interactions_router.post(

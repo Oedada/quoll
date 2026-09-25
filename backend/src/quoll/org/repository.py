@@ -57,6 +57,7 @@ class OrgRepository:
                 username=m.username,
                 first_name=m.first_name,
                 last_name=m.last_name,
+                patronymic=m.patronymic,
                 superviser_id=m.superviser_id,
                 manual_workload_status=m.manual_workload_status,
                 max_active_projects=m.max_active_projects,
@@ -144,6 +145,7 @@ class OrgRepository:
                 id=s.id,
                 first_name=s.first_name,
                 last_name=s.last_name,
+                patronymic=s.patronymic,
                 free_project_slots=slots,
             )
             for s, slots in rows
@@ -164,7 +166,11 @@ class OrgRepository:
         rows = await self.session.execute(stmt)
         return [
             SupervisorQuotaRead(
-                id=s.id, first_name=s.first_name, last_name=s.last_name, free_places=n
+                id=s.id,
+                first_name=s.first_name,
+                last_name=s.last_name,
+                patronymic=s.patronymic,
+                free_places=n,
             )
             for s, n in rows
         ]

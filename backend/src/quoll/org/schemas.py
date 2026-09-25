@@ -14,6 +14,7 @@ class ManagerLoadRead(AppBaseModel):
     username: str | None
     first_name: str
     last_name: str
+    patronymic: str
     superviser_id: str | None
     manual_workload_status: str
     max_active_projects: int
@@ -45,6 +46,7 @@ class SupervisorCapacityRead(AppBaseModel):
     id: str
     first_name: str
     last_name: str
+    patronymic: str
     free_project_slots: int
 
 
@@ -54,6 +56,7 @@ class SupervisorQuotaRead(AppBaseModel):
     id: str
     first_name: str
     last_name: str
+    patronymic: str
     free_places: int
 
 
@@ -91,6 +94,7 @@ class ProfileRead(AppBaseModel):
     email: str | None
     first_name: str
     last_name: str
+    patronymic: str
     role: UserRole
     is_active: bool
     identity_sync_status: str
