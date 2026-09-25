@@ -427,7 +427,7 @@ async def list_documents(interaction: ReadableInteraction, session: SessionDep):
     "/{id}/documents",
     response_model=DocumentRead,
     status_code=status.HTTP_201_CREATED,
-    summary="Attach a project file at the current stage, optionally as a new version",
+    summary="Attach a project file to a chosen stage, optionally as a new version",
 )
 async def attach_document(
     id: InteractionId,
