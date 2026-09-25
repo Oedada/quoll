@@ -66,6 +66,7 @@ from quoll.interactions.schemas import (
     RequestCreate,
     RequestRead,
     RequestReject,
+    RollbackRequest,
     StageValuesRead,
     StageValuesWrite,
     TransitionRequest,
@@ -363,6 +364,24 @@ async def accept_interaction(
         interaction_id=id,
         actor_id=user.id,
         to_stage_id=body.to_stage_id,
+        comment=body.comment,
+    )
+
+
+@interactions_router.post(
+    "/{id}/rollback",
+    response_model=InteractionRead,
+    summary="Owner's supervisor returns the interaction several steps back",
+)
+async def rollback_interaction(
+    id: InteractionId, body: RollbackRequest, user: CurrentUser, session: SessionDep
+):
+    return await transition_service.rollback(
+        session,
+        interaction_id=id,
+        actor_id=user.id,
+        to_stage_id=body.to_stage_id,
+        expected_state_id=body.expected_state_id,
         comment=body.comment,
     )
 

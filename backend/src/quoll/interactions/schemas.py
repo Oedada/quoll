@@ -93,6 +93,14 @@ class AcceptRequest(AppBaseModel):
     comment: str | None = None
 
 
+class RollbackRequest(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    to_stage_id: int
+    expected_state_id: int
+    comment: str = Field(min_length=1)
+
+
 class DeclineRequest(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 

@@ -5,7 +5,7 @@
 
 from typing import Any
 
-from sqlalchemy import exists, select
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 
@@ -30,6 +30,7 @@ from quoll.interactions.models import (
     PauseState,
     StageChangeKind,
 )
+from quoll.interactions.notify import notify
 from quoll.interactions.requests import cancel_pending_requests
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
 from quoll.interactions.step_policy import transition_problems
@@ -131,6 +132,15 @@ async def move_locked(
         await cancel_pending_requests(
             session, interaction.id, actor_id, "interaction closed"
         )
+    if edge.is_backward and scope.owner is not None:
+        # любой возврат - руководитель узнаёт и смотрит, что пошло не так
+        notify(
+            session,
+            scope.owner.superviser_id,
+            "Возврат на шаг назад",
+            f"Взаимодействие {interaction.id}: {current.name} → {target.name}. {comment}",
+            {"interaction_id": interaction.id},
+        )
     record(
         session,
         actor_id=actor_id,
@@ -219,6 +229,64 @@ async def accept(
         comment=comment,
         accepting=True,
     )
+
+
+async def rollback(
+    session: AsyncSession,
+    *,
+    interaction_id: int,
+    actor_id: str,
+    to_stage_id: int,
+    expected_state_id: int,
+    comment: str,
+) -> Interaction:
+    """руководитель владельца возвращает на несколько шагов - туда, где
+    заявка уже была, но не раньше последней точки невозврата"""
+    scope = await lock_interaction_scope(session, interaction_id, actor_id)
+    interaction = scope.interaction
+    if interaction.state_id != expected_state_id:
+        raise StaleStateException("Interaction stage", interaction.state_id)
+    if not can_close(scope.actor, scope.ownership):
+        raise OperationForbiddenException("roll back this interaction")
+    current = (
+        await session.get(Stage, interaction.state_id) if interaction.state_id else None
+    )
+    if current is None or current.is_terminal:
+        raise DomainRuleException(409, "Only an interaction in work is rolled back")
+    if to_stage_id == current.id:
+        raise DomainRuleException(409, "Interaction is already on this stage")
+    if not await _reached_since_no_return(session, interaction.id, to_stage_id):
+        raise DomainRuleException(
+            409, "Rollback goes only to a stage passed after the point of no return"
+        )
+    return await return_locked(
+        session,
+        scope,
+        to_stage_id=to_stage_id,
+        kind=StageChangeKind.ROLLBACK,
+        comment=comment,
+    )
+
+
+async def _reached_since_no_return(
+    session: AsyncSession, interaction_id: int, stage_id: int
+) -> bool:
+    history = InteractionStageHistory
+    sealed_at = await session.scalar(
+        select(func.max(history.id))
+        .join(WorkflowTransition, WorkflowTransition.id == history.transition_id)
+        .where(
+            history.interaction_id == interaction_id,
+            WorkflowTransition.is_irreversible.is_(True),
+        )
+    )
+    reached = select(history.id).where(
+        history.interaction_id == interaction_id, history.to_stage_id == stage_id
+    )
+    if sealed_at is not None:
+        # по id, а не по времени: в одной транзакции now() у записей общий
+        reached = reached.where(history.id >= sealed_at)
+    return await session.scalar(select(exists(reached))) or False
 
 
 async def return_locked(
