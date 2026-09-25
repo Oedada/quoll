@@ -316,6 +316,9 @@ class InteractionDocument(Base):
             ondelete="SET NULL (replaces_document_id)",
             name="fk_documents_replaces_same_interaction",
         ),
+        CheckConstraint(
+            "status IN ('ACTIVE', 'PENDING', 'REJECTED')", name="chk_document_status"
+        ),
         # у версии один преемник - иначе цепочка раздвоится
         Index(
             "uq_documents_replaces",
@@ -347,7 +350,18 @@ class InteractionDocument(Base):
     meta: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, default=dict, server_default=text("'{}'::jsonb")
     )
+    # файл менеджера не на текущий шаг ждёт руководителя; отклонённый
+    # остаётся в списке, но из цепочки версий выходит
+    status: Mapped[str] = mapped_column(
+        String(20), default="ACTIVE", server_default="ACTIVE"
+    )
     created_at: Mapped[created_at_dt]
+
+
+class DocumentStatus(StrEnum):
+    ACTIVE = "ACTIVE"
+    PENDING = "PENDING"
+    REJECTED = "REJECTED"
 
 
 class InteractionStageValues(Base):

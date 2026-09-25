@@ -25,8 +25,9 @@ from quoll.core.exceptions import (
     IdNotExistsException,
     OperationForbiddenException,
 )
-from quoll.interactions.access_policy import can_change, can_read
-from quoll.interactions.models import InteractionDocument
+from quoll.interactions.access_policy import can_change, can_close, can_read
+from quoll.interactions.models import DocumentStatus, InteractionDocument
+from quoll.interactions.notify import notify
 from quoll.interactions.repository import InteractionRepository
 from quoll.interactions.scope import lock_interaction_scope
 from quoll.workflows.models import Stage, TransitionAttachment
@@ -70,7 +71,12 @@ async def upload(
             previous = await _check_replaceable(
                 session, interaction_id, replaces_document_id
             )
+        # правка файла пройденного шага - с аппрувом руководителя (AS IS)
+        pending = (
+            actor.role == UserRole.MANAGER and stage_id != scope.interaction.state_id
+        )
         document = InteractionDocument(
+            status=DocumentStatus.PENDING if pending else DocumentStatus.ACTIVE,
             interaction_id=interaction_id,
             attachment_id=attachment.id,
             stage_id=stage_id,
@@ -88,6 +94,14 @@ async def upload(
         await attachments.s3.delete(attachment.storage_key)
         raise
 
+    if pending and scope.owner is not None:
+        notify(
+            session,
+            scope.owner.superviser_id,
+            "Файл ждёт одобрения",
+            f"Взаимодействие {interaction_id}: «{document.title}» на пройденный шаг",
+            {"interaction_id": interaction_id, "document_id": document.id},
+        )
     record(
         session,
         actor_id=actor.id,
@@ -104,7 +118,7 @@ async def upload(
         },
     )
     await session.refresh(document)
-    return DocumentView(document, attachment, is_current=True)
+    return DocumentView(document, attachment, is_current=not pending)
 
 
 async def _check_stage(
@@ -142,11 +156,21 @@ async def _check_replaceable(
     return previous
 
 
-async def documents(session: AsyncSession, interaction_id: int) -> list[DocumentView]:
+def replaced_expression():
+    """версию сменила одобренная преемница - ждущая ещё не сменила"""
     successor = aliased(InteractionDocument)
-    replaced = exists().where(successor.replaces_document_id == InteractionDocument.id)
+    return exists().where(
+        successor.replaces_document_id == InteractionDocument.id,
+        successor.status == DocumentStatus.ACTIVE,
+    )
+
+
+async def documents(session: AsyncSession, interaction_id: int) -> list[DocumentView]:
+    current = (
+        InteractionDocument.status == DocumentStatus.ACTIVE
+    ) & ~replaced_expression()
     rows = await session.execute(
-        select(InteractionDocument, Attachment, ~replaced)
+        select(InteractionDocument, Attachment, current)
         .join(Attachment, Attachment.id == InteractionDocument.attachment_id)
         .where(InteractionDocument.interaction_id == interaction_id)
         .order_by(InteractionDocument.created_at, InteractionDocument.id)
@@ -201,6 +225,55 @@ async def delete_document(
         },
     )
     return attachment.storage_key
+
+
+async def decide(
+    session: AsyncSession,
+    *,
+    document_id: int,
+    actor_id: str,
+    approve: bool,
+    comment: str | None,
+) -> DocumentView:
+    """руководитель владельца одобряет или отклоняет файл на пройденный шаг"""
+    found = await session.get(InteractionDocument, document_id)
+    if found is None:
+        raise IdNotExistsException(InteractionDocument.__name__)
+    scope = await lock_interaction_scope(session, found.interaction_id, actor_id)
+    if not can_close(scope.actor, scope.ownership):
+        raise OperationForbiddenException("decide on this document")
+    document = await session.get(
+        InteractionDocument, document_id, populate_existing=True
+    )
+    if document.status != DocumentStatus.PENDING:
+        raise DomainRuleException(409, f"Document is already {document.status}")
+    if approve:
+        document.status = DocumentStatus.ACTIVE
+    else:
+        document.status = DocumentStatus.REJECTED
+        # отклонённая выходит из цепочки: иначе заняла бы место преемницы
+        document.replaces_document_id = None
+    await session.flush()
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=AuditEventType.DOCUMENT_APPROVED
+        if approve
+        else AuditEventType.DOCUMENT_REJECTED,
+        target_type=TargetType.DOCUMENT,
+        target_id=document.id,
+        new_value={"comment": comment},
+    )
+    notify(
+        session,
+        document.uploaded_by,
+        "Файл одобрен" if approve else "Файл отклонён",
+        f"«{document.title}»" + (f": {comment}" if comment else ""),
+        {"interaction_id": document.interaction_id, "document_id": document.id},
+    )
+    attachment = await session.get(Attachment, document.attachment_id)
+    await session.refresh(document)
+    return DocumentView(document, attachment, is_current=approve)
 
 
 async def check_attachment_readable(

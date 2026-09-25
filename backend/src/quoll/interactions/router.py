@@ -53,6 +53,7 @@ from quoll.interactions.schemas import (
     AssignRequest,
     CloseRequest,
     DeclineRequest,
+    DocumentDecision,
     DocumentRead,
     InteractionCreate,
     InteractionDetailRead,
@@ -489,6 +490,7 @@ def _document(view) -> DocumentRead:
         kind=doc.kind,
         metadata=doc.meta,
         is_current=view.is_current,
+        status=doc.status,
         created_at=doc.created_at,
         attachment=AttachmentRead.model_validate(view.attachment),
     )
@@ -702,6 +704,36 @@ documents_router = APIRouter(
     tags=["Interaction documents"],
     dependencies=[Depends(get_current_user)],
 )
+
+
+@documents_router.post("/{id}/approve", response_model=DocumentRead)
+async def approve_document(
+    id: int, body: DocumentDecision, user: CurrentUser, session: SessionDep
+):
+    return _document(
+        await document_service.decide(
+            session,
+            document_id=id,
+            actor_id=user.id,
+            approve=True,
+            comment=body.comment,
+        )
+    )
+
+
+@documents_router.post("/{id}/reject", response_model=DocumentRead)
+async def reject_document(
+    id: int, body: DocumentDecision, user: CurrentUser, session: SessionDep
+):
+    return _document(
+        await document_service.decide(
+            session,
+            document_id=id,
+            actor_id=user.id,
+            approve=False,
+            comment=body.comment,
+        )
+    )
 
 
 @documents_router.delete(

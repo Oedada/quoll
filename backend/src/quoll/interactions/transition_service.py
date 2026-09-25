@@ -7,7 +7,6 @@ from typing import Any
 
 from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy.orm import aliased
 
 from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
@@ -22,7 +21,9 @@ from quoll.interactions.capacity_policy import (
     assert_can_keep_working,
     counts_toward_capacity,
 )
+from quoll.interactions.document_service import replaced_expression
 from quoll.interactions.models import (
+    DocumentStatus,
     Interaction,
     InteractionDocument,
     InteractionStageHistory,
@@ -197,14 +198,13 @@ async def current_document_kinds(
     session: AsyncSession, interaction_id: int, stage_id: int
 ) -> set[str]:
     """типы актуальных документов стадии - заменённая версия не считается"""
-    successor = aliased(InteractionDocument)
-    replaced = exists().where(successor.replaces_document_id == InteractionDocument.id)
     rows = await session.scalars(
         select(InteractionDocument.kind).where(
             InteractionDocument.interaction_id == interaction_id,
             InteractionDocument.stage_id == stage_id,
             InteractionDocument.kind.is_not(None),
-            ~replaced,
+            InteractionDocument.status == DocumentStatus.ACTIVE,
+            ~replaced_expression(),
         )
     )
     return set(rows)

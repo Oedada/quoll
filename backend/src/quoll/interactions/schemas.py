@@ -93,6 +93,12 @@ class AcceptRequest(AppBaseModel):
     comment: str | None = None
 
 
+class DocumentDecision(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comment: str | None = None
+
+
 class RollbackRequest(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -259,6 +265,8 @@ class DocumentRead(AppBaseModel):
     metadata: dict[str, Any]
     # прежние версии не пропадают, а перестают быть актуальными
     is_current: bool
+    # ACTIVE, PENDING - ждёт руководителя, REJECTED
+    status: str
     created_at: datetime
     attachment: AttachmentRead
 
