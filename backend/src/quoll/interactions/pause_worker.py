@@ -7,11 +7,12 @@
 
 import logging
 
-from sqlalchemy import case, func, or_, select
+from sqlalchemy import case, func, not_, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
+from quoll.auth.identity_policy import incapacitated_expression
 from quoll.auth.models import Manager, User
 from quoll.core.exceptions import CapacityExceededException, ManagerNotActiveException
 from quoll.core.locking import lock_rows
@@ -25,20 +26,23 @@ from quoll.workflows.models import Stage
 
 logger = logging.getLogger(__name__)
 
-BATCH = 100
-
 
 def _due():
-    # два множества: у ждущих срока нет вовсе, NULL < now() не выбрал бы их
+    """два множества: у ждущих срока нет вовсе, NULL < now() не выбрал бы их.
+    Ждущих у выбывших владельцев не берём: снять их нельзя, пока их не
+    передали, а в выборке они вытесняли бы тех, кого снять можно"""
+    capable = select(Manager.id).where(not_(incapacitated_expression(Manager)))
     return or_(
         (Interaction.pause_state == PauseState.PAUSED_TIMED)
         & (Interaction.paused_until <= func.now()),
-        Interaction.pause_state == PauseState.EXPIRED_WAITING_CAPACITY,
+        (Interaction.pause_state == PauseState.EXPIRED_WAITING_CAPACITY)
+        & Interaction.owner_id.in_(capable),
     )
 
 
 async def expire_pauses(session_maker: async_sessionmaker) -> int:
-    """один такт; возвращает, сколько пауз снято"""
+    """один такт; возвращает, сколько пауз снято. Берёт всех, без предела:
+    с пределом полные у одних владельцев навсегда занимали бы выборку"""
     async with session_maker() as db:
         candidates = (
             await db.execute(
@@ -52,7 +56,6 @@ async def expire_pauses(session_maker: async_sessionmaker) -> int:
                     Interaction.updated_at,
                     Interaction.id,
                 )
-                .limit(BATCH)
             )
         ).all()
 
