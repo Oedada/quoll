@@ -8,6 +8,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from quoll.admin import admin_router
 from quoll.attachments import S3StorageService, attachments_router
 from quoll.auth import auth_router, users_router
 from quoll.auth.bootstrap import ensure_admin_account
@@ -158,6 +159,7 @@ app.include_router(interactions_router)
 app.include_router(requests_router)
 app.include_router(documents_router)
 app.include_router(org_router)
+app.include_router(admin_router)
 app.include_router(notifications_router)
 app.include_router(notifications_ws_router)
 
