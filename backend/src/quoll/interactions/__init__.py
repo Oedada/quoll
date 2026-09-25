@@ -11,6 +11,7 @@ from quoll.interactions.repository import (
     VendorRepository,
 )
 from quoll.interactions.router import (
+    documents_router,
     interactions_router,
     requests_router,
     universities_router,

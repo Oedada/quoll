@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Path, Query, Response, status
 
 from quoll.auth.dependencies import AdminOnly, AdminUser, get_current_user
 from quoll.core import SystemDefaults
+from quoll.core.exceptions import DomainRuleException
 from quoll.workflows import workflow_service
 from quoll.workflows.dependencies import (
     SessionDep,
@@ -301,6 +302,14 @@ async def link_attachment(
     attachment_id: int = Path(..., ge=1, description="Attachment ID"),
 ):
     await repo.get(id)
+    # файл проекта шаблоном не делается: шаблон читает любой вошедший
+    # здесь, а не наверху: модуль заявок сам импортирует модели воркфлоу
+    from quoll.interactions.document_service import (
+        is_interaction_document,
+    )
+
+    if await is_interaction_document(repo.session, attachment_id):
+        raise DomainRuleException(409, "Interaction document cannot become a template")
     await repo.link_attachment(id, attachment_id)
     return Response(status_code=status.HTTP_201_CREATED)
 

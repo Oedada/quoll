@@ -3,6 +3,7 @@ from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
+from quoll.attachments.schemas import AttachmentRead
 from quoll.core.schemas import AppBaseModel
 from quoll.workflows.schemas import StageRead, WorkflowRead
 
@@ -216,3 +217,15 @@ class RequestRead(AppBaseModel):
     decided_at: datetime | None
     decision_comment: str | None
     created_at: datetime
+
+
+class DocumentRead(AppBaseModel):
+    id: int
+    interaction_id: int
+    stage_id: int
+    uploaded_by: str | None
+    replaces_document_id: int | None
+    # прежние версии не пропадают, а перестают быть актуальными
+    is_current: bool
+    created_at: datetime
+    attachment: AttachmentRead

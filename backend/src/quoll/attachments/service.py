@@ -124,11 +124,10 @@ class AttachmentService:
             expires_in=expires_in,
         )
 
-    async def delete_attachment(self, attachment_id: int) -> None:
-        """Удалить вложение из БД и S3."""
+    async def delete_attachment(self, attachment_id: int) -> str:
+        """удалить строку вложения; ключ файла - вызывающему, чтобы убрать
+        его из хранилища уже после коммита"""
         attachment = await self.repo.get(attachment_id)
-        storage_key = attachment.storage_key
         await self.repo.delete(attachment_id)
-        if self.s3 is not None:
-            await self.s3.delete(storage_key)
-        logger.info(f"Attachment id={attachment_id} deleted from DB and S3")
+        logger.info(f"Attachment id={attachment_id} deleted from DB")
+        return attachment.storage_key

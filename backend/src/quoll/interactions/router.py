@@ -1,17 +1,36 @@
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Path, Query, Response, status
+from fastapi import (
+    APIRouter,
+    BackgroundTasks,
+    Depends,
+    File,
+    Form,
+    Path,
+    Query,
+    Response,
+    UploadFile,
+    status,
+)
 from fastapi.responses import JSONResponse
 
+from quoll.attachments.dependencies import AttachmentServiceDep
+from quoll.attachments.schemas import AttachmentRead
 from quoll.auth.dependencies import (
     AdminOnly,
+    AdminUser,
     CurrentUser,
     ManagerUser,
     SupervisorUser,
     get_current_user,
 )
 from quoll.core import SystemDefaults
-from quoll.interactions import project_service, request_service, transition_service
+from quoll.interactions import (
+    document_service,
+    project_service,
+    request_service,
+    transition_service,
+)
 from quoll.interactions.access_policy import readable_filter
 from quoll.interactions.dependencies import (
     ChangeableInteraction,
@@ -27,6 +46,7 @@ from quoll.interactions.models import RequestKind, RequestStatus
 from quoll.interactions.schemas import (
     AssignRequest,
     CloseRequest,
+    DocumentRead,
     InteractionCreate,
     InteractionDetailRead,
     InteractionHistoryRead,
@@ -365,6 +385,52 @@ async def create_request(
     )
 
 
+def _document(view) -> DocumentRead:
+    doc = view.document
+    return DocumentRead(
+        id=doc.id,
+        interaction_id=doc.interaction_id,
+        stage_id=doc.stage_id,
+        uploaded_by=doc.uploaded_by,
+        replaces_document_id=doc.replaces_document_id,
+        is_current=view.is_current,
+        created_at=doc.created_at,
+        attachment=AttachmentRead.model_validate(view.attachment),
+    )
+
+
+@interactions_router.get("/{id}/documents", response_model=list[DocumentRead])
+async def list_documents(interaction: ReadableInteraction, session: SessionDep):
+    return [
+        _document(v) for v in await document_service.documents(session, interaction.id)
+    ]
+
+
+@interactions_router.post(
+    "/{id}/documents",
+    response_model=DocumentRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Attach a project file at the current stage, optionally as a new version",
+)
+async def attach_document(
+    id: InteractionId,
+    user: CurrentUser,
+    session: SessionDep,
+    attachments: AttachmentServiceDep,
+    file: Annotated[UploadFile, File()],
+    replaces_document_id: Annotated[int | None, Form()] = None,
+):
+    view = await document_service.upload(
+        session,
+        attachments,
+        interaction_id=id,
+        actor=user,
+        file=file,
+        replaces_document_id=replaces_document_id,
+    )
+    return _document(view)
+
+
 @interactions_router.post(
     "/{id}/pause",
     response_model=InteractionRead,
@@ -488,4 +554,29 @@ async def reject_request(
 @requests_router.delete("/{id}", status_code=status.HTTP_204_NO_CONTENT)
 async def withdraw_request(id: int, user: ManagerUser, session: SessionDep):
     await request_service.withdraw(session, request_id=id, actor_id=user.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+documents_router = APIRouter(
+    prefix="/api/v1/documents",
+    tags=["Interaction documents"],
+    dependencies=[Depends(get_current_user)],
+)
+
+
+@documents_router.delete(
+    "/{id}", status_code=status.HTTP_204_NO_CONTENT, dependencies=[AdminOnly]
+)
+async def delete_document(
+    id: int,
+    admin: AdminUser,
+    session: SessionDep,
+    attachments: AttachmentServiceDep,
+    background: BackgroundTasks,
+):
+    storage_key = await document_service.delete_document(
+        session, document_id=id, actor_id=admin.id
+    )
+    # после коммита: фоновые задачи идут уже после ответа
+    background.add_task(attachments.s3.delete, storage_key)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

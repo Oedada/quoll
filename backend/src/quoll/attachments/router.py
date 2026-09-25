@@ -3,6 +3,7 @@ from urllib.parse import quote
 
 from fastapi import (
     APIRouter,
+    BackgroundTasks,
     Depends,
     File,
     Form,
@@ -19,13 +20,29 @@ from quoll.attachments.dependencies import (
     AttachmentServiceDep,
 )
 from quoll.attachments.schemas import AttachmentRead, PresignedUrlResponse
-from quoll.auth.dependencies import AdminOnly, get_current_user
+from quoll.auth.dependencies import AdminOnly, CurrentUser, get_current_user
+from quoll.core.exceptions import DomainRuleException
+from quoll.db import SessionDep
+from quoll.interactions import document_service
 
 attachments_router = APIRouter(
     prefix="/api/v1/attachments",
     tags=["Attachments"],
     dependencies=[Depends(get_current_user)],
 )
+
+
+async def _readable(
+    user: CurrentUser,
+    session: SessionDep,
+    id: int = Path(..., ge=1, description="Attachment ID"),
+) -> int:
+    # id последовательные: без проверки документ заявки скачали бы перебором
+    await document_service.check_attachment_readable(session, user, id)
+    return id
+
+
+ReadableAttachmentId = Annotated[int, Depends(_readable)]
 
 
 @attachments_router.post(
@@ -50,10 +67,7 @@ async def upload_attachment(
     response_model=AttachmentRead,
     summary="Get attachment metadata",
 )
-async def get_attachment(
-    repo: AttachmentRepoDep,
-    id: int = Path(..., ge=1, description="Attachment ID"),
-):
+async def get_attachment(repo: AttachmentRepoDep, id: ReadableAttachmentId):
     return await repo.get(id)
 
 
@@ -61,10 +75,7 @@ async def get_attachment(
     "/{id}/download",
     summary="Download attachment binary stream from S3",
 )
-async def download_attachment(
-    service: AttachmentServiceDep,
-    id: int = Path(..., ge=1, description="Attachment ID"),
-):
+async def download_attachment(service: AttachmentServiceDep, id: ReadableAttachmentId):
     attachment, stream, content_type, length = await service.get_attachment_stream(id)
     ascii_filename = (
         attachment.filename.encode("ascii", "ignore").decode("ascii") or "attachment"
@@ -91,7 +102,7 @@ async def download_attachment(
 )
 async def get_attachment_presigned_url(
     service: AttachmentServiceDep,
-    id: int = Path(..., ge=1, description="Attachment ID"),
+    id: ReadableAttachmentId,
     expires_in: int = Query(
         default=3600, ge=60, le=86400, description="Expiration time in seconds"
     ),
@@ -108,7 +119,14 @@ async def get_attachment_presigned_url(
 )
 async def delete_attachment(
     service: AttachmentServiceDep,
+    session: SessionDep,
+    background: BackgroundTasks,
     id: int = Path(..., ge=1, description="Attachment ID"),
 ):
-    await service.delete_attachment(id)
+    # иначе каскад удалил бы документ заявки мимо журнала
+    if await document_service.is_interaction_document(session, id):
+        raise DomainRuleException(409, "Interaction document is deleted via /documents")
+    storage_key = await service.delete_attachment(id)
+    # после коммита: строка без файла хуже, чем файл без строки
+    background.add_task(service.s3.delete, storage_key)
     return Response(status_code=status.HTTP_204_NO_CONTENT)
