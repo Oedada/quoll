@@ -120,6 +120,7 @@ class InteractionRepository(BaseRepository[Interaction]):
             frozenset(former),
             author_id=interaction.created_by,
             author_gone=author_gone(author),
+            on_stage=interaction.state_id is not None,
         )
 
     async def stage_history(self, interaction_id: int) -> list[InteractionStageHistory]:

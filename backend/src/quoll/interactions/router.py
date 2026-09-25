@@ -21,6 +21,7 @@ from quoll.interactions.dependencies import (
 )
 from quoll.interactions.schemas import (
     AssignRequest,
+    CloseRequest,
     InteractionCreate,
     InteractionDetailRead,
     InteractionHistoryRead,
@@ -279,6 +280,27 @@ async def move_interaction(
     session: SessionDep,
 ):
     return await transition_service.transition(
+        session,
+        interaction_id=id,
+        actor_id=user.id,
+        to_stage_id=body.to_stage_id,
+        expected_state_id=body.expected_state_id,
+        comment=body.comment,
+    )
+
+
+@interactions_router.post(
+    "/{id}/close",
+    response_model=InteractionRead,
+    summary="Close an interaction early into a terminal stage",
+)
+async def close_interaction(
+    id: InteractionId,
+    body: CloseRequest,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    return await transition_service.close(
         session,
         interaction_id=id,
         actor_id=user.id,

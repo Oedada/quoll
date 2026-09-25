@@ -47,6 +47,7 @@ class InteractionScope:
             and is_incapacitated(self.owner_superviser),
             author_id=self.interaction.created_by,
             author_gone=author_gone(self.author),
+            on_stage=self.interaction.state_id is not None,
         )
 
 

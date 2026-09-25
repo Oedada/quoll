@@ -1,10 +1,11 @@
 """Кто что может делать с заявкой. Чистые правила, в БД не ходят.
 
 руководитель видит и меняет заявки своих менеджеров - состав команды
-динамический, усыновил менеджера - видит его заявки. Заявка без владельца -
-черновик создавшего её руководителя, видит и назначает только он. Черновики
-выбывшего автора и заявки осиротевших команд видят все руководители: это
-общий пул работы, которую надо кому-то отдать. Админ только читает
+динамический, усыновил менеджера - видит его заявки. Заявка без владельца и
+без стадии - черновик создавшего её руководителя, видит и назначает только
+он. Черновики выбывшего автора, заявки осиротевших команд и закрытые без
+владельца видят все руководители: это общий пул работы, которую надо кому-то
+отдать. Админ только читает
 """
 
 from dataclasses import dataclass
@@ -29,6 +30,9 @@ class Ownership:
     former_owner_ids: frozenset[str] = frozenset()
     author_id: str | None = None
     author_gone: bool = False
+    # стоит ли на стадии: без владельца на стадии бывает только закрытая -
+    # смена роли снимает владельца с закрытых заявок
+    on_stage: bool = False
 
 
 def author_gone(author: User | None) -> bool:
@@ -40,10 +44,16 @@ def author_gone(author: User | None) -> bool:
 
 
 def _unassigned_for(user: User, ownership: Ownership) -> bool:
-    """заявка без владельца, и она этого руководителя - его или ничья"""
-    return ownership.owner_id is None and (
-        ownership.author_gone or ownership.author_id == user.id
+    """черновик, и он этого руководителя - его или ничей"""
+    return (
+        ownership.owner_id is None
+        and not ownership.on_stage
+        and (ownership.author_gone or ownership.author_id == user.id)
     )
+
+
+def _closed_ownerless(ownership: Ownership) -> bool:
+    return ownership.owner_id is None and ownership.on_stage
 
 
 def can_read(user: User, ownership: Ownership) -> bool:
@@ -53,6 +63,7 @@ def can_read(user: User, ownership: Ownership) -> bool:
     if user.role == UserRole.SUPERVISER:
         return (
             _unassigned_for(user, ownership)
+            or _closed_ownerless(ownership)
             or ownership.owner_orphaned
             or ownership.owner_superviser_id == user.id
         )
@@ -74,6 +85,16 @@ def can_delete(user: User, ownership: Ownership) -> bool:
     return user.role == UserRole.SUPERVISER and can_change(user, ownership)
 
 
+def can_close(user: User, ownership: Ownership) -> bool:
+    """досрочно закрывает руководитель владельца. Менеджер - только просьбой,
+    осиротевшую сначала забирают назначением"""
+    return (
+        user.role == UserRole.SUPERVISER
+        and ownership.owner_id is not None
+        and ownership.owner_superviser_id == user.id
+    )
+
+
 def can_pause(user: User, ownership: Ownership) -> bool:
     """П11: пока и владелец, и его руководитель. Отдельным именем - если
     аналитики сузят до руководителя, правка будет здесь одной строкой"""
@@ -92,7 +113,9 @@ def can_assign(actor: User, ownership: Ownership, target: Manager) -> bool:
     if ownership.owner_id is not None and ownership.owner_superviser_id == actor.id:
         return True
     return target.superviser_id == actor.id and (
-        _unassigned_for(actor, ownership) or ownership.owner_orphaned
+        _unassigned_for(actor, ownership)
+        or ownership.owner_orphaned
+        or _closed_ownerless(ownership)
     )
 
 
@@ -121,14 +144,19 @@ def readable_filter(user: User) -> ColumnElement[bool]:
         )
         unassigned = and_(
             Interaction.owner_id.is_(None),
+            Interaction.state_id.is_(None),
             or_(
                 Interaction.created_by == user.id,
                 Interaction.created_by.is_(None),
                 Interaction.created_by.in_(gone_authors),
             ),
         )
+        closed_ownerless = and_(
+            Interaction.owner_id.is_(None), Interaction.state_id.is_not(None)
+        )
         return or_(
             unassigned,
+            closed_ownerless,
             Interaction.owner_id.in_(team),
             Interaction.owner_id.in_(orphaned),
         )

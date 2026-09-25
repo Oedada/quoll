@@ -14,7 +14,7 @@ from quoll.core.exceptions import (
     StaleStateException,
     WorkflowNotPublishedException,
 )
-from quoll.interactions.access_policy import can_change
+from quoll.interactions.access_policy import can_change, can_close
 from quoll.interactions.capacity_policy import (
     assert_can_keep_working,
     counts_toward_capacity,
@@ -79,24 +79,15 @@ async def transition(
         await assert_can_keep_working(session, scope.owner, delta)
 
     interaction.workflow_id = workflow_id
-    interaction.state_id = target.id
-    if target.is_terminal and interaction.is_paused:
-        # закрытая заявка на паузе - бессмыслица
-        interaction.is_paused = False
-        interaction.pause_state = PauseState.ACTIVE
-        interaction.paused_until = None
-        interaction.pause_comment = None
-
-    session.add(
-        InteractionStageHistory(
-            interaction_id=interaction.id,
-            from_stage_id=current.id if current else None,
-            to_stage_id=target.id,
-            transition_id=edge.id,
-            kind=StageChangeKind.TRANSITION,
-            actor_id=actor_id,
-            comment=comment,
-        )
+    place(
+        session,
+        interaction,
+        current,
+        target,
+        kind=StageChangeKind.TRANSITION,
+        transition_id=edge.id,
+        actor_id=actor_id,
+        comment=comment,
     )
     record(
         session,
@@ -106,6 +97,95 @@ async def transition(
         target_id=interaction.id,
         old_value={"state_id": current.id if current else None},
         new_value={"state_id": target.id, "transition_id": edge.id},
+    )
+    await session.flush()
+    await session.refresh(interaction)
+    return interaction
+
+
+def place(
+    session: AsyncSession,
+    interaction: Interaction,
+    current: Stage | None,
+    target: Stage,
+    *,
+    kind: StageChangeKind,
+    transition_id: int | None,
+    actor_id: str,
+    comment: str | None,
+) -> None:
+    """поставить заявку на стадию и записать это в историю - общее у перехода,
+    закрытия и переоткрытия"""
+    interaction.state_id = target.id
+    if target.is_terminal and interaction.is_paused:
+        # закрытая заявка на паузе - бессмыслица
+        interaction.is_paused = False
+        interaction.pause_state = PauseState.ACTIVE
+        interaction.paused_until = None
+        interaction.pause_comment = None
+    session.add(
+        InteractionStageHistory(
+            interaction_id=interaction.id,
+            from_stage_id=current.id if current else None,
+            to_stage_id=target.id,
+            transition_id=transition_id,
+            kind=kind,
+            actor_id=actor_id,
+            comment=comment,
+        )
+    )
+
+
+async def close(
+    session: AsyncSession,
+    *,
+    interaction_id: int,
+    actor_id: str,
+    to_stage_id: int,
+    expected_state_id: int | None,
+    comment: str,
+) -> Interaction:
+    """досрочное закрытие: с любого шага в терминальную стадию, без ребра.
+    Дееспособность владельца не проверяется - иначе офбординг не дождался бы
+    нуля незакрытых"""
+    scope = await lock_interaction_scope(session, interaction_id, actor_id)
+    interaction = scope.interaction
+    if interaction.state_id != expected_state_id:
+        raise StaleStateException("Interaction stage", interaction.state_id)
+    if not can_close(scope.actor, scope.ownership):
+        raise OperationForbiddenException("close this interaction")
+
+    current = (
+        await session.get(Stage, interaction.state_id) if interaction.state_id else None
+    )
+    if current is None:
+        raise DomainRuleException(409, "Draft is deleted, not closed")
+    if current.is_terminal:
+        raise DomainRuleException(409, "Interaction is already closed")
+    target = await lock_target_stage(session, to_stage_id)
+    if target.workflow_id != interaction.workflow_id:
+        raise DomainRuleException(400, "Stage belongs to another workflow")
+    if not target.is_terminal:
+        raise DomainRuleException(400, "Interaction is closed into a terminal stage")
+
+    place(
+        session,
+        interaction,
+        current,
+        target,
+        kind=StageChangeKind.CLOSE,
+        transition_id=None,
+        actor_id=actor_id,
+        comment=comment,
+    )
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=AuditEventType.PROJECT_CLOSED,
+        target_type=TargetType.INTERACTION,
+        target_id=interaction.id,
+        old_value={"state_id": current.id},
+        new_value={"state_id": target.id, "comment": comment},
     )
     await session.flush()
     await session.refresh(interaction)

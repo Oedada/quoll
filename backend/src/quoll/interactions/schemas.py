@@ -93,6 +93,15 @@ class TransitionRequest(AppBaseModel):
     comment: str | None = None
 
 
+class CloseRequest(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    to_stage_id: int
+    expected_state_id: int | None
+    # досрочное закрытие - всегда с объяснением
+    comment: str = Field(min_length=1)
+
+
 class PauseRequest(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
