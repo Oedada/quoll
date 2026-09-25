@@ -175,6 +175,9 @@ class OrgRepository:
             for s, n in rows
         ]
 
+    async def people(self, ids: list[str]) -> list[User]:
+        return list(await self.session.scalars(select(User).where(User.id.in_(ids))))
+
     async def team_size(self, superviser_id: str) -> int:
         stmt = select(func.count()).where(Manager.superviser_id == superviser_id)
         return await self.session.scalar(stmt) or 0

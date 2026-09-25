@@ -21,6 +21,7 @@ from quoll.org.schemas import (
     LimitsUpdate,
     ManagerLoadRead,
     PendingActionRead,
+    PersonRead,
     ProfileRead,
     RecruitRequest,
     SupervisorCapacityRead,
@@ -175,6 +176,16 @@ async def release(
 
 
 # --- профили и пределы
+
+
+@org_router.get("/people", response_model=list[PersonRead])
+async def people(
+    repo: OrgRepoDep,
+    ids: Annotated[list[str], Query(max_length=SystemDefaults.MAX_PAGE_SIZE)],
+) -> list[User]:
+    """имена для истории, просьб и авторов - любому вошедшему: иначе
+    руководитель видит в чужой истории только идентификаторы"""
+    return await repo.people(ids)
 
 
 @org_router.get("/profiles/{user_id}", response_model=ProfileRead)

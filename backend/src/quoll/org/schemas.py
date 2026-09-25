@@ -9,6 +9,17 @@ from quoll.core.schemas import AppBaseModel
 from quoll.interactions.capacity_policy import EffectiveStatus
 
 
+class PersonRead(AppBaseModel):
+    """минимум о человеке для подписей в интерфейсе - без контактов"""
+
+    id: str
+    last_name: str
+    first_name: str
+    patronymic: str
+    role: UserRole
+    is_active: bool
+
+
 class ManagerLoadRead(AppBaseModel):
     id: str
     username: str | None
