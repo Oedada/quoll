@@ -27,6 +27,7 @@ from quoll.interactions.transition_service import (
     active_edge,
     check_step,
     lock_target_stage,
+    share_stage,
 )
 from quoll.workflows.graph_policy import EdgeFacts, leads_to
 from quoll.workflows.models import Stage, WorkflowTransition
@@ -53,6 +54,7 @@ async def move(
     expected_state_id: int,
     comment: str | None,
 ) -> InteractionBranch:
+    await share_stage(session, to_stage_id)
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_change(scope.actor, scope.ownership):
         raise OperationForbiddenException("move this interaction")
@@ -152,6 +154,7 @@ async def rollback(
 ) -> InteractionBranch:
     """руководитель возвращает ветку на несколько шагов - только назад и
     только туда, где она уже была"""
+    await share_stage(session, to_stage_id)
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_close(scope.actor, scope.ownership):
         raise OperationForbiddenException("roll back this interaction")

@@ -17,6 +17,7 @@ from quoll.core.exceptions import (
     StaleStateException,
     WorkflowNotPublishedException,
 )
+from quoll.interactions import contract_service
 from quoll.interactions.access_policy import can_assign, can_delete, can_pause
 from quoll.interactions.capacity_policy import (
     assert_can_keep_working,
@@ -444,6 +445,7 @@ async def reopen(
         if previous_owner is not None:
             interaction.last_owner_id = previous_owner
         await _hand_over(session, interaction.id, manager_id, comment)
+    await contract_service.reopen_branches(session, interaction.id, actor_id, comment)
     place(
         session,
         interaction,

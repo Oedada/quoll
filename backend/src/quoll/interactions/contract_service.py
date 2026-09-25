@@ -6,7 +6,7 @@
 блокировок не имеют: всё - под блокировкой взаимодействия
 """
 
-from sqlalchemy import exists, func, select, update
+from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.audit import record
@@ -139,6 +139,11 @@ async def open_branches(
     )
     if start is None:
         return
+    # ветки открываются один раз - повторный проход точки невозврата их не множит
+    if await session.scalar(
+        select(exists().where(InteractionBranch.interaction_id == interaction.id))
+    ):
+        return
     approved = list(
         await session.scalars(
             select(InteractionProduct).where(
@@ -190,15 +195,56 @@ async def open_branch_count(session: AsyncSession, interaction_id: int) -> int:
     )
 
 
-async def close_all_branches(session: AsyncSession, interaction_id: int) -> None:
-    """досрочное закрытие договора закрывает и ветки"""
-    await session.execute(
-        update(InteractionBranch)
-        .where(
-            InteractionBranch.interaction_id == interaction_id,
-            InteractionBranch.closed_at.is_(None),
+async def close_all_branches(
+    session: AsyncSession, interaction_id: int, actor_id: str, comment: str
+) -> None:
+    """досрочное закрытие договора закрывает и ветки - с записью в историю
+    каждой: переоткрытие вернёт именно эти"""
+    for branch in await _branches(session, interaction_id, closed=False):
+        branch.closed_at = func.now()
+        _history(session, branch, StageChangeKind.CLOSE, actor_id, comment)
+
+
+async def reopen_branches(
+    session: AsyncSession, interaction_id: int, actor_id: str, comment: str
+) -> None:
+    """переоткрытие подписанного договора возвращает ветки, закрытые досрочно,
+    - не дошедшие до своего конца"""
+    for branch in await _branches(session, interaction_id, closed=True):
+        stage = await session.get(Stage, branch.state_id)
+        if not stage.is_terminal:
+            branch.closed_at = None
+            _history(session, branch, StageChangeKind.REOPEN, actor_id, comment)
+
+
+async def _branches(
+    session: AsyncSession, interaction_id: int, *, closed: bool
+) -> list[InteractionBranch]:
+    condition = (
+        InteractionBranch.closed_at.is_not(None)
+        if closed
+        else InteractionBranch.closed_at.is_(None)
+    )
+    return list(
+        await session.scalars(
+            select(InteractionBranch)
+            .where(InteractionBranch.interaction_id == interaction_id, condition)
+            .order_by(InteractionBranch.id)
         )
-        .values(closed_at=func.now())
+    )
+
+
+def _history(session, branch, kind, actor_id, comment) -> None:
+    session.add(
+        InteractionStageHistory(
+            interaction_id=branch.interaction_id,
+            branch_id=branch.id,
+            from_stage_id=branch.state_id,
+            to_stage_id=branch.state_id,
+            kind=kind,
+            actor_id=actor_id,
+            comment=comment,
+        )
     )
 
 

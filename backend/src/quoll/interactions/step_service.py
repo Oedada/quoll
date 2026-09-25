@@ -77,7 +77,13 @@ async def set_values(
     if scope.actor.role == UserRole.MANAGER and stage_id != current and changed & gated:
         # правку пройденного шага с такими полями одобряет руководитель
         row = await _upsert(session, interaction_id, stage_id, branch_id, old, actor_id)
-        row.pending_values = values
+        # ждут только поля с аппрувом; остальное применяется сразу
+        free = {k: v for k, v in values.items() if k not in gated}
+        kept = {k: v for k, v in old.items() if k in gated}
+        if free != {k: v for k, v in old.items() if k not in gated}:
+            _journal(session, actor_id, interaction_id, stage_id, old, kept | free)
+            row.values = kept | free
+        row.pending_values = {k: values.get(k) for k in changed & gated}
         row.pending_by = actor_id
         await session.flush()
         # updated_at ставит база - без refresh ответ полез бы за ним вне greenlet
@@ -126,8 +132,10 @@ async def decide(
     row.pending_values = None
     row.pending_by = None
     if approve:
-        _journal(session, actor_id, interaction_id, stage_id, row.values, pending)
-        row.values = pending
+        # вливаем только одобренные поля - правки после подачи не затираются
+        merged = {**row.values, **pending}
+        _journal(session, actor_id, interaction_id, stage_id, row.values, merged)
+        row.values = merged
         row.updated_by = author
     await session.flush()
     notify(

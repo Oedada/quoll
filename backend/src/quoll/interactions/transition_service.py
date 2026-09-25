@@ -457,7 +457,9 @@ async def close_locked(
     if not target.is_terminal or target.is_branch_stage:
         raise DomainRuleException(400, "Interaction is closed into a terminal stage")
 
-    await contract_service.close_all_branches(session, interaction.id)
+    await contract_service.close_all_branches(
+        session, interaction.id, actor_id, comment
+    )
     place(
         session,
         interaction,
@@ -502,6 +504,17 @@ async def active_edge(
         .execution_options(populate_existing=True)
     )
     return (await session.execute(stmt)).scalar_one_or_none()
+
+
+async def share_stage(session: AsyncSession, stage_id: int | None) -> None:
+    """FOR SHARE на стадию до блокировки взаимодействия - для ходов ветки.
+    Взаимодействие с ветками стоит на нескольких стадиях сразу, и архивация
+    одной из них берёт его блокировку после своей стадии; ход ветки,
+    взявший взаимодействие раньше стадии, замкнул бы цикл"""
+    if stage_id is not None:
+        await session.execute(
+            select(Stage.id).where(Stage.id == stage_id).with_for_update(read=True)
+        )
 
 
 async def lock_target_stage(session: AsyncSession, stage_id: int) -> Stage:

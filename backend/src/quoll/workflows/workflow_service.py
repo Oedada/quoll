@@ -86,7 +86,7 @@ async def check_graph(
             )
             for s in stages
         ],
-        [EdgeFacts(e.from_stage_id, e.to_stage_id) for e in edges],
+        [EdgeFacts(e.from_stage_id, e.to_stage_id, e.is_irreversible) for e in edges],
         occupied,
         full=full,
     )
@@ -240,8 +240,15 @@ async def _check_reject_to(session: AsyncSession, edge: WorkflowTransition) -> N
     # отказ уводит на доработку, а не закрывает - иначе отклонить было бы нельзя
     if edge.reject_to_stage_id is not None:
         stage = await _stage(session, edge.reject_to_stage_id)
-        if stage.is_terminal:
-            raise DomainRuleException(400, "reject_to_stage_id must be a working stage")
+        source = (
+            await _stage(session, edge.from_stage_id) if edge.from_stage_id else None
+        )
+        if stage.is_terminal or (
+            source is not None and source.is_branch_stage != stage.is_branch_stage
+        ):
+            raise DomainRuleException(
+                400, "reject_to_stage_id must be a working stage of the same part"
+            )
 
 
 def _check_rules(edge: WorkflowTransition) -> None:

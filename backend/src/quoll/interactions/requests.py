@@ -9,7 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
-from quoll.interactions.models import InteractionRequest, RequestStatus
+from quoll.interactions.models import (
+    InteractionRequest,
+    InteractionStageValues,
+    RequestStatus,
+)
 
 
 async def cancel_pending_requests(
@@ -29,6 +33,15 @@ async def cancel_pending_requests(
             decision_comment=reason,
         )
         .returning(InteractionRequest.id)
+    )
+    # ждущие правки пройденных шагов устаревают вместе с просьбами
+    await session.execute(
+        update(InteractionStageValues)
+        .where(
+            InteractionStageValues.interaction_id == interaction_id,
+            InteractionStageValues.pending_values.is_not(None),
+        )
+        .values(pending_values=None, pending_by=None)
     )
     for request_id in cancelled.all():
         record(

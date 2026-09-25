@@ -38,6 +38,7 @@ from quoll.interactions.transition_service import (
     close_locked,
     move_locked,
     return_locked,
+    share_stage,
 )
 from quoll.workflows.models import Stage, WorkflowTransition
 
@@ -193,10 +194,17 @@ async def _lock_for_decision(
     actor_id: str,
     target_manager_ids: list[str] = (),
 ) -> tuple[InteractionScope, InteractionRequest]:
-    """заявка раньше просьбы - порядок из core/locking.py"""
+    """заявка раньше просьбы - порядок из core/locking.py. У аппрува шага
+    ветки стадии, куда она пойдёт, - раньше заявки (см. share_stage)"""
     found = await session.get(InteractionRequest, request_id)
     if found is None:
         raise IdNotExistsException(InteractionRequest.__name__)
+    if found.branch_id is not None:
+        edge = await session.get(WorkflowTransition, found.transition_id)
+        for stage_id in sorted(
+            {found.target_stage_id, edge.reject_to_stage_id} - {None}
+        ):
+            await share_stage(session, stage_id)
     scope = await lock_interaction_scope(
         session, found.interaction_id, actor_id, target_manager_ids
     )

@@ -24,6 +24,7 @@ class StageFacts:
 class EdgeFacts:
     from_stage_id: int | None
     to_stage_id: int
+    irreversible: bool = False
 
 
 def _reachable(starts: Iterable[int], forward: dict[int, set[int]]) -> set[int]:
@@ -88,6 +89,9 @@ def graph_problems(
     ]
     if crossing:
         problems.append("transitions cross between contract and branch stages")
+    # точка невозврата - подписание, оно одно: на нём открываются ветки
+    if sum(e.irreversible for e in edges) > 1:
+        problems.append("expected at most one point of no return")
     starts = [*starts, *branch_starts]
 
     forward: dict[int, set[int]] = defaultdict(set)
