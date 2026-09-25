@@ -34,6 +34,7 @@ class Settings(BaseSettings):
     # фоновые процессы: в тестах и втором процессе без них можно обойтись
     workers_enabled: bool = True
     session_cleanup_interval_seconds: int = 3600
+    pause_expiry_interval_seconds: int = 30
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

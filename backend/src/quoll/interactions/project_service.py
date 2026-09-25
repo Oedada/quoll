@@ -219,7 +219,17 @@ async def unpause(
         counts_toward_capacity(stage, True)
     )
     await assert_can_keep_working(session, scope.owner, delta)
+    resume(session, interaction, actor_id)
+    await session.flush()
+    await session.refresh(interaction)
+    return interaction
 
+
+def resume(
+    session: AsyncSession, interaction: Interaction, actor_id: str | None
+) -> None:
+    """снять паузу - руками или воркером по истечении срока. Ёмкость проверяет
+    вызывающий, у него заблокирована строка менеджера"""
     old_state = interaction.pause_state
     interaction.is_paused = False
     interaction.pause_state = PauseState.ACTIVE
@@ -234,9 +244,6 @@ async def unpause(
         old_value={"pause_state": old_state},
         new_value={"pause_state": PauseState.ACTIVE},
     )
-    await session.flush()
-    await session.refresh(interaction)
-    return interaction
 
 
 async def _pausable(
