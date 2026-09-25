@@ -31,6 +31,9 @@ class Settings(BaseSettings):
     session_revalidate_hard_limit_seconds: int = 900
     # куда вернуть браузер после входа
     post_login_redirect_url: str = "/front"
+    # фоновые процессы: в тестах и втором процессе без них можно обойтись
+    workers_enabled: bool = True
+    session_cleanup_interval_seconds: int = 3600
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

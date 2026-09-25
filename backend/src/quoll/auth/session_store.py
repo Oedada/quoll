@@ -97,6 +97,15 @@ class SessionStore:
             await db.execute(sa_delete(Session).where(Session.id == key_hash))
             await db.commit()
 
+    async def delete_expired(self) -> int:
+        """просроченные сессии никто не читает - только копятся"""
+        async with self._maker() as db:
+            result = await db.execute(
+                sa_delete(Session).where(Session.expires_at <= func.now())
+            )
+            await db.commit()
+        return result.rowcount or 0
+
     async def delete_for_user(self, user_id: str) -> int:
         """отзыв при деактивации, конфликте ролей и смене роли"""
         async with self._maker() as db:

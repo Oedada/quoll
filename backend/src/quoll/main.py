@@ -14,6 +14,7 @@ from quoll.auth.bootstrap import ensure_admin_account
 from quoll.auth.repositories import UserRepository
 from quoll.config import settings
 from quoll.core import AppException
+from quoll.core.worker import Workers
 from quoll.interactions import (
     documents_router,
     interactions_router,
@@ -21,6 +22,7 @@ from quoll.interactions import (
     universities_router,
     vendors_router,
 )
+from quoll.jobs import background_jobs
 from quoll.notifications import router as notifications_router
 from quoll.notifications import ws_router as notifications_ws_router
 from quoll.notifications.connection_storage import ConnectionStorage
@@ -66,10 +68,15 @@ async def lifespan(app: FastAPI):
             await session.rollback()
     await app.state.s3.ensure_bucket()
     app.state.connection_storage = ConnectionStorage()
+    workers = Workers(background_jobs(app.state.db_session_maker))
+    if settings.workers_enabled:
+        workers.start()
     logger.info("Application started")
 
     yield
 
+    if settings.workers_enabled:
+        await workers.stop()
     logger.debug("Disposing database engine")
     await app.state.db_engine.dispose()
     logger.info("Application stopped")
