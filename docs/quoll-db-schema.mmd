@@ -1,0 +1,353 @@
+erDiagram
+    admins {
+        string id PK,FK "-> users RESTRICT"
+    }
+    attachments {
+        string filename
+        string storage_key
+        string mime_type
+        bigint size_bytes
+        text preview "null"
+        int id PK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    audit_logs {
+        bigint id PK
+        string actor_type
+        string actor_id "null"
+        string target_type
+        string target_id
+        string event_type
+        jsonb old_value "null"
+        jsonb new_value "null"
+        timestamptz created_at
+    }
+    interaction_assignments {
+        bigint id PK
+        int interaction_id FK "-> interactions CASCADE"
+        string manager_id FK "-> users SET NULL"
+        timestamptz assigned_at
+        timestamptz released_at "null"
+        text reason "null"
+    }
+    interaction_branches {
+        bigint id PK
+        int interaction_id FK "-> interactions CASCADE"
+        bigint interaction_product_id FK "-> interaction_products RESTRICT"
+        int state_id FK "-> stages RESTRICT"
+        timestamptz created_at
+        timestamptz closed_at "null"
+    }
+    interaction_documents {
+        bigint id PK
+        int interaction_id FK "-> interactions CASCADE"
+        int attachment_id FK "-> attachments CASCADE"
+        int stage_id FK "-> stages RESTRICT"
+        string uploaded_by FK "-> users SET NULL"
+        bigint replaces_document_id FK "-> interaction_documents SET NULL (replaces_document_id)"
+        string title
+        string kind "null"
+        jsonb metadata
+        string status
+        bigint branch_id FK "-> interaction_branches CASCADE"
+        timestamptz created_at
+    }
+    interaction_products {
+        bigint id PK
+        int interaction_id FK "-> interactions CASCADE"
+        int product_id FK "-> products RESTRICT"
+        string status
+        string added_by FK "-> users SET NULL"
+        timestamptz created_at
+    }
+    interaction_requests {
+        bigint id PK
+        int interaction_id FK "-> interactions CASCADE"
+        string kind
+        string requested_by FK "-> users SET NULL"
+        string from_owner_id FK "-> users SET NULL"
+        string target_manager_id FK "-> users SET NULL"
+        int target_stage_id FK "-> stages RESTRICT"
+        int transition_id FK "-> workflow_transitions RESTRICT"
+        bigint branch_id FK "-> interaction_branches CASCADE"
+        text reason
+        string status
+        string decided_by FK "-> users SET NULL"
+        timestamptz decided_at "null"
+        text decision_comment "null"
+        timestamptz created_at
+    }
+    interaction_stage_history {
+        bigint id PK
+        int interaction_id FK "-> interactions CASCADE"
+        int from_stage_id FK "-> stages RESTRICT"
+        int to_stage_id FK "-> stages RESTRICT"
+        int transition_id FK "-> workflow_transitions RESTRICT"
+        string kind
+        string actor_id FK "-> users SET NULL"
+        text comment "null"
+        bigint branch_id FK "-> interaction_branches CASCADE"
+        timestamptz created_at
+    }
+    interaction_stage_values {
+        bigint id PK
+        int interaction_id FK "-> interactions CASCADE"
+        int stage_id FK "-> stages RESTRICT"
+        bigint branch_id FK "-> interaction_branches CASCADE"
+        jsonb values
+        string updated_by FK "-> users SET NULL"
+        timestamptz updated_at
+        jsonb pending_values "null"
+        string pending_by FK "-> users SET NULL"
+    }
+    interactions {
+        int university_id FK "-> universities RESTRICT"
+        int vendor_id FK "-> vendors RESTRICT"
+        string it_program "null"
+        string it_product "null"
+        int workflow_id FK "-> stages RESTRICT"
+        int state_id FK "-> stages RESTRICT"
+        string owner_id FK "-> managers RESTRICT"
+        string created_by FK "-> users SET NULL"
+        string last_owner_id FK "-> users SET NULL"
+        bool is_paused
+        string pause_state
+        timestamptz paused_until "null"
+        text pause_comment "null"
+        int id PK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    it_directions {
+        string name
+        int id PK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    managers {
+        string id PK,FK "-> users RESTRICT"
+        string superviser_id FK "-> supervisers RESTRICT"
+        string manual_workload_status
+        int max_active_projects
+    }
+    notifies {
+        string user_id FK "-> users CASCADE"
+        string title
+        text message
+        bool is_read
+        json extra_data "null"
+        int id PK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    pending_org_actions {
+        string id PK
+        string action_type
+        string target_id FK "-> users CASCADE"
+        string origin_supervisor_id FK "-> users SET NULL"
+        string status
+        jsonb payload "null"
+        string worker_id "null"
+        timestamptz lease_until "null"
+        int lease_version
+        int retry_count
+        int max_attempts
+        timestamptz next_retry_at "null"
+        text last_error "null"
+        timestamptz created_at
+        timestamptz completed_at "null"
+    }
+    products {
+        string name
+        text description "null"
+        int vendor_id FK "-> vendors RESTRICT"
+        int direction_id FK "-> it_directions SET NULL"
+        jsonb keywords
+        bool is_active
+        int priority
+        int id PK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    sessions {
+        string id PK
+        string user_id
+        text refresh_token
+        timestamptz created_at
+        timestamptz expires_at
+        timestamptz last_validated_at
+    }
+    stages {
+        int workflow_id FK "-> workflows CASCADE"
+        string name
+        text description "null"
+        int position
+        bool is_terminal
+        bool consumes_capacity
+        timestamptz archived_at "null"
+        bool is_branch_stage
+        bool is_branch_start
+        jsonb fields
+        int id PK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    supervisers {
+        string id PK,FK "-> users RESTRICT"
+        int max_subordinates
+    }
+    transition_attachments {
+        int transition_id PK,FK "-> workflow_transitions CASCADE"
+        int attachment_id PK,FK "-> attachments CASCADE"
+    }
+    universities {
+        string name
+        json contacts
+        int id PK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    university_contacts {
+        int university_id FK "-> universities CASCADE"
+        string full_name
+        string position "null"
+        string department "null"
+        string email "null"
+        string phone "null"
+        bool is_primary
+        bool is_actual
+        int id PK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    university_programs {
+        int university_id FK "-> universities CASCADE"
+        string name
+        string code "null"
+        string faculty "null"
+        jsonb disciplines
+        jsonb keywords
+        int id PK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    users {
+        string id PK
+        enum role
+        string role_transition_status
+        string identity_sync_status
+        string username "null"
+        string email "null"
+        string first_name
+        string last_name
+        string patronymic
+        bool is_active
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    vendors {
+        string name
+        json contacts
+        int id PK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    workflow_change_requests {
+        int id PK
+        int workflow_id FK "-> workflows CASCADE"
+        string requested_by FK "-> users SET NULL"
+        text text
+        string status
+        string decided_by FK "-> users SET NULL"
+        timestamptz decided_at "null"
+        text decision_comment "null"
+        timestamptz created_at
+    }
+    workflow_transitions {
+        int workflow_id FK "-> workflows CASCADE"
+        int from_stage_id FK "-> stages CASCADE"
+        int to_stage_id FK "-> stages CASCADE"
+        bool is_active
+        string name
+        text comments "null"
+        bool requires_approval
+        int reject_to_stage_id FK "-> stages SET NULL"
+        bool is_backward
+        bool is_irreversible
+        jsonb required_document_kinds
+        int id PK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    workflows {
+        string name
+        text description "null"
+        bool is_published
+        int id PK
+        timestamptz created_at
+        timestamptz updated_at
+    }
+    attachments ||--o{ transition_attachments : "attachment_id"
+    attachments ||--o| interaction_documents : "attachment_id"
+    interaction_branches o|--o{ interaction_documents : "branch_id"
+    interaction_branches o|--o{ interaction_requests : "branch_id"
+    interaction_branches o|--o{ interaction_stage_history : "branch_id"
+    interaction_branches o|--o{ interaction_stage_values : "branch_id"
+    interaction_documents o|--o{ interaction_documents : "replaces_document_id"
+    interaction_documents ||--o{ interaction_documents : "interaction_id"
+    interaction_products ||--o| interaction_branches : "interaction_product_id"
+    interactions ||--o{ interaction_assignments : "interaction_id"
+    interactions ||--o{ interaction_branches : "interaction_id"
+    interactions ||--o{ interaction_documents : "interaction_id"
+    interactions ||--o{ interaction_products : "interaction_id"
+    interactions ||--o{ interaction_requests : "interaction_id"
+    interactions ||--o{ interaction_stage_history : "interaction_id"
+    interactions ||--o{ interaction_stage_values : "interaction_id"
+    it_directions o|--o{ products : "direction_id"
+    managers o|--o{ interactions : "owner_id"
+    products ||--o{ interaction_products : "product_id"
+    stages o|--o{ interaction_requests : "target_stage_id"
+    stages o|--o{ interaction_stage_history : "from_stage_id"
+    stages o|--o{ interactions : "state_id"
+    stages o|--o{ interactions : "workflow_id"
+    stages o|--o{ workflow_transitions : "from_stage_id"
+    stages o|--o{ workflow_transitions : "reject_to_stage_id"
+    stages ||--o{ interaction_branches : "state_id"
+    stages ||--o{ interaction_documents : "stage_id"
+    stages ||--o{ interaction_stage_history : "to_stage_id"
+    stages ||--o{ interaction_stage_values : "stage_id"
+    stages ||--o{ workflow_transitions : "to_stage_id"
+    supervisers o|--o{ managers : "superviser_id"
+    universities ||--o{ interactions : "university_id"
+    universities ||--o{ university_contacts : "university_id"
+    universities ||--o{ university_programs : "university_id"
+    users o|--o{ interaction_assignments : "manager_id"
+    users o|--o{ interaction_documents : "uploaded_by"
+    users o|--o{ interaction_products : "added_by"
+    users o|--o{ interaction_requests : "decided_by"
+    users o|--o{ interaction_requests : "from_owner_id"
+    users o|--o{ interaction_requests : "requested_by"
+    users o|--o{ interaction_requests : "target_manager_id"
+    users o|--o{ interaction_stage_history : "actor_id"
+    users o|--o{ interaction_stage_values : "pending_by"
+    users o|--o{ interaction_stage_values : "updated_by"
+    users o|--o{ interactions : "created_by"
+    users o|--o{ interactions : "last_owner_id"
+    users o|--o{ pending_org_actions : "origin_supervisor_id"
+    users o|--o{ workflow_change_requests : "decided_by"
+    users o|--o{ workflow_change_requests : "requested_by"
+    users ||--o{ admins : "id"
+    users ||--o{ managers : "id"
+    users ||--o{ notifies : "user_id"
+    users ||--o{ pending_org_actions : "target_id"
+    users ||--o{ supervisers : "id"
+    vendors o|--o{ products : "vendor_id"
+    vendors ||--o{ interactions : "vendor_id"
+    workflow_transitions o|--o{ interaction_requests : "transition_id"
+    workflow_transitions o|--o{ interaction_stage_history : "transition_id"
+    workflow_transitions ||--o{ transition_attachments : "transition_id"
+    workflows o|--o{ interactions : "workflow_id"
+    workflows ||--o{ stages : "workflow_id"
+    workflows ||--o{ workflow_change_requests : "workflow_id"
+    workflows ||--o{ workflow_transitions : "workflow_id"
