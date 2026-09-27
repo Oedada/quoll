@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import ClassVar
+from typing import ClassVar, Literal
 
 from pydantic import ConfigDict, Field, model_validator
 
@@ -38,70 +38,118 @@ class DirectionRead(AppBaseModel):
     updated_at: datetime
 
 
+class Ref(AppBaseModel):
+    id: int
+    name: str
+
+
+class ProductRef(Ref):
+    vendor_id: int
+
+
 class ProductWrite(_Write):
     name: str = Field(min_length=1, max_length=255)
+    vendor_id: int
+    # у продукта минимум одно направление
+    direction_ids: list[int] = Field(min_length=1)
     description: str | None = None
-    vendor_id: int | None = None
-    direction_id: int | None = None
-    keywords: list[str] = Field(default_factory=list)
+    url: str | None = Field(default=None, max_length=500)
     is_active: bool = True
 
 
 class ProductPatch(_Patch):
-    required = ("name", "keywords", "is_active")
+    required = ("name", "vendor_id", "direction_ids", "is_active")
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    description: str | None = None
     vendor_id: int | None = None
-    direction_id: int | None = None
-    keywords: list[str] | None = None
+    direction_ids: list[int] | None = Field(default=None, min_length=1)
+    description: str | None = None
+    url: str | None = Field(default=None, max_length=500)
     is_active: bool | None = None
-
-
-class PriorityWrite(_Write):
-    priority: int = Field(ge=-1000, le=1000)
 
 
 class ProductRead(AppBaseModel):
     id: int
     name: str
+    vendor_id: int
+    directions: list[Ref]
     description: str | None
-    vendor_id: int | None
-    direction_id: int | None
-    keywords: list[str]
+    url: str | None
     is_active: bool
-    priority: int
     created_at: datetime
     updated_at: datetime
 
 
 class ProgramWrite(_Write):
-    university_id: int
     name: str = Field(min_length=1, max_length=255)
-    code: str | None = Field(default=None, max_length=20)
-    faculty: str | None = None
-    disciplines: list[str] = Field(default_factory=list)
-    keywords: list[str] = Field(default_factory=list)
+    direction_id: int
+    # пусто - программа продуктонезависимая
+    product_ids: list[int] = Field(default_factory=list)
+    description: str | None = None
+    url: str | None = Field(default=None, max_length=500)
+    site_course_id: str | None = Field(default=None, max_length=255)
+    is_active: bool = True
 
 
 class ProgramPatch(_Patch):
-    required = ("name", "disciplines", "keywords")
+    required = ("name", "direction_id", "product_ids", "is_active")
     name: str | None = Field(default=None, min_length=1, max_length=255)
-    code: str | None = Field(default=None, max_length=20)
-    faculty: str | None = None
-    disciplines: list[str] | None = None
-    keywords: list[str] | None = None
+    direction_id: int | None = None
+    product_ids: list[int] | None = None
+    description: str | None = None
+    url: str | None = Field(default=None, max_length=500)
+    site_course_id: str | None = Field(default=None, max_length=255)
+    is_active: bool | None = None
+
+
+class PriorityWrite(_Write):
+    # 1 - самая востребованная; null - снять приоритет
+    priority: int | None = Field(ge=1, le=1000)
 
 
 class ProgramRead(AppBaseModel):
     id: int
-    university_id: int
     name: str
-    code: str | None
-    faculty: str | None
-    disciplines: list[str]
-    keywords: list[str]
+    direction_id: int
+    products: list[ProductRef]
+    description: str | None
+    url: str | None
+    priority: int | None
+    site_course_id: str | None
+    is_active: bool
     created_at: datetime
     updated_at: datetime
+
+
+class SpecialtyWrite(_Write):
+    code: str = Field(pattern=r"^\d{2}\.\d{2}\.\d{2}$")
+    name: str = Field(min_length=1, max_length=255)
+    level: Literal["BACHELOR", "SPECIALIST", "MASTER"]
+    direction_ids: list[int] = Field(default_factory=list)
+    tags: list[str] = Field(default_factory=list)
+
+
+class SpecialtyPatch(_Patch):
+    required = ("code", "name", "level", "direction_ids", "tags")
+    code: str | None = Field(default=None, pattern=r"^\d{2}\.\d{2}\.\d{2}$")
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    level: Literal["BACHELOR", "SPECIALIST", "MASTER"] | None = None
+    direction_ids: list[int] | None = None
+    tags: list[str] | None = None
+
+
+class SpecialtyRead(AppBaseModel):
+    id: int
+    code: str
+    name: str
+    level: str
+    directions: list[Ref]
+    tags: list[str]
+    created_at: datetime
+    updated_at: datetime
+
+
+class UniversitySpecialtiesWrite(_Write):
+    specialty_ids: list[int]
 
 
 class ContactWrite(_Write):

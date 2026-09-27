@@ -28,6 +28,8 @@ class TargetType(StrEnum):
     PRODUCT = "PRODUCT"
     PROGRAM = "PROGRAM"
     CONTACT = "CONTACT"
+    SPECIALTY = "SPECIALTY"
+    UNIVERSITY = "UNIVERSITY"
 
 
 class AuditEventType(StrEnum):

@@ -1,6 +1,7 @@
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Query, Response, status
+from sqlalchemy import select
 
 from quoll.auth.audit_models import TargetType
 from quoll.auth.dependencies import (
@@ -13,9 +14,11 @@ from quoll.auth.models import User, UserRole
 from quoll.catalog import service
 from quoll.catalog.models import (
     ItDirection,
+    ItProgram,
     Product,
+    Specialty,
     UniversityContact,
-    UniversityProgram,
+    university_specialties,
 )
 from quoll.catalog.schemas import (
     ContactPatch,
@@ -31,6 +34,10 @@ from quoll.catalog.schemas import (
     ProgramPatch,
     ProgramRead,
     ProgramWrite,
+    SpecialtyPatch,
+    SpecialtyRead,
+    SpecialtyWrite,
+    UniversitySpecialtiesWrite,
 )
 from quoll.core import SystemDefaults
 from quoll.core.base_repository import BaseRepository
@@ -114,42 +121,87 @@ async def list_products(
     if vendor_id is not None:
         filters.append(Product.vendor_id == vendor_id)
     if direction_id is not None:
-        filters.append(Product.direction_id == direction_id)
+        filters.append(Product.directions.any(ItDirection.id == direction_id))
     if is_active is not None:
         filters.append(Product.is_active.is_(is_active))
-    # приоритетные курсы сверху
-    order = [Product.priority.desc(), Product.name, Product.id]
+    order = [Product.name, Product.id]
     return await service.listing(session, Product, filters, order, limit, offset)
-
-
-@catalog_router.patch("/products/{item_id}/priority", response_model=ProductRead)
-async def set_priority(
-    item_id: int, body: PriorityWrite, user: Prioritizer, session: SessionDep
-):
-    return await service.update(
-        session,
-        Product,
-        TargetType.PRODUCT,
-        item_id,
-        {"priority": body.priority},
-        user.id,
-    )
 
 
 @catalog_router.get("/programs", response_model=list[ProgramRead])
 async def list_programs(
     session: SessionDep,
     q: Search = None,
+    direction_id: int | None = None,
+    product_id: int | None = None,
+    is_active: bool | None = None,
+    limit: Limit = 50,
+    offset: Offset = 0,
+):
+    filters = _like(ItProgram.name, q)
+    if direction_id is not None:
+        filters.append(ItProgram.direction_id == direction_id)
+    if product_id is not None:
+        filters.append(ItProgram.products.any(Product.id == product_id))
+    if is_active is not None:
+        filters.append(ItProgram.is_active.is_(is_active))
+    # 1 - самая востребованная, без приоритета - в конце (К 2.4)
+    order = [ItProgram.priority.asc().nulls_last(), ItProgram.name, ItProgram.id]
+    return await service.listing(session, ItProgram, filters, order, limit, offset)
+
+
+@catalog_router.patch("/programs/{item_id}/priority", response_model=ProgramRead)
+async def set_priority(
+    item_id: int, body: PriorityWrite, user: Prioritizer, session: SessionDep
+):
+    return await service.update(
+        session,
+        ItProgram,
+        TargetType.PROGRAM,
+        item_id,
+        {"priority": body.priority},
+        user.id,
+    )
+
+
+@catalog_router.get("/specialties", response_model=list[SpecialtyRead])
+async def list_specialties(
+    session: SessionDep,
+    q: Search = None,
+    direction_id: int | None = None,
     university_id: int | None = None,
     limit: Limit = 50,
     offset: Offset = 0,
 ):
-    filters = _like(UniversityProgram.name, q)
+    filters = _like(Specialty.name, q)
+    if direction_id is not None:
+        filters.append(Specialty.directions.any(ItDirection.id == direction_id))
     if university_id is not None:
-        filters.append(UniversityProgram.university_id == university_id)
-    order = [UniversityProgram.name, UniversityProgram.id]
-    return await service.listing(
-        session, UniversityProgram, filters, order, limit, offset
+        filters.append(
+            Specialty.id.in_(
+                select(university_specialties.c.specialty_id).where(
+                    university_specialties.c.university_id == university_id
+                )
+            )
+        )
+    order = [Specialty.code, Specialty.id]
+    return await service.listing(session, Specialty, filters, order, limit, offset)
+
+
+@catalog_router.put(
+    "/universities/{university_id}/specialties",
+    response_model=list[SpecialtyRead],
+    dependencies=[AdminOnly],
+)
+async def set_university_specialties(
+    university_id: int,
+    body: UniversitySpecialtiesWrite,
+    admin: AdminUser,
+    session: SessionDep,
+):
+    """состав специальностей вуза целиком"""
+    return await service.set_university_specialties(
+        session, university_id, body.specialty_ids, admin.id
     )
 
 
@@ -184,12 +236,15 @@ _crud(
 )
 _crud("/products", Product, TargetType.PRODUCT, ProductWrite, ProductPatch, ProductRead)
 _crud(
-    "/programs",
-    UniversityProgram,
-    TargetType.PROGRAM,
-    ProgramWrite,
-    ProgramPatch,
-    ProgramRead,
+    "/programs", ItProgram, TargetType.PROGRAM, ProgramWrite, ProgramPatch, ProgramRead
+)
+_crud(
+    "/specialties",
+    Specialty,
+    TargetType.SPECIALTY,
+    SpecialtyWrite,
+    SpecialtyPatch,
+    SpecialtyRead,
 )
 _crud(
     "/contacts",

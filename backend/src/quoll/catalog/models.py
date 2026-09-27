@@ -1,10 +1,20 @@
-"""Справочники: ИТ-направления, продукты, программы и контакты вузов"""
+"""Справочники: ИТ-направления, продукты, ИТ-программы, специальности, контакты"""
 
 from typing import Any
 
-from sqlalchemy import Boolean, ForeignKey, Index, Integer, String, Text, text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Table,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from quoll.core.mixins import IdMixin, TimestampMixin
 from quoll.db import Base, str_255
@@ -14,6 +24,59 @@ def _json_list() -> Any:
     return mapped_column(JSONB, default=list, server_default=text("'[]'::jsonb"))
 
 
+product_directions = Table(
+    "product_directions",
+    Base.metadata,
+    Column(
+        "product_id", ForeignKey("products.id", ondelete="CASCADE"), primary_key=True
+    ),
+    Column(
+        "direction_id",
+        ForeignKey("it_directions.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+program_products = Table(
+    "program_products",
+    Base.metadata,
+    Column(
+        "program_id", ForeignKey("it_programs.id", ondelete="CASCADE"), primary_key=True
+    ),
+    # продукт, который ведут ветки, не удаляется - RESTRICT в самой ветке
+    Column(
+        "product_id", ForeignKey("products.id", ondelete="CASCADE"), primary_key=True
+    ),
+)
+specialty_directions = Table(
+    "specialty_directions",
+    Base.metadata,
+    Column(
+        "specialty_id",
+        ForeignKey("specialties.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "direction_id",
+        ForeignKey("it_directions.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+university_specialties = Table(
+    "university_specialties",
+    Base.metadata,
+    Column(
+        "university_id",
+        ForeignKey("universities.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+    Column(
+        "specialty_id",
+        ForeignKey("specialties.id", ondelete="CASCADE"),
+        primary_key=True,
+    ),
+)
+
+
 class ItDirection(Base, IdMixin, TimestampMixin):
     __tablename__ = "it_directions"
 
@@ -21,58 +84,69 @@ class ItDirection(Base, IdMixin, TimestampMixin):
 
 
 class Product(Base, IdMixin, TimestampMixin):
+    """ПО из каталога. Вендор есть всегда: у своих - «ПАО «Ростелеком»»"""
+
     __tablename__ = "products"
     __table_args__ = (
-        # у своего продукта вендора нет - NULLS NOT DISTINCT, иначе два
-        # одноимённых «своих» прошли бы
-        Index(
-            "uq_products_name_vendor",
-            "name",
-            "vendor_id",
-            unique=True,
-            postgresql_nulls_not_distinct=True,
-        ),
+        Index("uq_products_name_vendor", "name", "vendor_id", unique=True),
     )
 
     name: Mapped[str_255]
+    vendor_id: Mapped[int] = mapped_column(
+        ForeignKey("vendors.id", ondelete="RESTRICT"), index=True
+    )
     description: Mapped[str | None] = mapped_column(Text, nullable=True)
-    # продукт Ростелекома - без вендора
-    vendor_id: Mapped[int | None] = mapped_column(
-        ForeignKey("vendors.id", ondelete="RESTRICT"), nullable=True, index=True
-    )
-    direction_id: Mapped[int | None] = mapped_column(
-        ForeignKey("it_directions.id", ondelete="SET NULL"), nullable=True, index=True
-    )
-    keywords: Mapped[list[str]] = _json_list()
+    url: Mapped[str | None] = mapped_column(String(500), nullable=True)
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )
-    # ручная приоритизация курсов менеджерами и админом (Q19); больше - выше
-    priority: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
 
-
-class UniversityProgram(Base, IdMixin, TimestampMixin):
-    __tablename__ = "university_programs"
-    __table_args__ = (
-        Index(
-            "uq_university_programs",
-            "university_id",
-            "code",
-            "name",
-            unique=True,
-            postgresql_nulls_not_distinct=True,
-        ),
+    # минимум одно - проверка в сервисе
+    directions: Mapped[list[ItDirection]] = relationship(
+        secondary=product_directions, lazy="selectin", order_by=ItDirection.id
     )
 
-    university_id: Mapped[int] = mapped_column(
-        ForeignKey("universities.id", ondelete="CASCADE"), index=True
+
+class ItProgram(Base, IdMixin, TimestampMixin):
+    """ИТ-программа (курс) ИТ Школы: одно направление, продукты могут
+    отсутствовать - тогда программа продуктонезависимая (Q43)"""
+
+    __tablename__ = "it_programs"
+
+    name: Mapped[str_255] = mapped_column(unique=True)
+    direction_id: Mapped[int] = mapped_column(
+        ForeignKey("it_directions.id", ondelete="RESTRICT"), index=True
     )
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(String(500), nullable=True)
+    # ручной приоритет (Q19): 1 - самая востребованная, пусто - не задан
+    priority: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # ключ сопоставления с сайтом и LMS
+    site_course_id: Mapped[str | None] = mapped_column(
+        String(255), nullable=True, unique=True
+    )
+    is_active: Mapped[bool] = mapped_column(
+        Boolean, default=True, server_default="true"
+    )
+
+    products: Mapped[list[Product]] = relationship(
+        secondary=program_products, lazy="selectin", order_by=Product.id
+    )
+
+
+class Specialty(Base, IdMixin, TimestampMixin):
+    """специальность ОКСО - только для подсказки на шаге 0"""
+
+    __tablename__ = "specialties"
+
+    code: Mapped[str] = mapped_column(String(20), unique=True)
     name: Mapped[str_255]
-    # код специальности, например 09.03.02
-    code: Mapped[str | None] = mapped_column(String(20), nullable=True)
-    faculty: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    disciplines: Mapped[list[str]] = _json_list()
-    keywords: Mapped[list[str]] = _json_list()
+    level: Mapped[str] = mapped_column(String(20))
+    tags: Mapped[list[str]] = _json_list()
+
+    directions: Mapped[list[ItDirection]] = relationship(
+        secondary=specialty_directions, lazy="selectin", order_by=ItDirection.id
+    )
 
 
 class UniversityContact(Base, IdMixin, TimestampMixin):
