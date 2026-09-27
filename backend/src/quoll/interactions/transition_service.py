@@ -17,7 +17,7 @@ from quoll.core.exceptions import (
     StaleStateException,
     WorkflowNotPublishedException,
 )
-from quoll.interactions import contract_service
+from quoll.interactions import contract_service, step_contacts
 from quoll.interactions.access_policy import can_change, can_close
 from quoll.interactions.bindings import read_bound
 from quoll.interactions.capacity_policy import (
@@ -246,7 +246,11 @@ async def stage_values(
     interaction_id: int,
     stage_id: int,
     branch_id: int | None = None,
+    *,
+    expand: bool = True,
 ) -> dict[str, Any]:
+    """значения шага для правил: привязанные - из колонок, контакты - раскрыты
+    (удалённый - пусто). expand=False - как хранятся, для сравнения правок"""
     found = await session.scalar(
         select(InteractionStageValues.values).where(
             InteractionStageValues.interaction_id == interaction_id,
@@ -256,10 +260,13 @@ async def stage_values(
     )
     # привязанные поля - из колонок, см. bindings.py
     stage = await session.get(Stage, stage_id)
-    return {
+    values = {
         **(found or {}),
         **await read_bound(session, stage, interaction_id, branch_id),
     }
+    if not expand:
+        return values
+    return await step_contacts.expand(session, stage, values, for_view=False)
 
 
 async def current_document_kinds(

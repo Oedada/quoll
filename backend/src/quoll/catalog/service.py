@@ -213,21 +213,34 @@ async def set_university_specialties(
 async def check_contact_owner(
     session: AsyncSession, user, university_id: int | None, vendor_id: int | None
 ) -> None:
-    """контакты вуза правят КАМ своих вузов и админ, вендора - только админ.
-    Свой вуз - где у КАМа есть незакрытая заявка (Р1)"""
-    from quoll.auth.models import UserRole
+    """контакты вуза правят КАМ своих вузов, его руководитель и админ,
+    вендора - только админ. Свой вуз - где есть незакрытая заявка КАМа (Р1)"""
+    from quoll.auth.models import Manager, UserRole
     from quoll.core.exceptions import OperationForbiddenException
     from quoll.interactions.models import Interaction
 
     if user.role == UserRole.ADMIN:
         return
-    if user.role == UserRole.MANAGER and university_id is not None:
+    if university_id is not None and user.role in (
+        UserRole.MANAGER,
+        UserRole.SUPERVISER,
+    ):
+        # КАМ - своих вузов; руководитель - вузов своих КАМов (как у заявки)
+        owner = (
+            Interaction.owner_id == user.id
+            if user.role == UserRole.MANAGER
+            else Interaction.owner_id.in_(
+                select(Manager.id).where(Manager.superviser_id == user.id)
+            )
+        )
         own = await session.scalar(
-            select(Interaction.id).where(
+            select(Interaction.id)
+            .where(
                 Interaction.university_id == university_id,
-                Interaction.owner_id == user.id,
+                owner,
                 Interaction.closed_at.is_(None),
             )
+            .limit(1)
         )
         if own is not None:
             return

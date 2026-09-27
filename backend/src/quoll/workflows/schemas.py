@@ -15,7 +15,7 @@ class StageField(AppBaseModel):
 
     key: str = Field(pattern=r"^[a-z][a-z0-9_]{0,49}$")
     label: str = Field(min_length=1)
-    type: Literal["string", "text", "date", "number", "bool"]
+    type: Literal["string", "text", "date", "datetime", "number", "bool", "contact"]
     required: bool = False
     # правку на пройденном шаге менеджером одобряет руководитель
     approval_after_pass: bool = False

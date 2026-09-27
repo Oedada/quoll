@@ -4,7 +4,7 @@
 Здесь - только сверка фактов с этими настройками
 """
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 
@@ -22,6 +22,17 @@ def _fits(kind: str, value: Any) -> bool:
         except (TypeError, ValueError):
             return False
         return True
+    if kind == "datetime":
+        # встреча - момент, поэтому только с часовым поясом
+        try:
+            return datetime.fromisoformat(value).tzinfo is not None
+        except (TypeError, ValueError):
+            return False
+    if kind == "contact":
+        # id справочника или объект, из которого контакт создадут или поправят
+        return isinstance(value, dict) or (
+            isinstance(value, int) and not isinstance(value, bool)
+        )
     return False
 
 

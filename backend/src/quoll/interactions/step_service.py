@@ -15,7 +15,7 @@ from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import UserRole
 from quoll.core.exceptions import DomainRuleException, OperationForbiddenException
-from quoll.interactions import contract_service
+from quoll.interactions import contract_service, step_contacts
 from quoll.interactions.access_policy import can_change, can_close
 from quoll.interactions.bindings import read_bound, write_bound
 from quoll.interactions.models import (
@@ -77,8 +77,12 @@ async def set_values(
         raise DomainRuleException(409, "Stage is not reached yet")
     if problems := value_problems(stage.fields, values):
         raise DomainRuleException(422, "; ".join(problems))
+    # контакты - сразу в справочник, в шаге остаётся ссылка
+    values = await step_contacts.resolve(
+        session, stage, interaction.university_id, values, actor_id
+    )
 
-    old = await stage_values(session, interaction_id, stage_id, branch_id)
+    old = await stage_values(session, interaction_id, stage_id, branch_id, expand=False)
     gated = {f["key"] for f in stage.fields if f.get("approval_after_pass")}
     changed = {k for k in old.keys() | values.keys() if old.get(k) != values.get(k)}
     passed = contract_service.step_passed(interaction, stage_id, current, branch_id)
@@ -217,10 +221,13 @@ async def view(session: AsyncSession, row: InteractionStageValues) -> dict:
     (реквизиты при загрузке договора, продление допсоглашением)"""
     stage = await session.get(Stage, row.stage_id)
     bound = await read_bound(session, stage, row.interaction_id, row.branch_id)
+    values = await step_contacts.expand(
+        session, stage, {**row.values, **bound}, for_view=True
+    )
     return {
         "stage_id": row.stage_id,
         "branch_id": row.branch_id,
-        "values": {**row.values, **bound},
+        "values": values,
         "updated_by": row.updated_by,
         "updated_at": row.updated_at,
         "pending_values": row.pending_values,
