@@ -153,3 +153,47 @@ MOVED_TO_PASSIVE = _kind(
     "{interaction}: давно без действий на долгосрочных этапах. "
     "Вернуть в активные можно кнопкой на карточке",
 )
+INTERACTION_ASSIGNED = _kind(
+    "INTERACTION_ASSIGNED",
+    Severity.INFO,
+    [Role.OWNER],
+    "Вам назначена заявка",
+    "{interaction}{note}",
+)
+INTERACTION_TAKEN_AWAY = _kind(
+    "INTERACTION_TAKEN_AWAY",
+    Severity.INFO,
+    [Role.PREVIOUS_OWNER],
+    "Заявку передали другому менеджеру",
+    "{interaction}",
+)
+REQUEST_CREATED = _kind(
+    "REQUEST_CREATED",
+    Severity.CRITICAL,
+    [Role.OWNER_SUPERVISOR],
+    "Просьба ждёт решения: {request}",
+    "{interaction}: {reason}",
+    critical=True,
+)
+REQUEST_DECIDED = _kind(
+    "REQUEST_DECIDED",
+    Severity.CRITICAL,
+    [Role.REQUESTER],
+    "Просьба {decision}: {request}",
+    "{interaction}. {comment}",
+    critical=True,
+)
+PAUSE_ENDED = _kind(
+    "PAUSE_ENDED",
+    Severity.INFO,
+    [Role.OWNER],
+    "Пауза закончилась",
+    "{interaction}{branch}: срок паузы вышел, работа продолжается",
+)
+PAUSE_WAITING_CAPACITY = _kind(
+    "PAUSE_WAITING_CAPACITY",
+    Severity.WARNING,
+    [Role.OWNER, Role.OWNER_SUPERVISOR],
+    "Пауза закончилась, но нет места",
+    "{interaction}: срок паузы вышел, у менеджера заняты все активные слоты",
+)

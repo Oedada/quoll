@@ -159,6 +159,7 @@ async def assign_locked(
     if previous is not None:
         interaction.last_owner_id = previous
     await _hand_over(session, interaction.id, manager_id, reason)
+    await _announce_owner(session, scope, previous)
     # у нового владельца свои просьбы - старые устарели
     await cancel_pending_requests(
         session, interaction.id, actor_id, "interaction owner changed"
@@ -242,6 +243,23 @@ async def _release(session: AsyncSession, interaction_id: int) -> None:
         )
         .values(released_at=func.now())
     )
+
+
+async def _announce_owner(
+    session: AsyncSession, scope: InteractionScope, previous: str | None
+) -> None:
+    """новому КАМу - «вам назначена», прежнему - «передали» (О 5)"""
+    passive = scope.interaction.slot == SlotKind.PASSIVE
+    await notify(
+        session,
+        kinds.INTERACTION_ASSIGNED,
+        scope,
+        context={"note": " (пассивная: в предел не входит)" if passive else ""},
+    )
+    if previous is not None:
+        await notify(
+            session, kinds.INTERACTION_TAKEN_AWAY, scope, previous_owner_id=previous
+        )
 
 
 async def _hand_over(
@@ -595,6 +613,7 @@ async def reopen(
         if previous_owner is not None:
             interaction.last_owner_id = previous_owner
         await _hand_over(session, interaction.id, manager_id, comment)
+        await _announce_owner(session, scope, previous_owner)
     await contract_service.reopen_branches(session, interaction.id, actor_id, comment)
     if interaction.slot != SlotKind.ACTIVE:
         await set_slot(session, interaction, SlotKind.ACTIVE, actor_id)

@@ -32,6 +32,7 @@ from quoll.interactions.models import (
     RequestStatus,
     StageChangeKind,
 )
+from quoll.interactions.notify import notify
 from quoll.interactions.project_service import assign_locked
 from quoll.interactions.repository import InteractionRepository
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
@@ -42,6 +43,8 @@ from quoll.interactions.transition_service import (
     return_locked,
     share_stage,
 )
+from quoll.notifications import kinds
+from quoll.notifications.kinds import Subject
 from quoll.workflows.models import Stage, WorkflowTransition
 
 _REQUESTED = {
@@ -185,8 +188,41 @@ async def create(
             "reason": reason,
         },
     )
+    await notify(
+        session,
+        kinds.REQUEST_CREATED,
+        scope,
+        context={"request": _LABELS[kind], "reason": reason},
+        subject=Subject.REQUEST,
+        subject_id=request.id,
+        payload={"request_id": request.id, "branch_id": branch_id},
+    )
     await session.refresh(request)
     return request
+
+
+_LABELS = {
+    RequestKind.TRANSITION: "переход на следующий шаг",
+    RequestKind.CLOSE: "закрытие",
+    RequestKind.TRANSFER: "передача заявки",
+}
+
+
+async def _tell_requester(session, scope, request, decision: str, comment) -> None:
+    await notify(
+        session,
+        kinds.REQUEST_DECIDED,
+        scope,
+        context={
+            "decision": decision,
+            "request": _LABELS[RequestKind(request.kind)],
+            "comment": comment or "",
+        },
+        subject=Subject.REQUEST,
+        subject_id=request.id,
+        payload={"request_id": request.id, "branch_id": request.branch_id},
+        requester_id=request.requested_by,
+    )
 
 
 async def _approval_edge(
@@ -329,6 +365,7 @@ async def approve(
             target_id=request.id,
             new_value={"reason": stale},
         )
+        await _tell_requester(session, scope, request, "отменена", stale)
         await session.flush()
         return Decision(request, refused=f"Request is no longer valid: {stale}")
 
@@ -397,6 +434,7 @@ async def approve(
         target_id=request.id,
         new_value={**outcome, "comment": comment},
     )
+    await _tell_requester(session, scope, request, "одобрена", comment)
     await session.flush()
     await session.refresh(request)
     return Decision(request)
@@ -417,6 +455,7 @@ async def reject(
         target_id=request.id,
         new_value={"comment": comment},
     )
+    await _tell_requester(session, scope, request, "отклонена", comment)
     await session.flush()
     await session.refresh(request)
     return request

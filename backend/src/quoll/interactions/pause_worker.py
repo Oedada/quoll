@@ -21,7 +21,10 @@ from quoll.interactions.capacity_policy import (
     counts_toward_capacity,
 )
 from quoll.interactions.models import Branch, Interaction, PauseState
+from quoll.interactions.notify import notify_system
 from quoll.interactions.project_service import resume
+from quoll.notifications import kinds
+from quoll.notifications.kinds import Subject
 from quoll.workflows.models import Stage
 
 logger = logging.getLogger(__name__)
@@ -89,7 +92,7 @@ async def _expire_one(
 
     owner = managers.get(owner_id)
     if owner is None:
-        _wait(db, interaction, "no owner")
+        await _wait(db, interaction, "no owner")
         return 0
     stage = await db.get(Stage, interaction.state_id)
     delta = int(counts_toward_capacity(stage, False, interaction.slot)) - int(
@@ -98,18 +101,20 @@ async def _expire_one(
     try:
         await assert_can_keep_working(db, owner, delta)
     except (CapacityExceededException, ManagerNotActiveException) as refusal:
-        _wait(db, interaction, refusal.message)
+        await _wait(db, interaction, refusal.message)
         return 0
     await resume(db, interaction, actor_id=None)
+    await notify_system(db, kinds.PAUSE_ENDED, interaction, context={"branch": ""})
     return 1
 
 
-def _wait(db: AsyncSession, interaction: Interaction, reason: str) -> None:
+async def _wait(db: AsyncSession, interaction: Interaction, reason: str) -> None:
     """в журнал - только при первом переходе, а не на каждом такте"""
     if interaction.pause_state == PauseState.EXPIRED_WAITING_CAPACITY:
         return
     interaction.pause_state = PauseState.EXPIRED_WAITING_CAPACITY
     interaction.paused_until = None
+    await notify_system(db, kinds.PAUSE_WAITING_CAPACITY, interaction)
     record(
         db,
         actor_id=None,
@@ -153,8 +158,18 @@ async def expire_branch_pauses(session_maker: async_sessionmaker) -> int:
                     Branch.paused_until <= func.now(),
                 )
             )
+            interaction = await db.get(Interaction, interaction_id)
             for branch in branches:
                 resume_branch(db, branch, None)
+                await notify_system(
+                    db,
+                    kinds.PAUSE_ENDED,
+                    interaction,
+                    context={"branch": f", ветка {branch.id}"},
+                    subject=Subject.BRANCH,
+                    subject_id=branch.id,
+                    payload={"branch_id": branch.id},
+                )
                 resumed += 1
             await db.commit()
     return resumed
