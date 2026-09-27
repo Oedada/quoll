@@ -15,9 +15,11 @@ from sqlalchemy import (
     String,
     Text,
     UniqueConstraint,
+    case,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
+from sqlalchemy.ext.hybrid import hybrid_property
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from quoll.core.mixins import IdMixin, TimestampMixin
@@ -70,6 +72,17 @@ class Vendor(Base, IdMixin, TimestampMixin):
     site: Mapped[str | None] = mapped_column(String(255), nullable=True)
     # «Дочерняя», «ПАО (материнская)» - свободная пометка
     kind: Mapped[str | None] = mapped_column(String(255), nullable=True)
+
+
+class InteractionStatus(StrEnum):
+    """состояние заявки для людей (М 3.11); первое сработавшее"""
+
+    CLOSED = "CLOSED"
+    DRAFT = "DRAFT"  # ни стадии, ни владельца
+    AWAITING_ACCEPTANCE = "AWAITING_ACCEPTANCE"  # предложена КАМу
+    PAUSED = "PAUSED"
+    SIGNED = "SIGNED"  # договор подписан
+    IN_PROGRESS = "IN_PROGRESS"
 
 
 class Interaction(Base, IdMixin, TimestampMixin):
@@ -155,6 +168,38 @@ class Interaction(Base, IdMixin, TimestampMixin):
     close_reason_id: Mapped[int | None] = mapped_column(
         ForeignKey("close_reasons.id", ondelete="RESTRICT"), nullable=True
     )
+
+    @hybrid_property
+    def status(self) -> str:
+        if self.closed_at is not None:
+            return InteractionStatus.CLOSED
+        if self.state_id is None:
+            return (
+                InteractionStatus.DRAFT
+                if self.owner_id is None
+                else InteractionStatus.AWAITING_ACCEPTANCE
+            )
+        if self.is_paused:
+            return InteractionStatus.PAUSED
+        if self.signed_at is not None:
+            return InteractionStatus.SIGNED
+        return InteractionStatus.IN_PROGRESS
+
+    @status.inplace.expression
+    @classmethod
+    def _status_expression(cls):
+        # то же для фильтра в SQL - иначе пагинация по статусу врала бы
+        return case(
+            (cls.closed_at.is_not(None), InteractionStatus.CLOSED.value),
+            (
+                cls.state_id.is_(None) & cls.owner_id.is_(None),
+                InteractionStatus.DRAFT.value,
+            ),
+            (cls.state_id.is_(None), InteractionStatus.AWAITING_ACCEPTANCE.value),
+            (cls.is_paused.is_(True), InteractionStatus.PAUSED.value),
+            (cls.signed_at.is_not(None), InteractionStatus.SIGNED.value),
+            else_=InteractionStatus.IN_PROGRESS.value,
+        )
 
     # Relationships
     university: Mapped[University] = relationship(back_populates="interactions")

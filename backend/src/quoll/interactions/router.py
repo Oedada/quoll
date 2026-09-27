@@ -47,7 +47,7 @@ from quoll.interactions.dependencies import (
     ReadableInteraction,
     SessionDep,
 )
-from quoll.interactions.models import RequestKind, RequestStatus
+from quoll.interactions.models import InteractionStatus, RequestKind, RequestStatus
 from quoll.interactions.schemas import (
     AcceptRequest,
     AssignRequest,
@@ -136,6 +136,7 @@ async def list_interactions(
     program_id: int | None = Query(
         default=None, ge=1, description="Filter by IT program of any branch"
     ),
+    status: InteractionStatus | None = None,
     limit: int = Query(
         default=SystemDefaults.DEFAULT_PAGE_SIZE,
         ge=1,
@@ -147,6 +148,7 @@ async def list_interactions(
         readable_filter(user),
         university_id=university_id,
         program_id=program_id,
+        status=status,
         limit=limit,
         offset=offset,
     )

@@ -137,6 +137,8 @@ class InteractionRead(AppBaseModel):
     paused_until: datetime | None
     pause_comment: str | None
     close_reason_id: int | None
+    # вычисляемое: черновик / ждёт принятия / в работе / на паузе / подписан / закрыта
+    status: str
     planned_date: date | None
     signed_at: datetime | None
     closed_at: datetime | None

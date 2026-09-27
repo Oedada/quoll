@@ -77,6 +77,7 @@ class InteractionRepository(BaseRepository[Interaction]):
         *,
         university_id: int | None,
         program_id: int | None,
+        status: str | None = None,
         limit: int,
         offset: int,
     ) -> list[Interaction]:
@@ -92,6 +93,8 @@ class InteractionRepository(BaseRepository[Interaction]):
                     Branch.program_id == program_id,
                 )
             )
+        if status is not None:
+            stmt = stmt.where(Interaction.status == status)
         # id вторым ключом - при равном времени порядок страниц не плывёт
         stmt = (
             stmt.order_by(Interaction.created_at.desc(), Interaction.id.desc())
