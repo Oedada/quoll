@@ -7,19 +7,21 @@ from quoll.auth.audit_models import TargetType
 from quoll.auth.dependencies import (
     AdminOnly,
     AdminUser,
+    CurrentUser,
     get_current_user,
     require_roles,
 )
 from quoll.auth.models import User, UserRole
 from quoll.catalog import service
 from quoll.catalog.models import (
+    Contact,
     ItDirection,
     ItProgram,
     Product,
     Specialty,
-    UniversityContact,
     university_specialties,
 )
+from quoll.catalog.regions import REGIONS
 from quoll.catalog.schemas import (
     ContactPatch,
     ContactRead,
@@ -37,11 +39,18 @@ from quoll.catalog.schemas import (
     SpecialtyPatch,
     SpecialtyRead,
     SpecialtyWrite,
+    UniversityPatch,
+    UniversityRead,
     UniversitySpecialtiesWrite,
+    UniversityWrite,
+    VendorPatch,
+    VendorRead,
+    VendorWrite,
 )
 from quoll.core import SystemDefaults
 from quoll.core.base_repository import BaseRepository
 from quoll.db import SessionDep
+from quoll.interactions.models import University, Vendor
 
 catalog_router = APIRouter(
     prefix="/api/v1/catalog",
@@ -205,25 +214,100 @@ async def set_university_specialties(
     )
 
 
+@catalog_router.get("/universities", response_model=list[UniversityRead])
+async def list_universities(
+    session: SessionDep,
+    q: Search = None,
+    region: str | None = None,
+    inn: str | None = None,
+    limit: Limit = 50,
+    offset: Offset = 0,
+):
+    filters = []
+    if q:
+        filters.append(
+            University.short_name.ilike(f"%{q}%") | University.full_name.ilike(f"%{q}%")
+        )
+    if region is not None:
+        filters.append(University.region == region)
+    if inn is not None:
+        filters.append(University.inn == inn)
+    order = [University.short_name, University.id]
+    return await service.listing(session, University, filters, order, limit, offset)
+
+
+@catalog_router.get("/regions", response_model=list[str])
+async def list_regions():
+    return list(REGIONS)
+
+
+@catalog_router.get("/vendors", response_model=list[VendorRead])
+async def list_vendors(
+    session: SessionDep, q: Search = None, limit: Limit = 50, offset: Offset = 0
+):
+    order = [Vendor.name, Vendor.id]
+    return await service.listing(
+        session, Vendor, _like(Vendor.name, q), order, limit, offset
+    )
+
+
+# контакты: ФИО зашифровано, поэтому поиска по имени нет
+
+
 @catalog_router.get("/contacts", response_model=list[ContactRead])
 async def list_contacts(
     session: SessionDep,
-    q: Search = None,
     university_id: int | None = None,
+    vendor_id: int | None = None,
     is_actual: bool | None = None,
     limit: Limit = 50,
     offset: Offset = 0,
 ):
-    filters = _like(UniversityContact.full_name, q)
+    filters = []
     if university_id is not None:
-        filters.append(UniversityContact.university_id == university_id)
+        filters.append(Contact.university_id == university_id)
+    if vendor_id is not None:
+        filters.append(Contact.vendor_id == vendor_id)
     if is_actual is not None:
-        filters.append(UniversityContact.is_actual.is_(is_actual))
-    # основной контакт первым
-    order = [UniversityContact.is_primary.desc(), UniversityContact.full_name]
-    return await service.listing(
-        session, UniversityContact, filters, order, limit, offset
+        filters.append(Contact.is_actual.is_(is_actual))
+    order = [Contact.id]
+    return await service.listing(session, Contact, filters, order, limit, offset)
+
+
+@catalog_router.get("/contacts/{item_id}", response_model=ContactRead)
+async def get_contact(item_id: int, session: SessionDep):
+    return await BaseRepository(session, Contact).get(item_id)
+
+
+@catalog_router.post(
+    "/contacts", response_model=ContactRead, status_code=status.HTTP_201_CREATED
+)
+async def create_contact(body: ContactWrite, user: CurrentUser, session: SessionDep):
+    await service.check_contact_owner(session, user, body.university_id, body.vendor_id)
+    return await service.create(session, Contact, TargetType.CONTACT, body, user.id)
+
+
+@catalog_router.patch("/contacts/{item_id}", response_model=ContactRead)
+async def patch_contact(
+    item_id: int, body: ContactPatch, user: CurrentUser, session: SessionDep
+):
+    contact = await BaseRepository(session, Contact).get(item_id)
+    await service.check_contact_owner(
+        session, user, contact.university_id, contact.vendor_id
     )
+    return await service.update(
+        session, Contact, TargetType.CONTACT, item_id, body, user.id
+    )
+
+
+@catalog_router.delete(
+    "/contacts/{item_id}",
+    status_code=status.HTTP_204_NO_CONTENT,
+    dependencies=[AdminOnly],
+)
+async def delete_contact(item_id: int, admin: AdminUser, session: SessionDep):
+    await service.delete(session, Contact, TargetType.CONTACT, item_id, admin.id)
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 _crud(
@@ -247,10 +331,11 @@ _crud(
     SpecialtyRead,
 )
 _crud(
-    "/contacts",
-    UniversityContact,
-    TargetType.CONTACT,
-    ContactWrite,
-    ContactPatch,
-    ContactRead,
+    "/universities",
+    University,
+    TargetType.UNIVERSITY,
+    UniversityWrite,
+    UniversityPatch,
+    UniversityRead,
 )
+_crud("/vendors", Vendor, TargetType.VENDOR, VendorWrite, VendorPatch, VendorRead)

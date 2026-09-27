@@ -25,6 +25,8 @@ class Settings(BaseSettings):
     max_upload_size_mb: int
     # ключ шифрования refresh-токенов, несколько через запятую = ротация
     session_secret_key: str
+    # ключ шифрования ПДн в базе (контакты), несколько через запятую = ротация
+    pii_encryption_key: str
     # выключать только для локальной разработки по http
     session_cookie_secure: bool = True
     session_revalidate_seconds: int = 300

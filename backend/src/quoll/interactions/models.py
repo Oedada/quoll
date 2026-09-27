@@ -3,7 +3,6 @@ from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
-    JSON,
     BigInteger,
     Boolean,
     CheckConstraint,
@@ -35,8 +34,28 @@ class PauseState(StrEnum):
 
 
 class University(Base, IdMixin, TimestampMixin):
-    name: Mapped[str_255] = mapped_column(unique=True, index=True)
-    contacts: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    """вуз; ключ - ИНН + КПП, а не название. Филиал со своим договором -
+    отдельный вуз с тем же ИНН и своим КПП (М 3.1)"""
+
+    __table_args__ = (
+        Index(
+            "uq_universities_inn_kpp",
+            "inn",
+            "kpp",
+            unique=True,
+            postgresql_nulls_not_distinct=True,
+        ),
+    )
+
+    # как в ЕГРЮЛ - для договора
+    full_name: Mapped[str] = mapped_column(Text)
+    # для интерфейса, отчётов и поиска
+    short_name: Mapped[str_255] = mapped_column(index=True)
+    inn: Mapped[str] = mapped_column(String(10))
+    kpp: Mapped[str | None] = mapped_column(String(9), nullable=True)
+    site: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    region: Mapped[str_255]
+    city: Mapped[str_255]
 
     interactions: Mapped[list["Interaction"]] = relationship(
         back_populates="university"
@@ -44,8 +63,12 @@ class University(Base, IdMixin, TimestampMixin):
 
 
 class Vendor(Base, IdMixin, TimestampMixin):
+    """компания, выпускающая продукт; контакты - в общем справочнике"""
+
     name: Mapped[str_255] = mapped_column(unique=True, index=True)
-    contacts: Mapped[dict[str, Any]] = mapped_column(JSON, default=dict)
+    site: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    # «Дочерняя», «ПАО (материнская)» - свободная пометка
+    kind: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     interactions: Mapped[list["Interaction"]] = relationship(back_populates="vendor")
 

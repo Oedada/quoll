@@ -30,9 +30,12 @@ class UniversityRepository(BaseRepository[University]):
 
     async def get_by_name(self, name: str) -> University | None:
         logger.debug(f"Getting University by name={name}")
-        stmt = select(University).where(University.name == name)
-        res = await self.session.execute(stmt)
-        return res.scalar_one_or_none()
+        # импорт знает только название: краткое или полное, неоднозначно - нет
+        stmt = select(University).where(
+            (University.short_name == name) | (University.full_name == name)
+        )
+        found = list(await self.session.scalars(stmt.limit(2)))
+        return found[0] if len(found) == 1 else None
 
 
 class VendorRepository(BaseRepository[Vendor]):

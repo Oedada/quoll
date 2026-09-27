@@ -47,6 +47,13 @@ async def _apply_links(
     return old
 
 
+def _journal_value(target: TargetType, values: dict[str, Any]) -> dict[str, Any]:
+    """у контактов в журнал - только какие поля менялись, без ПДн (М 9)"""
+    if target == TargetType.CONTACT:
+        return {"fields": sorted(values)}
+    return values
+
+
 def _split(model: type[Base], data: dict[str, Any]) -> tuple[dict, dict]:
     known = _links().get(model, {})
     links = {k: v for k, v in data.items() if k in known}
@@ -71,7 +78,7 @@ async def create(
         event_type=AuditEventType.CATALOG_ITEM_CREATED,
         target_type=target,
         target_id=item.id,
-        new_value=data.model_dump(mode="json"),
+        new_value=_journal_value(target, data.model_dump(mode="json")),
     )
     await session.refresh(item)
     return item
@@ -102,8 +109,8 @@ async def update(
             event_type=AuditEventType.CATALOG_ITEM_UPDATED,
             target_type=target,
             target_id=item_id,
-            old_value=old,
-            new_value=new,
+            old_value=_journal_value(target, old),
+            new_value=_journal_value(target, new),
         )
     await session.refresh(item)
     return item
@@ -178,3 +185,31 @@ async def set_university_specialties(
         new_value={"specialty_ids": sorted(s.id for s in found)},
     )
     return sorted(found, key=lambda s: s.code)
+
+
+async def check_contact_owner(
+    session: AsyncSession, user, university_id: int | None, vendor_id: int | None
+) -> None:
+    """контакты вуза правят КАМ своих вузов и админ, вендора - только админ.
+    Свой вуз - где у КАМа есть незакрытая заявка (Р1)"""
+    from quoll.auth.models import UserRole
+    from quoll.core.exceptions import OperationForbiddenException
+    from quoll.interactions.models import Interaction
+    from quoll.workflows.models import Stage
+
+    if user.role == UserRole.ADMIN:
+        return
+    if user.role == UserRole.MANAGER and university_id is not None:
+        own = await session.scalar(
+            select(Interaction.id)
+            .outerjoin(Stage, Stage.id == Interaction.state_id)
+            .where(
+                Interaction.university_id == university_id,
+                Interaction.owner_id == user.id,
+                Stage.is_terminal.is_not(True),
+            )
+            .limit(1)
+        )
+        if own is not None:
+            return
+    raise OperationForbiddenException("change contacts of this organisation")

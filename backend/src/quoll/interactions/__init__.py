@@ -14,20 +14,12 @@ from quoll.interactions.router import (
     documents_router,
     interactions_router,
     requests_router,
-    universities_router,
-    vendors_router,
 )
 from quoll.interactions.schemas import (
     InteractionCreate,
     InteractionDetailRead,
     InteractionRead,
     InteractionUpdate,
-    UniversityCreate,
-    UniversityRead,
-    UniversityUpdate,
-    VendorCreate,
-    VendorRead,
-    VendorUpdate,
 )
 
 __all__ = [
@@ -39,20 +31,12 @@ __all__ = [
     "InteractionUpdate",
     "PauseState",
     "University",
-    "UniversityCreate",
-    "UniversityRead",
     "UniversityRepository",
-    "UniversityUpdate",
     "Vendor",
-    "VendorCreate",
-    "VendorRead",
     "VendorRepository",
-    "VendorUpdate",
     "assert_can_keep_working",
     "assert_can_take_new_work",
     "counts_toward_capacity",
     "interactions_router",
     "is_open_project",
-    "universities_router",
-    "vendors_router",
 ]

@@ -170,7 +170,6 @@ class UserRepository:
             if resp.status_code >= 400:
                 raise UnknowAuthError(f"{resp.status_code} - {resp.text}")
 
-        old = {name: getattr(user, name) for name in fields}
         for name, value in fields.items():
             setattr(user, name, value)
         record(
@@ -179,8 +178,8 @@ class UserRepository:
             event_type=AuditEventType.USER_UPDATED,
             target_type=TargetType.USER,
             target_id=user_id,
-            old_value=old,
-            new_value=fields,
+            # в журнал - только имена полей: ФИО и почта - ПДн (М 9)
+            new_value={"fields": sorted(fields)},
         )
         await self.s.flush()
         logger.info(f"User with id={user_id} updated")

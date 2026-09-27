@@ -21,8 +21,6 @@ from quoll.interactions import (
     documents_router,
     interactions_router,
     requests_router,
-    universities_router,
-    vendors_router,
 )
 from quoll.jobs import background_jobs
 from quoll.notifications import router as notifications_router
@@ -156,8 +154,6 @@ app.include_router(stages_router)
 app.include_router(transitions_router)
 app.include_router(change_requests_router)
 app.include_router(attachments_router)
-app.include_router(universities_router)
-app.include_router(vendors_router)
 app.include_router(interactions_router)
 app.include_router(requests_router)
 app.include_router(documents_router)

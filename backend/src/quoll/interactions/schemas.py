@@ -4,50 +4,9 @@ from typing import Any, Literal
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from quoll.attachments.schemas import AttachmentRead
+from quoll.catalog.schemas import UniversityRead, VendorRead
 from quoll.core.schemas import AppBaseModel
 from quoll.workflows.schemas import StageRead, WorkflowRead
-
-
-# University
-class UniversityBase(AppBaseModel):
-    name: str
-    contacts: dict[str, Any] = Field(default_factory=dict)
-
-
-class UniversityCreate(UniversityBase):
-    pass
-
-
-class UniversityUpdate(AppBaseModel):
-    name: str | None = None
-    contacts: dict[str, Any] | None = None
-
-
-class UniversityRead(UniversityBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
-
-
-# Vendor
-class VendorBase(AppBaseModel):
-    name: str
-    contacts: dict[str, Any] = Field(default_factory=dict)
-
-
-class VendorCreate(VendorBase):
-    pass
-
-
-class VendorUpdate(AppBaseModel):
-    name: str | None = None
-    contacts: dict[str, Any] | None = None
-
-
-class VendorRead(VendorBase):
-    id: int
-    created_at: datetime
-    updated_at: datetime
 
 
 # Interaction

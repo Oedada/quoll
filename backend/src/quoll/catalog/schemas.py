@@ -1,8 +1,9 @@
 from datetime import datetime
-from typing import ClassVar, Literal
+from typing import Annotated, ClassVar, Literal
 
-from pydantic import ConfigDict, Field, model_validator
+from pydantic import AfterValidator, ConfigDict, Field, model_validator
 
+from quoll.catalog.regions import REGIONS
 from quoll.core.schemas import AppBaseModel
 
 
@@ -50,6 +51,7 @@ class ProductRef(Ref):
 class ProductWrite(_Write):
     name: str = Field(min_length=1, max_length=255)
     vendor_id: int
+    contact_id: int | None = None
     # у продукта минимум одно направление
     direction_ids: list[int] = Field(min_length=1)
     description: str | None = None
@@ -61,6 +63,7 @@ class ProductPatch(_Patch):
     required = ("name", "vendor_id", "direction_ids", "is_active")
     name: str | None = Field(default=None, min_length=1, max_length=255)
     vendor_id: int | None = None
+    contact_id: int | None = None
     direction_ids: list[int] | None = Field(default=None, min_length=1)
     description: str | None = None
     url: str | None = Field(default=None, max_length=500)
@@ -71,6 +74,7 @@ class ProductRead(AppBaseModel):
     id: int
     name: str
     vendor_id: int
+    contact_id: int | None
     directions: list[Ref]
     description: str | None
     url: str | None
@@ -152,37 +156,127 @@ class UniversitySpecialtiesWrite(_Write):
     specialty_ids: list[int]
 
 
+def _inn(value: str) -> str:
+    """ИНН юрлица: 10 цифр и контрольная цифра"""
+    if not (value.isdigit() and len(value) == 10):
+        raise ValueError("INN must be 10 digits")
+    weights = (2, 4, 10, 3, 5, 9, 4, 6, 8)
+    check = sum(int(d) * w for d, w in zip(value, weights, strict=False)) % 11 % 10
+    if check != int(value[9]):
+        raise ValueError("INN checksum does not match")
+    return value
+
+
+def _kpp(value: str | None) -> str | None:
+    if value is not None and not (value.isdigit() and len(value) == 9):
+        raise ValueError("KPP must be 9 digits")
+    return value
+
+
+def _region(value: str | None) -> str | None:
+    if value is not None and value not in REGIONS:
+        raise ValueError("Region must be a subject of the Russian Federation")
+    return value
+
+
+Inn = Annotated[str, AfterValidator(_inn)]
+Kpp = Annotated[str | None, AfterValidator(_kpp)]
+Region = Annotated[str, AfterValidator(_region)]
+
+
+class UniversityWrite(_Write):
+    full_name: str = Field(min_length=1)
+    short_name: str = Field(min_length=1, max_length=255)
+    inn: Inn
+    kpp: Kpp = None
+    site: str | None = Field(default=None, max_length=255)
+    region: Region
+    city: str = Field(min_length=1, max_length=255)
+
+
+class UniversityPatch(_Patch):
+    required = ("full_name", "short_name", "inn", "region", "city")
+    full_name: str | None = Field(default=None, min_length=1)
+    short_name: str | None = Field(default=None, min_length=1, max_length=255)
+    inn: Annotated[str | None, AfterValidator(lambda v: v and _inn(v))] = None
+    kpp: Kpp = None
+    site: str | None = Field(default=None, max_length=255)
+    region: Annotated[str | None, AfterValidator(_region)] = None
+    city: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class UniversityRead(AppBaseModel):
+    id: int
+    full_name: str
+    short_name: str
+    inn: str
+    kpp: str | None
+    site: str | None
+    region: str
+    city: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class VendorWrite(_Write):
+    name: str = Field(min_length=1, max_length=255)
+    site: str | None = Field(default=None, max_length=255)
+    kind: str | None = Field(default=None, max_length=255)
+
+
+class VendorPatch(_Patch):
+    required = ("name",)
+    name: str | None = Field(default=None, min_length=1, max_length=255)
+    site: str | None = Field(default=None, max_length=255)
+    kind: str | None = Field(default=None, max_length=255)
+
+
+class VendorRead(AppBaseModel):
+    id: int
+    name: str
+    site: str | None
+    kind: str | None
+    created_at: datetime
+    updated_at: datetime
+
+
 class ContactWrite(_Write):
-    university_id: int
+    # ровно одно: вуз или вендор
+    university_id: int | None = None
+    vendor_id: int | None = None
     full_name: str = Field(min_length=1, max_length=255)
-    position: str | None = None
-    department: str | None = None
-    email: str | None = None
     phone: str | None = Field(default=None, max_length=50)
-    is_primary: bool = False
+    email: str | None = Field(default=None, max_length=255)
+    position: str | None = Field(default=None, max_length=255)
+    contact_methods: list[str] = Field(default_factory=list)
     is_actual: bool = True
+
+    @model_validator(mode="after")
+    def _one_owner(self):
+        if (self.university_id is None) == (self.vendor_id is None):
+            raise ValueError("Contact belongs to exactly one of university or vendor")
+        return self
 
 
 class ContactPatch(_Patch):
-    required = ("full_name", "is_primary", "is_actual")
+    required = ("full_name", "contact_methods", "is_actual")
     full_name: str | None = Field(default=None, min_length=1, max_length=255)
-    position: str | None = None
-    department: str | None = None
-    email: str | None = None
     phone: str | None = Field(default=None, max_length=50)
-    is_primary: bool | None = None
+    email: str | None = Field(default=None, max_length=255)
+    position: str | None = Field(default=None, max_length=255)
+    contact_methods: list[str] | None = None
     is_actual: bool | None = None
 
 
 class ContactRead(AppBaseModel):
     id: int
-    university_id: int
+    university_id: int | None
+    vendor_id: int | None
     full_name: str
-    position: str | None
-    department: str | None
-    email: str | None
     phone: str | None
-    is_primary: bool
+    email: str | None
+    position: str | None
+    contact_methods: list[str]
     is_actual: bool
     created_at: datetime
     updated_at: datetime

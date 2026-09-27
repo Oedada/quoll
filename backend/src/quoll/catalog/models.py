@@ -4,6 +4,7 @@ from typing import Any
 
 from sqlalchemy import (
     Boolean,
+    CheckConstraint,
     Column,
     ForeignKey,
     Index,
@@ -17,6 +18,7 @@ from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from quoll.core.mixins import IdMixin, TimestampMixin
+from quoll.core.pii import EncryptedString
 from quoll.db import Base, str_255
 
 
@@ -100,6 +102,10 @@ class Product(Base, IdMixin, TimestampMixin):
     is_active: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )
+    # кто отвечает за продукт, если это не основной контакт вендора
+    contact_id: Mapped[int | None] = mapped_column(
+        ForeignKey("contacts.id", ondelete="SET NULL"), nullable=True
+    )
 
     # минимум одно - проверка в сервисе
     directions: Mapped[list[ItDirection]] = relationship(
@@ -149,29 +155,30 @@ class Specialty(Base, IdMixin, TimestampMixin):
     )
 
 
-class UniversityContact(Base, IdMixin, TimestampMixin):
-    __tablename__ = "university_contacts"
+class Contact(Base, IdMixin, TimestampMixin):
+    """контактное лицо вуза или вендора. ФИО, телефон и почта - ПДн,
+    в базе зашифрованы (М 9); искать по ним нельзя"""
+
+    __tablename__ = "contacts"
     __table_args__ = (
-        # основной контакт у вуза один среди актуальных
-        Index(
-            "uq_university_contacts_primary",
-            "university_id",
-            unique=True,
-            postgresql_where=text("is_primary AND is_actual"),
+        CheckConstraint(
+            "(university_id IS NULL) <> (vendor_id IS NULL)",
+            name="chk_contact_one_owner",
         ),
     )
 
-    university_id: Mapped[int] = mapped_column(
-        ForeignKey("universities.id", ondelete="CASCADE"), index=True
+    university_id: Mapped[int | None] = mapped_column(
+        ForeignKey("universities.id", ondelete="CASCADE"), nullable=True, index=True
     )
-    full_name: Mapped[str_255]
+    vendor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("vendors.id", ondelete="CASCADE"), nullable=True, index=True
+    )
+    full_name: Mapped[str] = mapped_column(EncryptedString)
+    phone: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
+    email: Mapped[str | None] = mapped_column(EncryptedString, nullable=True)
     position: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    department: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    email: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    phone: Mapped[str | None] = mapped_column(String(50), nullable=True)
-    is_primary: Mapped[bool] = mapped_column(
-        Boolean, default=False, server_default="false"
-    )
+    # «Почта», «Чат в ТГ» - может быть несколько
+    contact_methods: Mapped[list[str]] = _json_list()
     is_actual: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )
