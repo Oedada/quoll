@@ -5,6 +5,8 @@
 своих блокировок нет: всё под блокировкой взаимодействия
 """
 
+from datetime import datetime
+
 from sqlalchemy import exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -16,15 +18,17 @@ from quoll.core.exceptions import (
     OperationForbiddenException,
     StaleStateException,
 )
-from quoll.interactions.access_policy import can_change, can_close
+from quoll.interactions.access_policy import can_change, can_close, can_pause
 from quoll.interactions.close_reasons import check_reason
 from quoll.interactions.contract_service import open_branch_count, unpause_branch
 from quoll.interactions.models import (
     Branch,
     InteractionStageHistory,
+    PauseState,
     StageChangeKind,
 )
 from quoll.interactions.notify import notify
+from quoll.interactions.pause_policy import check_pause_term
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
 from quoll.interactions.transition_service import (
     active_edge,
@@ -314,3 +318,90 @@ async def _place(
         await _offer_to_close(session, scope)
     await session.refresh(branch)
     return branch
+
+
+async def pause(
+    session: AsyncSession,
+    *,
+    interaction_id: int,
+    branch_id: int,
+    actor_id: str,
+    until: datetime | None,
+    comment: str,
+) -> Branch:
+    """пауза одной ветки (10.2/16): слот КАМа не трогает - он у заявки"""
+    scope = await lock_interaction_scope(session, interaction_id, actor_id)
+    if not can_pause(scope.actor, scope.ownership):
+        raise OperationForbiddenException("pause this branch")
+    branch = await open_branch(session, scope, branch_id)
+    if until is None and branch.pause_state == PauseState.PAUSED_MANUAL:
+        raise DomainRuleException(409, "Branch is already paused without a term")
+    if until is not None:
+        check_pause_term(until)
+    old = branch.pause_state
+    branch.pause_state = (
+        PauseState.PAUSED_TIMED if until is not None else PauseState.PAUSED_MANUAL
+    )
+    branch.paused_until = until
+    branch.pause_comment = comment
+    _branch_event(session, branch, StageChangeKind.PAUSE, actor_id, comment)
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=AuditEventType.BRANCH_PAUSED,
+        target_type=TargetType.INTERACTION,
+        target_id=interaction_id,
+        old_value={"branch_id": branch.id, "pause_state": old},
+        new_value={
+            "pause_state": branch.pause_state,
+            "until": until.isoformat() if until else None,
+            "comment": comment,
+        },
+    )
+    await session.flush()
+    await session.refresh(branch)
+    return branch
+
+
+async def unpause(
+    session: AsyncSession, *, interaction_id: int, branch_id: int, actor_id: str
+) -> Branch:
+    scope = await lock_interaction_scope(session, interaction_id, actor_id)
+    if not can_pause(scope.actor, scope.ownership):
+        raise OperationForbiddenException("resume this branch")
+    branch = await open_branch(session, scope, branch_id)
+    if branch.pause_state == PauseState.ACTIVE:
+        raise DomainRuleException(409, "Branch is not paused")
+    resume_branch(session, branch, actor_id)
+    await session.flush()
+    await session.refresh(branch)
+    return branch
+
+
+def resume_branch(session: AsyncSession, branch: Branch, actor_id: str | None) -> None:
+    """снять паузу ветки - руками или воркером; застой считается заново"""
+    unpause_branch(branch)
+    branch.stall_since = func.now()
+    _branch_event(session, branch, StageChangeKind.UNPAUSE, actor_id, None)
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=AuditEventType.BRANCH_UNPAUSED,
+        target_type=TargetType.INTERACTION,
+        target_id=branch.interaction_id,
+        new_value={"branch_id": branch.id},
+    )
+
+
+def _branch_event(session, branch: Branch, kind, actor_id, comment) -> None:
+    session.add(
+        InteractionStageHistory(
+            interaction_id=branch.interaction_id,
+            branch_id=branch.id,
+            from_stage_id=branch.state_id,
+            to_stage_id=branch.state_id,
+            kind=kind,
+            actor_id=actor_id,
+            comment=comment,
+        )
+    )

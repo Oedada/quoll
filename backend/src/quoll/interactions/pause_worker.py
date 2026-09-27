@@ -20,7 +20,7 @@ from quoll.interactions.capacity_policy import (
     assert_can_keep_working,
     counts_toward_capacity,
 )
-from quoll.interactions.models import Interaction, PauseState
+from quoll.interactions.models import Branch, Interaction, PauseState
 from quoll.interactions.project_service import resume
 from quoll.workflows.models import Stage
 
@@ -118,3 +118,43 @@ def _wait(db: AsyncSession, interaction: Interaction, reason: str) -> None:
         target_id=interaction.id,
         new_value={"reason": reason},
     )
+
+
+async def expire_branch_pauses(session_maker: async_sessionmaker) -> int:
+    """срок паузы ветки вышел - снимаем. Слот КАМа ветка не держит, поэтому
+    ждать места не нужно. Своя транзакция на каждую заявку: иначе блокировки
+    копились бы весь проход и встречались бы с живыми операциями"""
+    from quoll.interactions.branch_service import resume_branch
+    from quoll.interactions.scope import lock_interaction_scope
+
+    async with session_maker() as db:
+        due = (
+            (
+                await db.execute(
+                    select(Branch.interaction_id)
+                    .where(
+                        Branch.pause_state == PauseState.PAUSED_TIMED,
+                        Branch.paused_until <= func.now(),
+                    )
+                    .distinct()
+                )
+            )
+            .scalars()
+            .all()
+        )
+    resumed = 0
+    for interaction_id in due:
+        async with session_maker() as db:
+            await lock_interaction_scope(db, interaction_id, None, allow_closed=True)
+            branches = await db.scalars(
+                select(Branch).where(
+                    Branch.interaction_id == interaction_id,
+                    Branch.pause_state == PauseState.PAUSED_TIMED,
+                    Branch.paused_until <= func.now(),
+                )
+            )
+            for branch in branches:
+                resume_branch(db, branch, None)
+                resumed += 1
+            await db.commit()
+    return resumed

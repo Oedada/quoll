@@ -15,7 +15,7 @@ from quoll.auth.session_store import SessionStore
 from quoll.auth.task_queue import run_queue
 from quoll.config import settings
 from quoll.core.worker import Periodic
-from quoll.interactions.pause_worker import expire_pauses
+from quoll.interactions.pause_worker import expire_branch_pauses, expire_pauses
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +32,9 @@ def background_jobs(session_maker: async_sessionmaker) -> list[Periodic]:
         resumed = await expire_pauses(session_maker)
         if resumed:
             logger.info(f"Resumed {resumed} interactions after their pause")
+        branches = await expire_branch_pauses(session_maker)
+        if branches:
+            logger.info(f"Resumed {branches} branches after their pause")
 
     handlers = {
         PendingActionType.OFFBOARDING_MANAGER: offboard_manager,

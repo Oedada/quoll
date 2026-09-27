@@ -29,7 +29,8 @@ MAX_ATTEMPTS = 3
 @dataclass(frozen=True)
 class InteractionScope:
     interaction: Interaction
-    actor: User
+    # None - система (воркер, сторож)
+    actor: User | None
     owner: Manager | None
     # руководитель владельца - на уровне User: все признаки недееспособности
     # лежат в users
@@ -102,8 +103,9 @@ async def lock_interaction_scope(
         interaction = await lock_row(session, Interaction, interaction_id)
         if interaction is not None and interaction.owner_id == seen_owner:
             await attempt.commit()
-            actor = users[actor_id]
-            denial = identity_denial(actor)
+            # actor_id=None - система: дееспособность проверять не у кого
+            actor = users[actor_id] if actor_id is not None else None
+            denial = identity_denial(actor) if actor is not None else None
             if denial is not None:
                 raise IdentityDeniedException(*denial)
             if interaction.closed_at is not None and not allow_closed:

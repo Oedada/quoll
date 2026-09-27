@@ -673,6 +673,41 @@ async def rollback_branch(
 
 
 @interactions_router.post(
+    "/{id}/branches/{branch_id}/pause",
+    response_model=BranchRead,
+    summary="Pause one branch; the manager's slot is not affected",
+)
+async def pause_branch(
+    id: InteractionId,
+    branch_id: int,
+    body: PauseRequest,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    return await branch_service.pause(
+        session,
+        interaction_id=id,
+        branch_id=branch_id,
+        actor_id=user.id,
+        until=body.until,
+        comment=body.comment,
+    )
+
+
+@interactions_router.post(
+    "/{id}/branches/{branch_id}/unpause",
+    response_model=BranchRead,
+    summary="Resume a paused branch",
+)
+async def unpause_branch(
+    id: InteractionId, branch_id: int, user: CurrentUser, session: SessionDep
+):
+    return await branch_service.unpause(
+        session, interaction_id=id, branch_id=branch_id, actor_id=user.id
+    )
+
+
+@interactions_router.post(
     "/{id}/branches/{branch_id}/close",
     response_model=BranchRead,
     summary="Owner's supervisor closes a branch early, it keeps its step",

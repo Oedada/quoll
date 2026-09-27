@@ -1,7 +1,7 @@
 """Операции над заявками. Каждая, кроме создания, начинается с захвата
 области заявки под блокировкой - см. scope.py"""
 
-from datetime import UTC, datetime
+from datetime import datetime
 
 from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -11,7 +11,6 @@ from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.keycloak_admin import verify_target
 from quoll.auth.models import UserRole
 from quoll.catalog.models import CloseLevel
-from quoll.core import SystemDefaults
 from quoll.core.exceptions import (
     DomainRuleException,
     OperationForbiddenException,
@@ -36,6 +35,7 @@ from quoll.interactions.models import (
     StageChangeKind,
 )
 from quoll.interactions.notify import notify
+from quoll.interactions.pause_policy import check_pause_term
 from quoll.interactions.repository import InteractionRepository
 from quoll.interactions.requests import cancel_pending_requests
 from quoll.interactions.schemas import InteractionCreate, InteractionUpdate
@@ -303,7 +303,7 @@ async def pause(
     if until is None and interaction.pause_state == PauseState.PAUSED_MANUAL:
         raise DomainRuleException(409, "Interaction is already paused without a term")
     if until is not None:
-        _check_pause_term(until)
+        check_pause_term(until)
 
     old_state = interaction.pause_state
     interaction.is_paused = True
@@ -399,18 +399,6 @@ async def _pausable(
     if stage.is_terminal:
         raise DomainRuleException(409, "Closed interaction cannot be paused")
     return scope, stage
-
-
-def _check_pause_term(until: datetime) -> None:
-    if until.tzinfo is None:
-        raise DomainRuleException(400, "Pause term must include a timezone")
-    hours = (until - datetime.now(UTC)).total_seconds() / 3600
-    if not SystemDefaults.MIN_PAUSE_HOURS <= hours <= SystemDefaults.MAX_PAUSE_HOURS:
-        raise DomainRuleException(
-            400,
-            f"Pause term must be {SystemDefaults.MIN_PAUSE_HOURS}-"
-            f"{SystemDefaults.MAX_PAUSE_HOURS} hours ahead",
-        )
 
 
 async def update_fields(
