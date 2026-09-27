@@ -5,7 +5,7 @@
 
 from typing import Any
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import exists, func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.audit import record
@@ -226,13 +226,17 @@ async def current_document_kinds(
     stage_id: int,
     branch_id: int | None = None,
 ) -> set[str]:
-    """типы актуальных документов стадии - заменённая версия не считается"""
+    """виды актуальных документов стадии и её подшагов - заменённая версия
+    не считается, а новая с подшага 3.1 засчитывается шагу 3 (Д4)"""
+    sub_steps = select(Stage.id).where(Stage.parent_stage_id == stage_id)
     rows = await session.scalars(
         select(InteractionDocument.kind).where(
             InteractionDocument.interaction_id == interaction_id,
-            InteractionDocument.stage_id == stage_id,
+            or_(
+                InteractionDocument.stage_id == stage_id,
+                InteractionDocument.stage_id.in_(sub_steps),
+            ),
             InteractionDocument.branch_id.is_not_distinct_from(branch_id),
-            InteractionDocument.kind.is_not(None),
             InteractionDocument.status == DocumentStatus.ACTIVE,
             ~replaced_expression(),
         )

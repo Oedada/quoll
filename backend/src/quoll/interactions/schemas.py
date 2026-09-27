@@ -231,10 +231,17 @@ class DocumentRead(AppBaseModel):
     branch_id: int | None
     replaces_document_id: int | None
     title: str
-    kind: str | None
+    kind: str
+    description: str | None
+    contract_number: str | None
+    contract_signed_at: date | None
+    contract_valid_until: date | None
     metadata: dict[str, Any]
     # прежние версии не пропадают, а перестают быть актуальными
     is_current: bool
+    # где лежит действующая новая версия - в том числе на подшаге
+    replaced_by_id: int | None
+    replaced_on_stage_id: int | None
     # ACTIVE, PENDING - ждёт руководителя, REJECTED
     status: str
     created_at: datetime

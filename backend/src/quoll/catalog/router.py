@@ -15,6 +15,7 @@ from quoll.auth.models import User, UserRole
 from quoll.catalog import service
 from quoll.catalog.models import (
     Contact,
+    DocumentKind,
     ItDirection,
     ItProgram,
     Product,
@@ -29,6 +30,9 @@ from quoll.catalog.schemas import (
     DirectionPatch,
     DirectionRead,
     DirectionWrite,
+    DocumentKindPatch,
+    DocumentKindRead,
+    DocumentKindWrite,
     PriorityWrite,
     ProductPatch,
     ProductRead,
@@ -114,6 +118,11 @@ async def list_directions(
         limit,
         offset,
     )
+
+
+@catalog_router.get("/document-kinds", response_model=list[DocumentKindRead])
+async def list_document_kinds(session: SessionDep):
+    return (await session.scalars(select(DocumentKind).order_by(DocumentKind.id))).all()
 
 
 @catalog_router.get("/products", response_model=list[ProductRead])
@@ -317,6 +326,14 @@ _crud(
     DirectionWrite,
     DirectionPatch,
     DirectionRead,
+)
+_crud(
+    "/document-kinds",
+    DocumentKind,
+    TargetType.DOCUMENT_KIND,
+    DocumentKindWrite,
+    DocumentKindPatch,
+    DocumentKindRead,
 )
 _crud("/products", Product, TargetType.PRODUCT, ProductWrite, ProductPatch, ProductRead)
 _crud(

@@ -1,4 +1,5 @@
 import json
+from datetime import date
 from typing import Annotated
 
 from fastapi import (
@@ -327,8 +328,14 @@ def _document(view) -> DocumentRead:
         replaces_document_id=doc.replaces_document_id,
         title=doc.title,
         kind=doc.kind,
+        description=doc.description,
+        contract_number=doc.contract_number,
+        contract_signed_at=doc.contract_signed_at,
+        contract_valid_until=doc.contract_valid_until,
         metadata=doc.meta,
         is_current=view.is_current,
+        replaced_by_id=view.replaced_by.id if view.replaced_by else None,
+        replaced_on_stage_id=view.replaced_by.stage_id if view.replaced_by else None,
         status=doc.status,
         created_at=doc.created_at,
         attachment=AttachmentRead.model_validate(view.attachment),
@@ -360,7 +367,12 @@ async def attach_document(
     # файл шага ветки продукта
     branch_id: Annotated[int | None, Form()] = None,
     title: Annotated[str | None, Form(max_length=255)] = None,
-    kind: Annotated[str | None, Form(max_length=100)] = None,
+    # вид из справочника; у новой версии можно не указывать
+    kind: Annotated[str | None, Form(max_length=50)] = None,
+    description: Annotated[str | None, Form()] = None,
+    contract_number: Annotated[str | None, Form(max_length=100)] = None,
+    contract_signed_at: Annotated[date | None, Form()] = None,
+    contract_valid_until: Annotated[date | None, Form()] = None,
     # multipart не несёт вложенных объектов - JSON строкой
     metadata: Annotated[str | None, Form()] = None,
 ):
@@ -373,9 +385,15 @@ async def attach_document(
         stage_id=stage_id,
         replaces_document_id=replaces_document_id,
         branch_id=branch_id,
-        title=title,
-        kind=kind,
-        meta=_json_object(metadata),
+        fields=document_service.DocumentFields(
+            kind=kind,
+            title=title,
+            description=description,
+            contract_number=contract_number,
+            contract_signed_at=contract_signed_at,
+            contract_valid_until=contract_valid_until,
+            meta=_json_object(metadata),
+        ),
     )
     return _document(view)
 

@@ -94,6 +94,11 @@ class Stage(Base, IdMixin, TimestampMixin):
         JSONB, default=list, server_default=text("'[]'::jsonb")
     )
 
+    # подшаг x.1 шага x: его документ может заменить документ родителя
+    parent_stage_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stages.id", ondelete="RESTRICT"), nullable=True
+    )
+
     workflow: Mapped[Workflow] = relationship(back_populates="stages")
 
 

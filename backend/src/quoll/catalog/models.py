@@ -182,3 +182,16 @@ class Contact(Base, IdMixin, TimestampMixin):
     is_actual: Mapped[bool] = mapped_column(
         Boolean, default=True, server_default="true"
     )
+
+
+class DocumentKind(Base, IdMixin, TimestampMixin):
+    """вид документа (М 3.14): по нему переход проверяет нужные файлы.
+    Системные - договор, допсоглашение, «другое» - не удаляются"""
+
+    __tablename__ = "document_kinds"
+
+    code: Mapped[str] = mapped_column(String(50), unique=True)
+    label: Mapped[str_255]
+    is_system: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )

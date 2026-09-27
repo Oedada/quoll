@@ -31,6 +31,7 @@ class TargetType(StrEnum):
     SPECIALTY = "SPECIALTY"
     UNIVERSITY = "UNIVERSITY"
     VENDOR = "VENDOR"
+    DOCUMENT_KIND = "DOCUMENT_KIND"
 
 
 class AuditEventType(StrEnum):

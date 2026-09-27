@@ -32,6 +32,24 @@ class DirectionPatch(_Patch):
     name: str | None = Field(default=None, min_length=1, max_length=255)
 
 
+class DocumentKindWrite(_Write):
+    code: str = Field(pattern=r"^[A-Z][A-Z0-9_]{0,49}$")
+    label: str = Field(min_length=1, max_length=255)
+
+
+class DocumentKindPatch(_Patch):
+    # код - ключ для воркфлоу и интеграций, не меняется
+    required = ("label",)
+    label: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class DocumentKindRead(AppBaseModel):
+    id: int
+    code: str
+    label: str
+    is_system: bool
+
+
 class DirectionRead(AppBaseModel):
     id: int
     name: str

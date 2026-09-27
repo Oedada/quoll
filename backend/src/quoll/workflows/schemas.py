@@ -39,6 +39,8 @@ class StageBase(AppBaseModel):
     # флаги веток, как и остальные, после создания не меняются
     is_branch_stage: bool = False
     is_branch_start: bool = False
+    # подшаг x.1 шага x; как и флаги, после создания не меняется
+    parent_stage_id: int | None = None
     fields: Annotated[list[StageField], AfterValidator(_unique_keys)] = Field(
         default_factory=list
     )

@@ -20,6 +20,26 @@ from quoll.core.exceptions import (
 logger = logging.getLogger(__name__)
 
 
+# белый список ТЗ (ф. 3) и pptx; видео не храним - прикладывают ссылкой
+ALLOWED_SUFFIXES = frozenset(
+    {
+        ".png",
+        ".jpg",
+        ".jpeg",
+        ".pdf",
+        ".zip",
+        ".gz",
+        ".gzip",
+        ".rar",
+        ".doc",
+        ".docx",
+        ".xls",
+        ".xlsx",
+        ".pptx",
+    }
+)
+
+
 class AttachmentService:
     """Сервис для сохранения вложений в S3 и метаданных в БД"""
 
@@ -53,6 +73,8 @@ class AttachmentService:
         # Сгенерировать уникальный ключ для S3
         unique_id = uuid.uuid4().hex
         suffix = Path(original_filename).suffix.lower()
+        if suffix not in ALLOWED_SUFFIXES:
+            raise AppException(415, f"File type '{suffix or 'none'}' is not allowed")
         storage_key = f"attachments/{unique_id}{suffix}"
 
         # Проверить размер и пустоту файла перед обращением к S3

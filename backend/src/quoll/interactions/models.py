@@ -368,6 +368,19 @@ class InteractionDocument(Base):
         CheckConstraint(
             "status IN ('ACTIVE', 'PENDING', 'REJECTED')", name="chk_document_status"
         ),
+        CheckConstraint(
+            "kind <> 'OTHER' OR description IS NOT NULL",
+            name="chk_document_other_described",
+        ),
+        CheckConstraint(
+            "kind = 'CONTRACT' OR (contract_number IS NULL AND "
+            "contract_signed_at IS NULL AND contract_valid_until IS NULL)",
+            name="chk_document_contract_fields",
+        ),
+        CheckConstraint(
+            "kind <> 'CONTRACT' OR contract_number IS NOT NULL",
+            name="chk_document_contract_number",
+        ),
         # у версии один преемник - иначе цепочка раздвоится
         Index(
             "uq_documents_replaces",
@@ -392,9 +405,17 @@ class InteractionDocument(Base):
     replaces_document_id: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     # внутреннее название - не имя файла: «Договор №12» вместо scan_0042.pdf
     title: Mapped[str_255]
-    # тип документа: договор, акт, протокол. Пока строка - справочником и
-    # правилами «обязателен на шаге» займётся слой выше
-    kind: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
+    # вид из справочника: по нему переход проверяет нужные файлы
+    kind: Mapped[str] = mapped_column(
+        ForeignKey("document_kinds.code", ondelete="RESTRICT"),
+        index=True,
+    )
+    # что за файл; обязательно у вида «другое»
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # реквизиты - только у договора; новая версия копирует их, если не заданы
+    contract_number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    contract_signed_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    contract_valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
     # metadata в декларативной модели занято самим SQLAlchemy
     meta: Mapped[dict[str, Any]] = mapped_column(
         "metadata", JSONB, default=dict, server_default=text("'{}'::jsonb")

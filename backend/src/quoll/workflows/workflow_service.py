@@ -152,6 +152,18 @@ async def create_stage(
 ) -> Stage:
     # новая стадия пуста и недостижима - граф она не ломает, проверять нечего
     await lock_workflow(session, schema.workflow_id)
+    if schema.parent_stage_id is not None:
+        parent = await session.get(Stage, schema.parent_stage_id)
+        # один уровень: подшаг подшага не бывает
+        if (
+            parent is None
+            or parent.workflow_id != schema.workflow_id
+            or parent.parent_stage_id is not None
+            or parent.is_branch_stage != schema.is_branch_stage
+        ):
+            raise DomainRuleException(
+                400, "Parent is a main stage of the same workflow and level"
+            )
     stage = Stage(**schema.model_dump())
     session.add(stage)
     await session.flush()
@@ -261,6 +273,21 @@ def _check_rules(edge: WorkflowTransition) -> None:
         raise DomainRuleException(400, "reject_to_stage_id needs requires_approval")
 
 
+async def _check_kinds(session: AsyncSession, edge: WorkflowTransition) -> None:
+    from quoll.catalog.models import DocumentKind
+
+    wanted = set(edge.required_document_kinds or [])
+    known = set(
+        await session.scalars(
+            select(DocumentKind.code).where(DocumentKind.code.in_(wanted))
+        )
+    )
+    if wanted - known:
+        raise DomainRuleException(
+            400, f"Unknown document kinds: {', '.join(sorted(wanted - known))}"
+        )
+
+
 async def create_transition(
     session: AsyncSession, schema: WorkflowTransitionCreate, actor_id: str
 ) -> WorkflowTransition:
@@ -273,6 +300,7 @@ async def create_transition(
     edge = WorkflowTransition(**schema.model_dump())
     _check_rules(edge)
     await _check_reject_to(session, edge)
+    await _check_kinds(session, edge)
     session.add(edge)
     await session.flush()
     await check_graph(session, workflow)
@@ -321,6 +349,7 @@ async def update_transition(
         setattr(edge, field, value)
     _check_rules(edge)
     await _check_reject_to(session, edge)
+    await _check_kinds(session, edge)
     await session.flush()
     # имя и описание граф не ломают, концы у опубликованного не меняются
     if "is_active" in new:

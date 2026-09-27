@@ -9,9 +9,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
+from quoll.catalog.models import DocumentKind
 from quoll.core.base_repository import BaseRepository
 from quoll.core.exceptions import DomainRuleException, IdNotExistsException
 from quoll.db import Base
+from quoll.workflows.models import WorkflowTransition
 
 
 # поле «*_ids» схемы -> связь модели и модель её элементов
@@ -124,6 +126,8 @@ async def delete(
     actor_id: str,
 ) -> None:
     """на что-то ссылается - 409 от обработчика IntegrityError, не 500"""
+    if model is DocumentKind:
+        await _check_kind_removable(session, item_id)
     if not await BaseRepository(session, model).delete(item_id):
         raise IdNotExistsException(model.__name__)
     record(
@@ -133,6 +137,24 @@ async def delete(
         target_type=target,
         target_id=item_id,
     )
+
+
+async def _check_kind_removable(session: AsyncSession, kind_id: int) -> None:
+    """документы держит внешний ключ, а рёбра хранят коды списком - их
+    проверяем сами"""
+    kind = await session.get(DocumentKind, kind_id)
+    if kind is None:
+        return
+    if kind.is_system:
+        raise DomainRuleException(409, f"Document kind '{kind.code}' is built in")
+    if await session.scalar(
+        select(WorkflowTransition.id)
+        .where(WorkflowTransition.required_document_kinds.contains([kind.code]))
+        .limit(1)
+    ):
+        raise DomainRuleException(
+            409, f"Document kind '{kind.code}' is required by a transition"
+        )
 
 
 async def listing(

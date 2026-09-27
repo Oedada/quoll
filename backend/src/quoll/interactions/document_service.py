@@ -7,7 +7,8 @@
 запрета доменных операций
 """
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
+from datetime import date
 from typing import Any
 
 from fastapi import UploadFile
@@ -20,6 +21,7 @@ from quoll.attachments.service import AttachmentService
 from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import User, UserRole
+from quoll.catalog.models import DocumentKind
 from quoll.core.exceptions import (
     DomainRuleException,
     IdNotExistsException,
@@ -36,12 +38,31 @@ from quoll.interactions.repository import InteractionRepository
 from quoll.interactions.scope import lock_interaction_scope
 from quoll.workflows.models import Stage, TransitionAttachment
 
+# вид ставится сам на своих кнопках и не живёт на шагах веток (Д5)
+CONTRACT_KINDS = frozenset({"CONTRACT", "SUPPLEMENTARY_AGREEMENT"})
+
+
+@dataclass(frozen=True)
+class DocumentFields:
+    """что пользователь говорит о файле; пустое у новой версии берётся
+    у прежней"""
+
+    kind: str | None = None
+    title: str | None = None
+    description: str | None = None
+    contract_number: str | None = None
+    contract_signed_at: date | None = None
+    contract_valid_until: date | None = None
+    meta: dict[str, Any] = field(default_factory=dict)
+
 
 @dataclass(frozen=True)
 class DocumentView:
     document: InteractionDocument
     attachment: Attachment
     is_current: bool
+    # действующая преемница: где обновлён файл (Д7)
+    replaced_by: InteractionDocument | None = None
 
 
 async def upload(
@@ -53,9 +74,7 @@ async def upload(
     file: UploadFile,
     stage_id: int,
     replaces_document_id: int | None,
-    title: str | None,
-    kind: str | None,
-    meta: dict[str, Any],
+    fields: DocumentFields,
     branch_id: int | None = None,
 ) -> DocumentView:
     """право - дважды: без блокировок до загрузки, чтобы не держать строки на
@@ -76,12 +95,18 @@ async def upload(
             previous = await _check_replaceable(
                 session, interaction_id, replaces_document_id
             )
-            # версия живёт на стадии прежней - иначе замена из текущего шага
-            # обошла бы аппрув правки пройденного
-            if previous.stage_id != stage_id or previous.branch_id != branch_id:
+            # версия живёт на стадии прежней или на её подшаге (Д6) - иначе
+            # замена из текущего шага обошла бы аппрув правки пройденного
+            stage = await session.get(Stage, stage_id)
+            if previous.branch_id != branch_id or previous.stage_id not in {
+                stage_id,
+                stage.parent_stage_id,
+            }:
                 raise DomainRuleException(
-                    400, "New version goes to the stage of the replaced document"
+                    400,
+                    "New version goes to the stage of the replaced one or its sub-step",
                 )
+        values = await _document_values(session, fields, previous, branch_id)
         current = scope.interaction.state_id
         if branch_id is not None:
             branch = await session.get(Branch, branch_id)
@@ -102,10 +127,13 @@ async def upload(
             branch_id=branch_id,
             uploaded_by=actor.id,
             replaces_document_id=replaces_document_id,
-            # новая версия того же документа - то же название и тип
-            title=title or (previous.title if previous else attachment.filename),
-            kind=kind or (previous.kind if previous else None),
-            meta=meta,
+            title=values.title or attachment.filename,
+            kind=values.kind,
+            description=values.description,
+            contract_number=values.contract_number,
+            contract_signed_at=values.contract_signed_at,
+            contract_valid_until=values.contract_valid_until,
+            meta=values.meta,
         )
         session.add(document)
         await session.flush()
@@ -139,6 +167,46 @@ async def upload(
     )
     await session.refresh(document)
     return DocumentView(document, attachment, is_current=not pending)
+
+
+async def _document_values(
+    session: AsyncSession,
+    fields: DocumentFields,
+    previous: InteractionDocument | None,
+    branch_id: int | None,
+) -> DocumentFields:
+    """вид из справочника; «другое» - с описанием; реквизиты - только у
+    договора, и номер у него обязателен"""
+    if previous is not None:
+        inherited = {
+            name: getattr(previous, name)
+            for name in DocumentFields.__dataclass_fields__
+            if name != "meta"
+        }
+        fields = DocumentFields(
+            **{name: getattr(fields, name) or inherited[name] for name in inherited},
+            meta=fields.meta,
+        )
+    if fields.kind is None:
+        raise DomainRuleException(422, "Document kind is required")
+    if not await session.scalar(
+        select(exists().where(DocumentKind.code == fields.kind))
+    ):
+        raise DomainRuleException(400, f"Unknown document kind '{fields.kind}'")
+    if fields.kind == "OTHER" and not fields.description:
+        raise DomainRuleException(422, "Describe a document of kind OTHER")
+    if fields.kind in CONTRACT_KINDS and branch_id is not None:
+        raise DomainRuleException(
+            400, "Contracts and supplementary agreements are not branch files"
+        )
+    has_contract_fields = any(
+        (fields.contract_number, fields.contract_signed_at, fields.contract_valid_until)
+    )
+    if fields.kind != "CONTRACT" and has_contract_fields:
+        raise DomainRuleException(400, "Contract details belong to a contract")
+    if fields.kind == "CONTRACT" and not fields.contract_number:
+        raise DomainRuleException(422, "Contract needs a number")
+    return fields
 
 
 async def _check_stage(
@@ -188,16 +256,27 @@ def replaced_expression():
 
 
 async def documents(session: AsyncSession, interaction_id: int) -> list[DocumentView]:
-    current = (
-        InteractionDocument.status == DocumentStatus.ACTIVE
-    ) & ~replaced_expression()
+    successor = aliased(InteractionDocument)
     rows = await session.execute(
-        select(InteractionDocument, Attachment, current)
+        select(InteractionDocument, Attachment, successor)
         .join(Attachment, Attachment.id == InteractionDocument.attachment_id)
+        .outerjoin(
+            successor,
+            (successor.replaces_document_id == InteractionDocument.id)
+            & (successor.status == DocumentStatus.ACTIVE),
+        )
         .where(InteractionDocument.interaction_id == interaction_id)
         .order_by(InteractionDocument.created_at, InteractionDocument.id)
     )
-    return [DocumentView(doc, attachment, current) for doc, attachment, current in rows]
+    return [
+        DocumentView(
+            doc,
+            attachment,
+            is_current=doc.status == DocumentStatus.ACTIVE and newer is None,
+            replaced_by=newer,
+        )
+        for doc, attachment, newer in rows
+    ]
 
 
 async def delete_document(
