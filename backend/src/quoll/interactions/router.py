@@ -51,10 +51,9 @@ from quoll.interactions.schemas import (
     AcceptRequest,
     AssignRequest,
     BranchRead,
+    BranchWrite,
     CloseRequest,
-    ContractProductAdd,
-    ContractProductRead,
-    ContractProductStatusWrite,
+    ContractStatusWrite,
     DeclineRequest,
     DocumentDecision,
     DocumentRead,
@@ -130,8 +129,8 @@ async def list_interactions(
     university_id: int | None = Query(
         default=None, ge=1, description="Filter by University ID"
     ),
-    vendor_id: int | None = Query(
-        default=None, ge=1, description="Filter by Vendor ID"
+    program_id: int | None = Query(
+        default=None, ge=1, description="Filter by IT program of any branch"
     ),
     limit: int = Query(
         default=SystemDefaults.DEFAULT_PAGE_SIZE,
@@ -143,7 +142,7 @@ async def list_interactions(
     return await repo.list_visible(
         readable_filter(user),
         university_id=university_id,
-        vendor_id=vendor_id,
+        program_id=program_id,
         limit=limit,
         offset=offset,
     )
@@ -523,60 +522,55 @@ async def reject_stage_values(
     )
 
 
-@interactions_router.get(
-    "/{id}/products",
-    response_model=list[ContractProductRead],
-    summary="Contract products",
-)
-async def list_contract_products(interaction: ReadableInteraction, session: SessionDep):
-    return await contract_service.products(session, interaction.id)
-
-
 @interactions_router.post(
-    "/{id}/products",
-    response_model=ContractProductRead,
+    "/{id}/branches",
+    response_model=BranchRead,
     status_code=status.HTTP_201_CREATED,
-    summary="Propose a catalog product for the contract, before signing",
+    summary="Add a program, optionally with one of its products, before signing",
 )
-async def add_contract_product(
-    id: InteractionId, body: ContractProductAdd, user: CurrentUser, session: SessionDep
+async def add_branch(
+    id: InteractionId, body: BranchWrite, user: CurrentUser, session: SessionDep
 ):
-    return await contract_service.add_product(
-        session, interaction_id=id, product_id=body.product_id, actor_id=user.id
+    return await contract_service.add_branch(
+        session,
+        interaction_id=id,
+        program_id=body.program_id,
+        product_id=body.product_id,
+        actor_id=user.id,
     )
 
 
 @interactions_router.patch(
-    "/{id}/products/{item_id}",
-    response_model=ContractProductRead,
-    summary="Mark a contract product proposed, approved or rejected by the university",
+    "/{id}/branches/{branch_id}",
+    response_model=BranchRead,
+    summary="Mark a draft branch proposed, approved or rejected by the university",
 )
-async def set_contract_product_status(
+async def set_branch_contract_status(
     id: InteractionId,
-    item_id: int,
-    body: ContractProductStatusWrite,
+    branch_id: int,
+    body: ContractStatusWrite,
     user: CurrentUser,
     session: SessionDep,
 ):
     return await contract_service.set_status(
         session,
         interaction_id=id,
-        item_id=item_id,
-        status=body.status,
+        branch_id=branch_id,
+        status=body.contract_status,
         actor_id=user.id,
     )
 
 
 @interactions_router.delete(
-    "/{id}/products/{item_id}",
+    "/{id}/branches/{branch_id}",
     status_code=status.HTTP_204_NO_CONTENT,
-    summary="Drop a product from the contract, before signing",
+    summary="Drop a draft branch, before signing",
 )
-async def remove_contract_product(
-    id: InteractionId, item_id: int, user: CurrentUser, session: SessionDep
+async def remove_branch(
+    id: InteractionId, branch_id: int, user: CurrentUser, session: SessionDep
 ):
-    await contract_service.remove_product(
-        session, interaction_id=id, item_id=item_id, actor_id=user.id
+    await contract_service.remove_branch(
+        session, interaction_id=id, branch_id=branch_id, actor_id=user.id
     )
     return Response(status_code=status.HTTP_204_NO_CONTENT)
 
@@ -632,7 +626,7 @@ async def rollback_branch(
 @interactions_router.get(
     "/{id}/branches",
     response_model=list[BranchRead],
-    summary="Product branches opened when the contract was signed",
+    summary="Branches: drafts before signing, then each on its own steps",
 )
 async def list_branches(interaction: ReadableInteraction, session: SessionDep):
     return await contract_service.branches(session, interaction.id)

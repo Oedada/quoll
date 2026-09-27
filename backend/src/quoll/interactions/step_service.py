@@ -17,7 +17,7 @@ from quoll.auth.models import UserRole
 from quoll.core.exceptions import DomainRuleException, OperationForbiddenException
 from quoll.interactions.access_policy import can_change, can_close
 from quoll.interactions.models import (
-    InteractionBranch,
+    Branch,
     InteractionStageHistory,
     InteractionStageValues,
 )
@@ -47,9 +47,13 @@ async def set_values(
     # у шага ветки - значения своей ветки, у шага договора - общие
     current = interaction.state_id
     if branch_id is not None:
-        branch = await session.get(InteractionBranch, branch_id)
+        branch = await session.get(Branch, branch_id)
         if branch is None or branch.interaction_id != interaction_id:
             raise DomainRuleException(404, "Branch is not in this interaction")
+        if branch.state_id is None:
+            raise DomainRuleException(
+                409, "Branch is a draft until the contract is signed"
+            )
         current = branch.state_id
     if stage.is_branch_stage != (branch_id is not None):
         raise DomainRuleException(400, "Branch stages are filled per branch")

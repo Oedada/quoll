@@ -41,7 +41,7 @@ async def check_graph(
     if not (workflow.is_published or full):
         return
     # здесь, а не наверху: модели заявок сами импортируют модели воркфлоу
-    from quoll.interactions.models import Interaction, InteractionBranch
+    from quoll.interactions.models import Branch, Interaction
 
     stages = (
         await session.scalars(select(Stage).where(Stage.workflow_id == workflow.id))
@@ -66,11 +66,11 @@ async def check_graph(
     )
     occupied |= set(
         await session.scalars(
-            select(InteractionBranch.state_id)
-            .join(Interaction, Interaction.id == InteractionBranch.interaction_id)
+            select(Branch.state_id)
+            .join(Interaction, Interaction.id == Branch.interaction_id)
             .where(
                 Interaction.workflow_id == workflow.id,
-                InteractionBranch.closed_at.is_(None),
+                Branch.closed_at.is_(None),
             )
             .distinct()
         )
@@ -452,8 +452,8 @@ async def archive_stage(
     переходом из архивируемой стадии в цель
     """
     from quoll.interactions.models import (
+        Branch,
         Interaction,
-        InteractionBranch,
         InteractionStageHistory,
         StageChangeKind,
     )
@@ -480,10 +480,10 @@ async def archive_stage(
 
     # ветки своих блокировок не имеют - берём их взаимодействия
     on_branch = (
-        select(InteractionBranch.interaction_id)
+        select(Branch.interaction_id)
         .where(
-            InteractionBranch.state_id == stage.id,
-            InteractionBranch.closed_at.is_(None),
+            Branch.state_id == stage.id,
+            Branch.closed_at.is_(None),
         )
         .scalar_subquery()
     )
@@ -502,9 +502,9 @@ async def archive_stage(
     )
     branches = list(
         await session.execute(
-            select(InteractionBranch.id, InteractionBranch.interaction_id).where(
-                InteractionBranch.state_id == stage.id,
-                InteractionBranch.closed_at.is_(None),
+            select(Branch.id, Branch.interaction_id).where(
+                Branch.state_id == stage.id,
+                Branch.closed_at.is_(None),
             )
         )
     )
@@ -539,8 +539,8 @@ async def archive_stage(
         )
         if branches:
             await session.execute(
-                update(InteractionBranch)
-                .where(InteractionBranch.id.in_([b.id for b in branches]))
+                update(Branch)
+                .where(Branch.id.in_([b.id for b in branches]))
                 .values(state_id=target.id)
             )
             session.add_all(

@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import ColumnElement, func, select
+from sqlalchemy import ColumnElement, exists, func, select
 from sqlalchemy.orm import selectinload
 
 from quoll.auth.identity_policy import is_incapacitated
@@ -14,6 +14,7 @@ from quoll.interactions.capacity_policy import (
     open_projects_filter_expression,
 )
 from quoll.interactions.models import (
+    Branch,
     Interaction,
     InteractionAssignment,
     InteractionStageHistory,
@@ -58,7 +59,6 @@ class InteractionRepository(BaseRepository[Interaction]):
             .where(Interaction.id == interaction_id)
             .options(
                 selectinload(Interaction.university),
-                selectinload(Interaction.vendor),
                 selectinload(Interaction.workflow),
                 selectinload(Interaction.state),
             )
@@ -76,7 +76,7 @@ class InteractionRepository(BaseRepository[Interaction]):
         visibility: ColumnElement[bool],
         *,
         university_id: int | None,
-        vendor_id: int | None,
+        program_id: int | None,
         limit: int,
         offset: int,
     ) -> list[Interaction]:
@@ -85,8 +85,13 @@ class InteractionRepository(BaseRepository[Interaction]):
         stmt = select(Interaction).where(visibility)
         if university_id is not None:
             stmt = stmt.where(Interaction.university_id == university_id)
-        if vendor_id is not None:
-            stmt = stmt.where(Interaction.vendor_id == vendor_id)
+        if program_id is not None:
+            stmt = stmt.where(
+                exists().where(
+                    Branch.interaction_id == Interaction.id,
+                    Branch.program_id == program_id,
+                )
+            )
         # id вторым ключом - при равном времени порядок страниц не плывёт
         stmt = (
             stmt.order_by(Interaction.created_at.desc(), Interaction.id.desc())

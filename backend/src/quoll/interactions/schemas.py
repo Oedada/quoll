@@ -1,12 +1,20 @@
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any, Literal
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
 from quoll.attachments.schemas import AttachmentRead
-from quoll.catalog.schemas import UniversityRead, VendorRead
+from quoll.catalog.schemas import UniversityRead
 from quoll.core.schemas import AppBaseModel
 from quoll.workflows.schemas import StageRead, WorkflowRead
+
+
+class BranchWrite(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    program_id: int
+    # не больше одного продукта, и только из продуктов программы
+    product_id: int | None = None
 
 
 # Interaction
@@ -16,9 +24,8 @@ class InteractionCreate(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     university_id: int
-    vendor_id: int
-    it_program: str | None = None
-    it_product: str | None = None
+    # шаг 0: ИТ-программы с продуктами - ветки-черновики состава
+    branches: list[BranchWrite] = Field(min_length=1)
     # только опубликованный - по черновику графа заявке ехать нельзя
     workflow_id: int | None = None
 
@@ -29,9 +36,6 @@ class InteractionUpdate(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     university_id: int | None = None
-    vendor_id: int | None = None
-    it_program: str | None = None
-    it_product: str | None = None
 
 
 class AssignRequest(AppBaseModel):
@@ -110,9 +114,6 @@ class PauseRequest(AppBaseModel):
 class InteractionRead(AppBaseModel):
     id: int
     university_id: int
-    vendor_id: int
-    it_program: str | None
-    it_product: str | None
     workflow_id: int | None
     state_id: int | None
     owner_id: str | None
@@ -126,7 +127,6 @@ class InteractionRead(AppBaseModel):
 
 class InteractionDetailRead(InteractionRead):
     university: UniversityRead
-    vendor: VendorRead
     workflow: WorkflowRead | None = None
     state: StageRead | None = None
 
@@ -240,7 +240,7 @@ class InteractionImport(AppBaseModel):
     university_name: str
     vendor_name: str
     it_program: str
-    it_product: str
+    it_product: str | None = None
     contract_number: str
     license_singed: bool
     license_expired_at: int
@@ -309,31 +309,27 @@ class StageValuesRead(AppBaseModel):
     pending_by: str | None
 
 
-class ContractProductAdd(AppBaseModel):
+class ContractStatusWrite(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    product_id: int
-
-
-class ContractProductStatusWrite(AppBaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    status: Literal["PROPOSED", "APPROVED", "REJECTED"]
-
-
-class ContractProductRead(AppBaseModel):
-    id: int
-    interaction_id: int
-    product_id: int
-    status: str
-    added_by: str | None
-    created_at: datetime
+    contract_status: Literal["PROPOSED", "APPROVED", "REJECTED"]
 
 
 class BranchRead(AppBaseModel):
     id: int
     interaction_id: int
-    interaction_product_id: int
-    state_id: int
-    created_at: datetime
+    program_id: int | None
+    product_id: int | None
+    contract_status: str
+    origin: str
+    # null - черновик состава, до подписания
+    state_id: int | None
+    opened_at: datetime | None
     closed_at: datetime | None
+    license_signed_at: date | None
+    license_term_years: int | None
+    license_until: date | None
+    transfer_status: str
+    teachers_trained: int | None
+    added_by: str | None
+    created_at: datetime

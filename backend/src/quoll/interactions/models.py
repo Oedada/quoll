@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import date, datetime
 from enum import StrEnum
 from typing import Any
 
@@ -6,6 +6,7 @@ from sqlalchemy import (
     BigInteger,
     Boolean,
     CheckConstraint,
+    Date,
     DateTime,
     ForeignKey,
     ForeignKeyConstraint,
@@ -70,8 +71,6 @@ class Vendor(Base, IdMixin, TimestampMixin):
     # «Дочерняя», «ПАО (материнская)» - свободная пометка
     kind: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
-    interactions: Mapped[list["Interaction"]] = relationship(back_populates="vendor")
-
 
 class Interaction(Base, IdMixin, TimestampMixin):
     __table_args__ = (
@@ -100,12 +99,6 @@ class Interaction(Base, IdMixin, TimestampMixin):
     university_id: Mapped[int] = mapped_column(
         ForeignKey("universities.id", ondelete="RESTRICT"), index=True
     )
-    vendor_id: Mapped[int] = mapped_column(
-        ForeignKey("vendors.id", ondelete="RESTRICT"), index=True
-    )
-
-    it_program: Mapped[str | None] = mapped_column(String(255), nullable=True)
-    it_product: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
     # RESTRICT, а не SET NULL - иначе обнуление порвёт составной ключ и CHECK
     workflow_id: Mapped[int | None] = mapped_column(
@@ -144,7 +137,6 @@ class Interaction(Base, IdMixin, TimestampMixin):
 
     # Relationships
     university: Mapped[University] = relationship(back_populates="interactions")
-    vendor: Mapped[Vendor] = relationship(back_populates="interactions")
     workflow: Mapped[Workflow | None] = relationship()
     # viewonly, иначе эта связь и workflow спорят за право писать workflow_id
     state: Mapped[Stage | None] = relationship(viewonly=True)
@@ -200,7 +192,7 @@ class InteractionStageHistory(Base):
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     # ход ветки продукта; NULL - ход самого взаимодействия
     branch_id: Mapped[int | None] = mapped_column(
-        ForeignKey("interaction_branches.id", ondelete="CASCADE"),
+        ForeignKey("branches.id", ondelete="CASCADE"),
         nullable=True,
         index=True,
     )
@@ -326,7 +318,7 @@ class InteractionRequest(Base):
     )
     # аппрув шага ветки продукта
     branch_id: Mapped[int | None] = mapped_column(
-        ForeignKey("interaction_branches.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("branches.id", ondelete="CASCADE"), nullable=True
     )
     reason: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(
@@ -396,7 +388,7 @@ class InteractionDocument(Base):
         String(20), default="ACTIVE", server_default="ACTIVE"
     )
     branch_id: Mapped[int | None] = mapped_column(
-        ForeignKey("interaction_branches.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("branches.id", ondelete="CASCADE"), nullable=True
     )
     created_at: Mapped[created_at_dt]
 
@@ -429,7 +421,7 @@ class InteractionStageValues(Base):
     )
     stage_id: Mapped[int] = mapped_column(ForeignKey("stages.id", ondelete="RESTRICT"))
     branch_id: Mapped[int | None] = mapped_column(
-        ForeignKey("interaction_branches.id", ondelete="CASCADE"), nullable=True
+        ForeignKey("branches.id", ondelete="CASCADE"), nullable=True
     )
     values: Mapped[dict[str, Any]] = mapped_column(
         JSONB, default=dict, server_default=text("'{}'::jsonb")
@@ -447,24 +439,53 @@ class InteractionStageValues(Base):
     )
 
 
-class ContractProductStatus(StrEnum):
+class ContractStatus(StrEnum):
+    """ветка в составе договора до подписания"""
+
     PROPOSED = "PROPOSED"
     APPROVED = "APPROVED"
     REJECTED = "REJECTED"
 
 
-class InteractionProduct(Base):
-    """продукт в составе договора. До подписания - черновик, менеджер
-    добавляет и убирает; после - состав зафиксирован"""
+class BranchOrigin(StrEnum):
+    CONTRACT = "CONTRACT"
+    SUPPLEMENTARY_AGREEMENT = "SUPPLEMENTARY_AGREEMENT"
 
-    __tablename__ = "interaction_products"
+
+class TransferStatus(StrEnum):
+    NOT_TRANSFERRED = "NOT_TRANSFERRED"
+    TRANSFERRED = "TRANSFERRED"
+
+
+class Branch(Base):
+    """ветка = ИТ-программа и не больше одного её продукта (М 3.12).
+
+    до подписания - черновик состава (стадии нет), при подписании одобренные
+    встают на начало шагов веток, и шаги 5-8 идут по каждой отдельно.
+    Своих блокировок нет - всё под блокировкой взаимодействия
+    """
+
+    __tablename__ = "branches"
     __table_args__ = (
-        UniqueConstraint(
-            "interaction_id", "product_id", name="uq_interaction_products"
+        Index(
+            "uq_branches_interaction_program_product",
+            "interaction_id",
+            "program_id",
+            "product_id",
+            unique=True,
+            postgresql_nulls_not_distinct=True,
         ),
         CheckConstraint(
-            "status IN ('PROPOSED', 'APPROVED', 'REJECTED')",
-            name="chk_interaction_product_status",
+            "contract_status IN ('PROPOSED', 'APPROVED', 'REJECTED')",
+            name="chk_branch_contract_status",
+        ),
+        CheckConstraint(
+            "state_id IS NULL OR contract_status = 'APPROVED'",
+            name="chk_branch_on_stage_is_approved",
+        ),
+        CheckConstraint(
+            "transfer_status IN ('NOT_TRANSFERRED', 'TRANSFERRED')",
+            name="chk_branch_transfer_status",
         ),
     )
 
@@ -472,36 +493,42 @@ class InteractionProduct(Base):
     interaction_id: Mapped[int] = mapped_column(
         ForeignKey("interactions.id", ondelete="CASCADE"), index=True
     )
-    product_id: Mapped[int] = mapped_column(
-        ForeignKey("products.id", ondelete="RESTRICT"), index=True
+    # пусто только у импорта (М 3.12)
+    program_id: Mapped[int | None] = mapped_column(
+        ForeignKey("it_programs.id", ondelete="RESTRICT"), nullable=True, index=True
     )
-    status: Mapped[str] = mapped_column(
-        String(20), default="PROPOSED", server_default="PROPOSED"
+    product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("products.id", ondelete="RESTRICT"), nullable=True, index=True
     )
+    contract_status: Mapped[str] = mapped_column(
+        String(20),
+        default=ContractStatus.PROPOSED,
+        server_default=ContractStatus.PROPOSED,
+    )
+    origin: Mapped[str] = mapped_column(
+        String(30), default=BranchOrigin.CONTRACT, server_default=BranchOrigin.CONTRACT
+    )
+    state_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stages.id", ondelete="RESTRICT"), nullable=True, index=True
+    )
+    # подписание договора или одобрение допсоглашения - от него считается жизнь ветки
+    opened_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # лицензия: until = подписание + срок, продление меняет только until
+    license_signed_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    license_term_years: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    license_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    transfer_status: Mapped[str] = mapped_column(
+        String(20),
+        default=TransferStatus.NOT_TRANSFERRED,
+        server_default=TransferStatus.NOT_TRANSFERRED,
+    )
+    teachers_trained: Mapped[int | None] = mapped_column(Integer, nullable=True)
     added_by: Mapped[str | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[created_at_dt]
-
-
-class InteractionBranch(Base):
-    """ветка продукта после подписания: шаги 5-8 идут по каждому продукту
-    отдельно. Своих блокировок нет - всё под блокировкой взаимодействия"""
-
-    __tablename__ = "interaction_branches"
-
-    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
-    interaction_id: Mapped[int] = mapped_column(
-        ForeignKey("interactions.id", ondelete="CASCADE"), index=True
-    )
-    # одна ветка на продукт; допсоглашение с продлением - позже
-    interaction_product_id: Mapped[int] = mapped_column(
-        ForeignKey("interaction_products.id", ondelete="RESTRICT"), unique=True
-    )
-    state_id: Mapped[int] = mapped_column(
-        ForeignKey("stages.id", ondelete="RESTRICT"), index=True
-    )
-    created_at: Mapped[created_at_dt]
-    closed_at: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True
-    )

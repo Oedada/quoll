@@ -17,7 +17,7 @@ from quoll.core.exceptions import (
 )
 from quoll.interactions.access_policy import can_change, can_close
 from quoll.interactions.models import (
-    InteractionBranch,
+    Branch,
     InteractionStageHistory,
     StageChangeKind,
 )
@@ -35,10 +35,12 @@ from quoll.workflows.models import Stage, WorkflowTransition
 
 async def open_branch(
     session: AsyncSession, scope: InteractionScope, branch_id: int
-) -> InteractionBranch:
-    branch = await session.get(InteractionBranch, branch_id, populate_existing=True)
+) -> Branch:
+    branch = await session.get(Branch, branch_id, populate_existing=True)
     if branch is None or branch.interaction_id != scope.interaction.id:
         raise DomainRuleException(404, "Branch is not in this interaction")
+    if branch.state_id is None:
+        raise DomainRuleException(409, "Branch is a draft until the contract is signed")
     if branch.closed_at is not None:
         raise DomainRuleException(409, "Branch is closed")
     return branch
@@ -53,7 +55,7 @@ async def move(
     to_stage_id: int,
     expected_state_id: int,
     comment: str | None,
-) -> InteractionBranch:
+) -> Branch:
     await share_stage(session, to_stage_id)
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_change(scope.actor, scope.ownership):
@@ -69,12 +71,12 @@ async def move(
 async def move_locked(
     session: AsyncSession,
     scope: InteractionScope,
-    branch: InteractionBranch,
+    branch: Branch,
     *,
     to_stage_id: int,
     comment: str | None,
     approved: bool,
-) -> InteractionBranch:
+) -> Branch:
     """ход ветки по ребру; его зовёт и одобрение аппрува"""
     interaction = scope.interaction
     if to_stage_id == branch.state_id:
@@ -115,12 +117,12 @@ async def move_locked(
 async def return_locked(
     session: AsyncSession,
     scope: InteractionScope,
-    branch: InteractionBranch,
+    branch: Branch,
     *,
     to_stage_id: int,
     kind: StageChangeKind,
     comment: str,
-) -> InteractionBranch:
+) -> Branch:
     """без ребра: отказ в аппруве шага ветки, откат руководителем"""
     current = await session.get(Stage, branch.state_id)
     target = await lock_target_stage(session, to_stage_id)
@@ -151,7 +153,7 @@ async def rollback(
     to_stage_id: int,
     expected_state_id: int,
     comment: str,
-) -> InteractionBranch:
+) -> Branch:
     """руководитель возвращает ветку на несколько шагов - только назад и
     только туда, где она уже была"""
     await share_stage(session, to_stage_id)
@@ -196,14 +198,14 @@ async def rollback(
 async def _place(
     session: AsyncSession,
     scope: InteractionScope,
-    branch: InteractionBranch,
+    branch: Branch,
     current: Stage,
     target: Stage,
     *,
     kind: StageChangeKind,
     transition_id: int | None,
     comment: str | None,
-) -> InteractionBranch:
+) -> Branch:
     branch.state_id = target.id
     if target.is_terminal:
         branch.closed_at = func.now()

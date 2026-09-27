@@ -23,8 +23,8 @@ from quoll.core.locking import lock_row
 from quoll.interactions import branch_service
 from quoll.interactions.access_policy import can_close
 from quoll.interactions.models import (
+    Branch,
     Interaction,
-    InteractionBranch,
     InteractionRequest,
     RequestKind,
     RequestStatus,
@@ -241,7 +241,7 @@ async def _stale_reason(
     if request.kind == RequestKind.TRANSITION:
         edge = await session.get(WorkflowTransition, request.transition_id)
         if request.branch_id is not None:
-            branch = await session.get(InteractionBranch, request.branch_id)
+            branch = await session.get(Branch, request.branch_id)
             if branch.closed_at is not None:
                 return "branch closed"
             if branch.state_id != edge.from_stage_id:
@@ -403,7 +403,7 @@ async def _send_back(
         return
     await session.flush()
     if request.branch_id is not None:
-        branch = await session.get(InteractionBranch, request.branch_id)
+        branch = await session.get(Branch, request.branch_id)
         if branch.closed_at is None and branch.state_id == edge.from_stage_id:
             await branch_service.return_locked(
                 session,

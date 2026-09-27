@@ -54,9 +54,14 @@ async def create_interaction(
         workflow = await WorkflowRepository(session).get(schema.workflow_id)
         if not workflow.is_published:
             raise WorkflowNotPublishedException(workflow.id)
-    return await InteractionRepository(session).create(
-        schema.model_dump() | {"created_by": author_id}
+    interaction = await InteractionRepository(session).create(
+        schema.model_dump(exclude={"branches"}) | {"created_by": author_id}
     )
+    for branch in schema.branches:
+        await contract_service.draft_branch(
+            session, interaction.id, branch.program_id, branch.product_id, author_id
+        )
+    return interaction
 
 
 async def assign(

@@ -15,12 +15,14 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.models import Manager, User
+from quoll.catalog.models import ItProgram, Product
 from quoll.core.exceptions import AppException, WorkflowNotPublishedException
 from quoll.core.locking import lock_rows
 from quoll.interactions import project_service
-from quoll.interactions.models import Interaction
-from quoll.interactions.repository import UniversityRepository, VendorRepository
+from quoll.interactions.models import Branch, Interaction, Vendor
+from quoll.interactions.repository import UniversityRepository
 from quoll.interactions.schemas import (
+    BranchWrite,
     InteractionCreate,
     InteractionImport,
     InteractionImportAction,
@@ -106,17 +108,29 @@ async def _import_one(
     university = await UniversityRepository(session).get_by_name(data.university_name)
     if university is None:
         raise RowError("university_name", "university not found")
-    vendor = await VendorRepository(session).get_by_name(data.vendor_name)
-    if vendor is None:
-        raise RowError("vendor_name", "vendor not found")
+    program = await session.scalar(
+        select(ItProgram).where(ItProgram.name == data.it_program)
+    )
+    if program is None:
+        raise RowError("it_program", "program not found")
+    product_id = None
+    if data.it_product:
+        product_id = await session.scalar(
+            select(Product.id)
+            .join(Vendor, Vendor.id == Product.vendor_id)
+            .where(Product.name == data.it_product, Vendor.name == data.vendor_name)
+        )
+        if product_id is None:
+            raise RowError("it_product", "product of this vendor not found")
     manager_id = await _find_manager(session, data.manager_full_name)
 
     existing = await session.scalar(
-        select(Interaction.id).where(
+        select(Interaction.id)
+        .join(Branch, Branch.interaction_id == Interaction.id)
+        .where(
             Interaction.university_id == university.id,
-            Interaction.vendor_id == vendor.id,
-            Interaction.it_program == data.it_program,
-            Interaction.it_product == data.it_product,
+            Branch.program_id == program.id,
+            Branch.product_id.is_not_distinct_from(product_id),
         )
     )
     if existing is not None:
@@ -128,9 +142,7 @@ async def _import_one(
         session,
         InteractionCreate(
             university_id=university.id,
-            vendor_id=vendor.id,
-            it_program=data.it_program,
-            it_product=data.it_product,
+            branches=[BranchWrite(program_id=program.id, product_id=product_id)],
             workflow_id=workflow_id,
         ),
         author_id=actor_id,

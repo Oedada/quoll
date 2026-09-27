@@ -1,24 +1,23 @@
-"""Договор: состав продуктов и ветки по ним после подписания.
+"""Договор: состав веток и их открытие при подписании.
 
-один вуз - один договор, продукты внутри него. До точки невозврата
-(подписания) состав - черновик; при подписании каждый одобренный продукт
-получает свою ветку, и шаги 5-8 идут по продуктам независимо. Ветки своих
+ветка - ИТ-программа и не больше одного её продукта. До точки невозврата
+(подписания) ветки - черновик состава без стадии; при подписании одобренные
+встают на начало шагов веток, и шаги 5-8 идут по ним независимо. Ветки своих
 блокировок не имеют: всё - под блокировкой взаимодействия
 """
 
-from sqlalchemy import exists, func, select
+from sqlalchemy import and_, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
-from quoll.catalog.models import Product
+from quoll.catalog.models import ItProgram
 from quoll.core.exceptions import DomainRuleException, OperationForbiddenException
 from quoll.interactions.access_policy import can_change
 from quoll.interactions.models import (
-    ContractProductStatus,
+    Branch,
+    ContractStatus,
     Interaction,
-    InteractionBranch,
-    InteractionProduct,
     InteractionStageHistory,
     StageChangeKind,
 )
@@ -45,72 +44,123 @@ async def _draft_scope(
 ) -> InteractionScope:
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_change(scope.actor, scope.ownership):
-        raise OperationForbiddenException("change products of this interaction")
+        raise OperationForbiddenException("change branches of this interaction")
     if await is_signed(session, interaction_id):
         raise DomainRuleException(
-            409, "Contract is signed, products change by a supplementary agreement"
+            409, "Contract is signed, branches change by a supplementary agreement"
         )
     return scope
 
 
-async def add_product(
-    session: AsyncSession, *, interaction_id: int, product_id: int, actor_id: str
-) -> InteractionProduct:
-    await _draft_scope(session, interaction_id, actor_id)
-    product = await session.get(Product, product_id)
-    if product is None or not product.is_active:
-        raise DomainRuleException(400, f"Product '{product_id}' is not in the catalog")
-    item = InteractionProduct(
-        interaction_id=interaction_id, product_id=product_id, added_by=actor_id
+async def check_pair(
+    session: AsyncSession, program_id: int, product_id: int | None
+) -> None:
+    """программа из каталога, продукт - один из её продуктов"""
+    program = await session.get(ItProgram, program_id)
+    if program is None or not program.is_active:
+        raise DomainRuleException(400, f"Program '{program_id}' is not in the catalog")
+    if product_id is not None and product_id not in {
+        p.id for p in program.products if p.is_active
+    }:
+        raise DomainRuleException(
+            400, f"Product '{product_id}' is not a product of program '{program_id}'"
+        )
+
+
+async def draft_branch(
+    session: AsyncSession,
+    interaction_id: int,
+    program_id: int,
+    product_id: int | None,
+    actor_id: str,
+) -> Branch:
+    """ветка-черновик состава; вызывающий уже держит заявку"""
+    await check_pair(session, program_id, product_id)
+    taken = await session.scalar(
+        select(
+            exists().where(
+                Branch.interaction_id == interaction_id,
+                Branch.program_id == program_id,
+                Branch.product_id.is_not_distinct_from(product_id),
+            )
+        )
     )
-    session.add(item)
+    if taken:
+        raise DomainRuleException(409, "This program and product are already here")
+    branch = Branch(
+        interaction_id=interaction_id,
+        program_id=program_id,
+        product_id=product_id,
+        added_by=actor_id,
+    )
+    session.add(branch)
     await session.flush()
-    _journal(session, actor_id, interaction_id, {"added": product_id})
-    await session.refresh(item)
-    return item
+    _journal(
+        session,
+        actor_id,
+        interaction_id,
+        {"added": {"program_id": program_id, "product_id": product_id}},
+    )
+    await session.refresh(branch)
+    return branch
+
+
+async def add_branch(
+    session: AsyncSession,
+    *,
+    interaction_id: int,
+    program_id: int,
+    product_id: int | None,
+    actor_id: str,
+) -> Branch:
+    await _draft_scope(session, interaction_id, actor_id)
+    return await draft_branch(session, interaction_id, program_id, product_id, actor_id)
 
 
 async def set_status(
     session: AsyncSession,
     *,
     interaction_id: int,
-    item_id: int,
-    status: ContractProductStatus,
+    branch_id: int,
+    status: ContractStatus,
     actor_id: str,
-) -> InteractionProduct:
+) -> Branch:
     await _draft_scope(session, interaction_id, actor_id)
-    item = await _item(session, interaction_id, item_id)
-    old = item.status
-    item.status = status
+    branch = await _draft(session, interaction_id, branch_id)
+    old = branch.contract_status
+    branch.contract_status = status
     await session.flush()
     _journal(
         session,
         actor_id,
         interaction_id,
-        {"product_id": item.product_id, "status": status},
-        {"status": old},
+        {"branch_id": branch.id, "contract_status": status},
+        {"contract_status": old},
     )
-    await session.refresh(item)
-    return item
+    await session.refresh(branch)
+    return branch
 
 
-async def remove_product(
-    session: AsyncSession, *, interaction_id: int, item_id: int, actor_id: str
+async def remove_branch(
+    session: AsyncSession, *, interaction_id: int, branch_id: int, actor_id: str
 ) -> None:
     await _draft_scope(session, interaction_id, actor_id)
-    item = await _item(session, interaction_id, item_id)
-    await session.delete(item)
+    branch = await _draft(session, interaction_id, branch_id)
+    await session.delete(branch)
     await session.flush()
-    _journal(session, actor_id, interaction_id, {"removed": item.product_id})
+    _journal(
+        session,
+        actor_id,
+        interaction_id,
+        {"removed": {"program_id": branch.program_id, "product_id": branch.product_id}},
+    )
 
 
-async def _item(
-    session: AsyncSession, interaction_id: int, item_id: int
-) -> InteractionProduct:
-    item = await session.get(InteractionProduct, item_id)
-    if item is None or item.interaction_id != interaction_id:
-        raise DomainRuleException(404, "Product is not in this contract")
-    return item
+async def _draft(session: AsyncSession, interaction_id: int, branch_id: int) -> Branch:
+    branch = await session.get(Branch, branch_id)
+    if branch is None or branch.interaction_id != interaction_id:
+        raise DomainRuleException(404, "Branch is not in this interaction")
+    return branch
 
 
 def _journal(session, actor_id, interaction_id, new, old=None) -> None:
@@ -128,8 +178,8 @@ def _journal(session, actor_id, interaction_id, new, old=None) -> None:
 async def open_branches(
     session: AsyncSession, interaction: Interaction, actor_id: str
 ) -> None:
-    """подписание: по ветке на каждый одобренный продукт, в начальной
-    стадии веток. Воркфлоу без веток - ничего не делаем"""
+    """подписание: одобренные ветки состава встают на начало шагов веток.
+    Воркфлоу без веток - ничего не делаем"""
     start = await session.scalar(
         select(Stage).where(
             Stage.workflow_id == interaction.workflow_id,
@@ -141,27 +191,28 @@ async def open_branches(
         return
     # ветки открываются один раз - повторный проход точки невозврата их не множит
     if await session.scalar(
-        select(exists().where(InteractionBranch.interaction_id == interaction.id))
+        select(
+            exists().where(
+                Branch.interaction_id == interaction.id, Branch.state_id.is_not(None)
+            )
+        )
     ):
         return
     approved = list(
         await session.scalars(
-            select(InteractionProduct).where(
-                InteractionProduct.interaction_id == interaction.id,
-                InteractionProduct.status == ContractProductStatus.APPROVED,
+            select(Branch)
+            .where(
+                Branch.interaction_id == interaction.id,
+                Branch.contract_status == ContractStatus.APPROVED,
             )
+            .order_by(Branch.id)
         )
     )
     if not approved:
-        raise DomainRuleException(409, "Approve at least one product before signing")
-    for item in approved:
-        branch = InteractionBranch(
-            interaction_id=interaction.id,
-            interaction_product_id=item.id,
-            state_id=start.id,
-        )
-        session.add(branch)
-        await session.flush()
+        raise DomainRuleException(409, "Approve at least one branch before signing")
+    for branch in approved:
+        branch.state_id = start.id
+        branch.opened_at = func.now()
         session.add(
             InteractionStageHistory(
                 interaction_id=interaction.id,
@@ -179,16 +230,20 @@ async def open_branches(
         event_type=AuditEventType.BRANCHES_OPENED,
         target_type=TargetType.INTERACTION,
         target_id=interaction.id,
-        new_value={"products": [i.product_id for i in approved]},
+        new_value={"branches": [b.id for b in approved]},
     )
+
+
+def is_open_branch():
+    """ветка идёт по шагам: стоит на стадии и не закрыта. Без стадии - черновик"""
+    return and_(Branch.state_id.is_not(None), Branch.closed_at.is_(None))
 
 
 async def open_branch_count(session: AsyncSession, interaction_id: int) -> int:
     return (
         await session.scalar(
             select(func.count()).where(
-                InteractionBranch.interaction_id == interaction_id,
-                InteractionBranch.closed_at.is_(None),
+                Branch.interaction_id == interaction_id, is_open_branch()
             )
         )
         or 0
@@ -219,17 +274,18 @@ async def reopen_branches(
 
 async def _branches(
     session: AsyncSession, interaction_id: int, *, closed: bool
-) -> list[InteractionBranch]:
+) -> list[Branch]:
+    # черновики состава не закрываются и не переоткрываются
     condition = (
-        InteractionBranch.closed_at.is_not(None)
+        and_(Branch.state_id.is_not(None), Branch.closed_at.is_not(None))
         if closed
-        else InteractionBranch.closed_at.is_(None)
+        else is_open_branch()
     )
     return list(
         await session.scalars(
-            select(InteractionBranch)
-            .where(InteractionBranch.interaction_id == interaction_id, condition)
-            .order_by(InteractionBranch.id)
+            select(Branch)
+            .where(Branch.interaction_id == interaction_id, condition)
+            .order_by(Branch.id)
         )
     )
 
@@ -248,25 +304,11 @@ def _history(session, branch, kind, actor_id, comment) -> None:
     )
 
 
-async def products(
-    session: AsyncSession, interaction_id: int
-) -> list[InteractionProduct]:
+async def branches(session: AsyncSession, interaction_id: int) -> list[Branch]:
     return list(
         await session.scalars(
-            select(InteractionProduct)
-            .where(InteractionProduct.interaction_id == interaction_id)
-            .order_by(InteractionProduct.id)
-        )
-    )
-
-
-async def branches(
-    session: AsyncSession, interaction_id: int
-) -> list[InteractionBranch]:
-    return list(
-        await session.scalars(
-            select(InteractionBranch)
-            .where(InteractionBranch.interaction_id == interaction_id)
-            .order_by(InteractionBranch.id)
+            select(Branch)
+            .where(Branch.interaction_id == interaction_id)
+            .order_by(Branch.id)
         )
     )

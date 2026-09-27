@@ -27,8 +27,8 @@ from quoll.core.exceptions import (
 )
 from quoll.interactions.access_policy import can_change, can_close, can_read
 from quoll.interactions.models import (
+    Branch,
     DocumentStatus,
-    InteractionBranch,
     InteractionDocument,
 )
 from quoll.interactions.notify import notify
@@ -84,9 +84,13 @@ async def upload(
                 )
         current = scope.interaction.state_id
         if branch_id is not None:
-            branch = await session.get(InteractionBranch, branch_id)
+            branch = await session.get(Branch, branch_id)
             if branch is None or branch.interaction_id != interaction_id:
                 raise DomainRuleException(404, "Branch is not in this interaction")
+            if branch.state_id is None:
+                raise DomainRuleException(
+                    409, "Branch is a draft until the contract is signed"
+                )
             current = branch.state_id
         # правка файла пройденного шага - с аппрувом руководителя (AS IS)
         pending = actor.role == UserRole.MANAGER and stage_id != current
