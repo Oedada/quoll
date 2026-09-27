@@ -26,6 +26,7 @@ class InteractionCreate(AppBaseModel):
     university_id: int
     # шаг 0: ИТ-программы с продуктами - ветки-черновики состава
     branches: list[BranchWrite] = Field(min_length=1)
+    planned_date: date | None = None
     # только опубликованный - по черновику графа заявке ехать нельзя
     workflow_id: int | None = None
 
@@ -36,6 +37,7 @@ class InteractionUpdate(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     university_id: int | None = None
+    planned_date: date | None = None
 
 
 class AssignRequest(AppBaseModel):
@@ -70,7 +72,7 @@ class RollbackRequest(AppBaseModel):
     comment: str = Field(min_length=1)
 
 
-class DeclineRequest(AppBaseModel):
+class CommentRequest(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     comment: str = Field(min_length=1)
@@ -121,6 +123,9 @@ class InteractionRead(AppBaseModel):
     pause_state: str
     paused_until: datetime | None
     pause_comment: str | None
+    planned_date: date | None
+    signed_at: datetime | None
+    closed_at: datetime | None
     created_at: datetime
     updated_at: datetime
 

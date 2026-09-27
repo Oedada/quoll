@@ -22,21 +22,7 @@ from quoll.interactions.models import (
     StageChangeKind,
 )
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
-from quoll.workflows.models import Stage, WorkflowTransition
-
-
-async def is_signed(session: AsyncSession, interaction_id: int) -> bool:
-    """прошла ли точка невозврата - после неё состав не меняется"""
-    return bool(
-        await session.scalar(
-            select(
-                exists()
-                .where(InteractionStageHistory.interaction_id == interaction_id)
-                .where(InteractionStageHistory.transition_id == WorkflowTransition.id)
-                .where(WorkflowTransition.is_irreversible.is_(True))
-            )
-        )
-    )
+from quoll.workflows.models import Stage
 
 
 async def _draft_scope(
@@ -45,7 +31,7 @@ async def _draft_scope(
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_change(scope.actor, scope.ownership):
         raise OperationForbiddenException("change branches of this interaction")
-    if await is_signed(session, interaction_id):
+    if scope.interaction.signed_at is not None:
         raise DomainRuleException(
             409, "Contract is signed, branches change by a supplementary agreement"
         )
@@ -179,7 +165,9 @@ async def open_branches(
     session: AsyncSession, interaction: Interaction, actor_id: str
 ) -> None:
     """подписание: одобренные ветки состава встают на начало шагов веток.
-    Воркфлоу без веток - ничего не делаем"""
+    Воркфлоу без веток - только отметка о подписании"""
+    if interaction.signed_at is None:
+        interaction.signed_at = func.now()
     start = await session.scalar(
         select(Stage).where(
             Stage.workflow_id == interaction.workflow_id,

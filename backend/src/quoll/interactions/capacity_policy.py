@@ -3,7 +3,7 @@
 import logging
 from enum import StrEnum
 
-from sqlalchemy import ColumnElement, Select, and_, case, func, or_, select
+from sqlalchemy import ColumnElement, Select, and_, case, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.models import (
@@ -47,20 +47,20 @@ def is_open_project(stage: Stage | None) -> bool:
 
 def capacity_filter_expression() -> ColumnElement[bool]:
     return and_(
-        Stage.is_terminal.is_(False),
+        Interaction.closed_at.is_(None),
         Stage.consumes_capacity.is_(True),
         Interaction.is_paused.is_(False),
     )
 
 
 def open_projects_filter_expression() -> ColumnElement[bool]:
-    return Stage.is_terminal.is_(False)
+    return and_(Interaction.state_id.is_not(None), Interaction.closed_at.is_(None))
 
 
 def blocking_filter_expression() -> ColumnElement[bool]:
-    """что мешает отпустить менеджера: незакрытые и черновики с ним.
-    Стадия присоединяется внешним соединением - у черновика её нет"""
-    return or_(Interaction.state_id.is_(None), Stage.is_terminal.is_(False))
+    """что мешает отпустить менеджера: незакрытые и черновики с ним,
+    отменённые черновики - нет"""
+    return Interaction.closed_at.is_(None)
 
 
 def manager_load_subquery():

@@ -94,6 +94,13 @@ class Interaction(Base, IdMixin, TimestampMixin):
             "(pause_state = 'EXPIRED_WAITING_CAPACITY' AND is_paused = TRUE AND paused_until IS NULL)",
             name="chk_interaction_pause_state",
         ),
+        # у вуза не больше одной незакрытой заявки (М 4)
+        Index(
+            "uq_interactions_open_per_university",
+            "university_id",
+            unique=True,
+            postgresql_where=text("closed_at IS NULL"),
+        ),
     )
 
     university_id: Mapped[int] = mapped_column(
@@ -134,6 +141,16 @@ class Interaction(Base, IdMixin, TimestampMixin):
     )
     # причина текущей паузы, история пауз - в журнале
     pause_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # единственный признак закрытой: терминальная стадия или отменённый черновик
+    closed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True, index=True
+    )
+    # проход точки невозврата или импорт подписанного договора
+    signed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    planned_date: Mapped[date | None] = mapped_column(Date, nullable=True)
 
     # Relationships
     university: Mapped[University] = relationship(back_populates="interactions")

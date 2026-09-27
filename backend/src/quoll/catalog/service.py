@@ -195,20 +195,16 @@ async def check_contact_owner(
     from quoll.auth.models import UserRole
     from quoll.core.exceptions import OperationForbiddenException
     from quoll.interactions.models import Interaction
-    from quoll.workflows.models import Stage
 
     if user.role == UserRole.ADMIN:
         return
     if user.role == UserRole.MANAGER and university_id is not None:
         own = await session.scalar(
-            select(Interaction.id)
-            .outerjoin(Stage, Stage.id == Interaction.state_id)
-            .where(
+            select(Interaction.id).where(
                 Interaction.university_id == university_id,
                 Interaction.owner_id == user.id,
-                Stage.is_terminal.is_not(True),
+                Interaction.closed_at.is_(None),
             )
-            .limit(1)
         )
         if own is not None:
             return

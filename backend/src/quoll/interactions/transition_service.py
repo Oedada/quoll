@@ -398,6 +398,7 @@ def place(
     """поставить заявку на стадию и записать это в историю - общее у перехода,
     закрытия и переоткрытия"""
     interaction.state_id = target.id
+    interaction.closed_at = func.now() if target.is_terminal else None
     if target.is_terminal and interaction.is_paused:
         # закрытая заявка на паузе - бессмыслица
         interaction.is_paused = False

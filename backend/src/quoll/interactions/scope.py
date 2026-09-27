@@ -14,6 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quoll.auth.identity_policy import identity_denial, is_incapacitated
 from quoll.auth.models import Manager, User
 from quoll.core.exceptions import (
+    DomainRuleException,
     IdentityDeniedException,
     IdNotExistsException,
     InteractionChangedConcurrentlyException,
@@ -52,6 +53,7 @@ class InteractionScope:
             author_id=self.interaction.created_by,
             author_gone=author_gone(self.author),
             on_stage=self.interaction.state_id is not None,
+            closed=self.interaction.closed_at is not None,
         )
 
 
@@ -77,8 +79,14 @@ async def lock_interaction_scope(
     interaction_id: int,
     actor_id: str,
     target_manager_ids: Iterable[str] = (),
+    *,
+    allow_closed: bool = False,
 ) -> InteractionScope:
-    """Manager -> User -> Interaction, как велит общий порядок блокировок"""
+    """Manager -> User -> Interaction, как велит общий порядок блокировок.
+
+    закрытую заявку меняет только переоткрытие (allow_closed) - всем
+    остальным 409
+    """
     targets = list(target_manager_ids)
     for _ in range(MAX_ATTEMPTS):
         seen_owner, author_id = await _read_owner(session, interaction_id)
@@ -98,6 +106,8 @@ async def lock_interaction_scope(
             denial = identity_denial(actor)
             if denial is not None:
                 raise IdentityDeniedException(*denial)
+            if interaction.closed_at is not None and not allow_closed:
+                raise DomainRuleException(409, "Interaction is closed")
             return InteractionScope(
                 interaction=interaction,
                 actor=actor,

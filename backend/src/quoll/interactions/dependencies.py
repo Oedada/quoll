@@ -9,7 +9,6 @@ from quoll.db import SessionDep
 from quoll.interactions.access_policy import (
     Ownership,
     can_change,
-    can_delete,
     can_read,
 )
 from quoll.interactions.models import Interaction
@@ -68,4 +67,3 @@ ReadableInteraction = Annotated[
     Interaction, Depends(_guarded(can_read, "view", details=True))
 ]
 ChangeableInteraction = Annotated[Interaction, Depends(_guarded(can_change, "change"))]
-DeletableInteraction = Annotated[Interaction, Depends(_guarded(can_delete, "delete"))]

@@ -205,8 +205,9 @@ async def _lock_for_decision(
             {found.target_stage_id, edge.reject_to_stage_id} - {None}
         ):
             await share_stage(session, stage_id)
+    # по закрытой решение не падает, а гасит просьбу как устаревшую
     scope = await lock_interaction_scope(
-        session, found.interaction_id, actor_id, target_manager_ids
+        session, found.interaction_id, actor_id, target_manager_ids, allow_closed=True
     )
     request = await lock_row(session, InteractionRequest, request_id)
     if request.status != RequestStatus.PENDING:
@@ -235,8 +236,7 @@ async def _stale_reason(
     interaction = scope.interaction
     if interaction.owner_id != request.from_owner_id:
         return "interaction owner changed"
-    stage = await session.get(Stage, interaction.state_id)
-    if stage is None or stage.is_terminal:
+    if interaction.closed_at is not None:
         return "interaction closed"
     if request.kind == RequestKind.TRANSITION:
         edge = await session.get(WorkflowTransition, request.transition_id)

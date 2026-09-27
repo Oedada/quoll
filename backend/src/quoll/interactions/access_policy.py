@@ -33,6 +33,8 @@ class Ownership:
     # стоит ли на стадии: без владельца на стадии бывает только закрытая -
     # смена роли снимает владельца с закрытых заявок
     on_stage: bool = False
+    # закрыта: терминальная стадия или отменённый черновик
+    closed: bool = False
 
 
 def author_gone(author: User | None) -> bool:
@@ -48,12 +50,13 @@ def _unassigned_for(user: User, ownership: Ownership) -> bool:
     return (
         ownership.owner_id is None
         and not ownership.on_stage
+        and not ownership.closed
         and (ownership.author_gone or ownership.author_id == user.id)
     )
 
 
 def _closed_ownerless(ownership: Ownership) -> bool:
-    return ownership.owner_id is None and ownership.on_stage
+    return ownership.owner_id is None and ownership.closed
 
 
 def can_read(user: User, ownership: Ownership) -> bool:
@@ -80,8 +83,8 @@ def can_change(user: User, ownership: Ownership) -> bool:
     return False
 
 
-def can_delete(user: User, ownership: Ownership) -> bool:
-    # проект удаляет руководитель, менеджеру нельзя даже свой
+def can_cancel(user: User, ownership: Ownership) -> bool:
+    # черновик отменяет руководитель, менеджеру нельзя даже свой
     return user.role == UserRole.SUPERVISER and can_change(user, ownership)
 
 
@@ -145,6 +148,7 @@ def readable_filter(user: User) -> ColumnElement[bool]:
         unassigned = and_(
             Interaction.owner_id.is_(None),
             Interaction.state_id.is_(None),
+            Interaction.closed_at.is_(None),
             or_(
                 Interaction.created_by == user.id,
                 Interaction.created_by.is_(None),
@@ -152,7 +156,7 @@ def readable_filter(user: User) -> ColumnElement[bool]:
             ),
         )
         closed_ownerless = and_(
-            Interaction.owner_id.is_(None), Interaction.state_id.is_not(None)
+            Interaction.owner_id.is_(None), Interaction.closed_at.is_not(None)
         )
         return or_(
             unassigned,

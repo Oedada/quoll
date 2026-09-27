@@ -40,7 +40,6 @@ from quoll.interactions import (
 from quoll.interactions.access_policy import readable_filter
 from quoll.interactions.dependencies import (
     ChangeableInteraction,
-    DeletableInteraction,
     InteractionId,
     InteractionRepoDep,
     ReadableInteraction,
@@ -53,8 +52,8 @@ from quoll.interactions.schemas import (
     BranchRead,
     BranchWrite,
     CloseRequest,
+    CommentRequest,
     ContractStatusWrite,
-    DeclineRequest,
     DocumentDecision,
     DocumentRead,
     InteractionCreate,
@@ -231,7 +230,7 @@ async def rollback_interaction(
     summary="Owner declines an interaction not accepted yet, it returns to the author",
 )
 async def decline_interaction(
-    id: InteractionId, body: DeclineRequest, user: CurrentUser, session: SessionDep
+    id: InteractionId, body: CommentRequest, user: CurrentUser, session: SessionDep
 ):
     return await project_service.decline(
         session, interaction_id=id, actor_id=user.id, comment=body.comment
@@ -632,18 +631,17 @@ async def list_branches(interaction: ReadableInteraction, session: SessionDep):
     return await contract_service.branches(session, interaction.id)
 
 
-@interactions_router.delete(
-    "/{id}",
-    status_code=status.HTTP_204_NO_CONTENT,
-    summary="Delete a draft that never entered a stage",
+@interactions_router.post(
+    "/{id}/cancel",
+    response_model=InteractionRead,
+    summary="Cancel a draft that never entered a stage - nothing is deleted",
 )
-async def delete_interaction(
-    interaction: DeletableInteraction, user: CurrentUser, session: SessionDep
+async def cancel_interaction(
+    id: InteractionId, body: CommentRequest, user: CurrentUser, session: SessionDep
 ):
-    await project_service.delete_draft(
-        session, interaction_id=interaction.id, actor_id=user.id
+    return await project_service.cancel_draft(
+        session, interaction_id=id, actor_id=user.id, comment=body.comment
     )
-    return Response(status_code=status.HTTP_204_NO_CONTENT)
 
 
 requests_router = APIRouter(

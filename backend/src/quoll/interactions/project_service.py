@@ -18,7 +18,7 @@ from quoll.core.exceptions import (
     WorkflowNotPublishedException,
 )
 from quoll.interactions import contract_service
-from quoll.interactions.access_policy import can_assign, can_delete, can_pause
+from quoll.interactions.access_policy import can_assign, can_cancel, can_pause
 from quoll.interactions.capacity_policy import (
     assert_can_keep_working,
     assert_can_take_new_work,
@@ -45,11 +45,25 @@ from quoll.workflows.models import Stage, WorkflowTransition
 from quoll.workflows.repository import WorkflowRepository
 
 
+async def _assert_university_free(session: AsyncSession, university_id: int) -> None:
+    """у вуза одна незакрытая заявка (М 4). Гонку ловит уникальный индекс"""
+    if await session.scalar(
+        select(Interaction.id).where(
+            Interaction.university_id == university_id,
+            Interaction.closed_at.is_(None),
+        )
+    ):
+        raise DomainRuleException(
+            409, "University already has an open interaction, add programs to it"
+        )
+
+
 async def create_interaction(
     session: AsyncSession, schema: InteractionCreate, author_id: str
 ) -> Interaction:
     """новая заявка рождается без владельца, черновиком автора - пока он
     её не назначит, другим руководителям она не видна"""
+    await _assert_university_free(session, schema.university_id)
     if schema.workflow_id is not None:
         workflow = await WorkflowRepository(session).get(schema.workflow_id)
         if not workflow.is_published:
@@ -343,6 +357,8 @@ async def update_fields(
 ) -> Interaction:
     """описательные поля: права проверил роутер, блокировка не нужна -
     на них не опирается ни одно правило"""
+    if interaction.closed_at is not None:
+        raise DomainRuleException(409, "Interaction is closed")
     fields = changes.model_dump(exclude_unset=True)
     old = {name: getattr(interaction, name) for name in fields}
     updated = await InteractionRepository(session).update(interaction.id, changes)
@@ -359,26 +375,30 @@ async def update_fields(
     return updated
 
 
-async def delete_draft(
-    session: AsyncSession, *, interaction_id: int, actor_id: str
-) -> None:
-    """удалить можно только черновик, ни разу не встававший на стадию - у него
-    нет истории. Остальное закрывают: каскад стёр бы историю и назначения.
+async def cancel_draft(
+    session: AsyncSession, *, interaction_id: int, actor_id: str, comment: str
+) -> Interaction:
+    """черновик не удаляется, а отменяется (Р3): закрыт без стадии.
     Проверки - под блокировкой: черновик могли успеть поставить на стадию"""
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
-    if not can_delete(scope.actor, scope.ownership):
-        raise OperationForbiddenException("delete this interaction")
-    if scope.interaction.state_id is not None:
-        raise DomainRuleException(409, "Only a draft can be deleted, close the rest")
+    interaction = scope.interaction
+    if not can_cancel(scope.actor, scope.ownership):
+        raise OperationForbiddenException("cancel this interaction")
+    if interaction.state_id is not None:
+        raise DomainRuleException(409, "Only a draft is cancelled, close the rest")
+    interaction.closed_at = func.now()
     record(
         session,
         actor_id=actor_id,
-        event_type=AuditEventType.INTERACTION_DELETED,
+        event_type=AuditEventType.INTERACTION_CANCELLED,
         target_type=TargetType.INTERACTION,
-        target_id=str(interaction_id),
-        old_value={"owner_id": scope.interaction.owner_id},
+        target_id=interaction.id,
+        old_value={"owner_id": interaction.owner_id},
+        new_value={"comment": comment},
     )
-    await InteractionRepository(session).delete(interaction_id)
+    await session.flush()
+    await session.refresh(interaction)
+    return interaction
 
 
 async def reopen(
@@ -396,7 +416,11 @@ async def reopen(
     но стадия должна быть достижима из начальной - иначе тупик"""
     await verify_target(manager_id, UserRole.MANAGER)
     scope = await lock_interaction_scope(
-        session, interaction_id, actor_id, target_manager_ids=[manager_id]
+        session,
+        interaction_id,
+        actor_id,
+        target_manager_ids=[manager_id],
+        allow_closed=True,
     )
     interaction = scope.interaction
     if interaction.owner_id != expected_owner_id:
@@ -409,8 +433,9 @@ async def reopen(
         raise OperationForbiddenException("reopen this interaction")
 
     current = await _stage_of(session, interaction)
-    if current is None or not current.is_terminal:
+    if current is None or interaction.closed_at is None:
         raise DomainRuleException(409, "Only a closed interaction is reopened")
+    await _assert_university_free(session, interaction.university_id)
     # флаги стадии неизменны (Р15) - проверяем до блокировки. Иначе запрос в
     # текущую закрытую стадию держал бы заявку на ней и ждал бы её саму, а
     # архивация этой стадии - наоборот
