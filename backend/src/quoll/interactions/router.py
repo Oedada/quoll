@@ -64,6 +64,7 @@ from quoll.interactions.schemas import (
     InteractionRead,
     InteractionUpdate,
     PauseRequest,
+    ReasonedRequest,
     ReopenRequest,
     RequestApprove,
     RequestCreate,
@@ -255,6 +256,7 @@ async def close_interaction(
         actor_id=user.id,
         to_stage_id=body.to_stage_id,
         expected_state_id=body.expected_state_id,
+        close_reason_id=body.close_reason_id,
         comment=body.comment,
     )
 
@@ -302,6 +304,7 @@ async def create_request(
         target_manager_id=body.target_manager_id,
         reason=body.reason,
         branch_id=body.branch_id,
+        close_reason_id=body.close_reason_id,
     )
 
 
@@ -640,6 +643,28 @@ async def rollback_branch(
     )
 
 
+@interactions_router.post(
+    "/{id}/branches/{branch_id}/close",
+    response_model=BranchRead,
+    summary="Owner's supervisor closes a branch early, it keeps its step",
+)
+async def close_branch(
+    id: InteractionId,
+    branch_id: int,
+    body: ReasonedRequest,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    return await branch_service.close(
+        session,
+        interaction_id=id,
+        branch_id=branch_id,
+        actor_id=user.id,
+        close_reason_id=body.close_reason_id,
+        comment=body.comment,
+    )
+
+
 @interactions_router.get(
     "/{id}/branches",
     response_model=list[BranchRead],
@@ -655,10 +680,14 @@ async def list_branches(interaction: ReadableInteraction, session: SessionDep):
     summary="Cancel a draft that never entered a stage - nothing is deleted",
 )
 async def cancel_interaction(
-    id: InteractionId, body: CommentRequest, user: CurrentUser, session: SessionDep
+    id: InteractionId, body: ReasonedRequest, user: CurrentUser, session: SessionDep
 ):
     return await project_service.cancel_draft(
-        session, interaction_id=id, actor_id=user.id, comment=body.comment
+        session,
+        interaction_id=id,
+        actor_id=user.id,
+        close_reason_id=body.close_reason_id,
+        comment=body.comment,
     )
 
 

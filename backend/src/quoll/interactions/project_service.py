@@ -10,6 +10,7 @@ from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.keycloak_admin import verify_target
 from quoll.auth.models import UserRole
+from quoll.catalog.models import CloseLevel
 from quoll.core import SystemDefaults
 from quoll.core.exceptions import (
     DomainRuleException,
@@ -24,9 +25,11 @@ from quoll.interactions.capacity_policy import (
     assert_can_take_new_work,
     counts_toward_capacity,
 )
+from quoll.interactions.close_reasons import check_reason
 from quoll.interactions.models import (
     Interaction,
     InteractionAssignment,
+    InteractionStageHistory,
     PauseState,
     StageChangeKind,
 )
@@ -173,6 +176,26 @@ async def _stage_of(session: AsyncSession, interaction: Interaction) -> Stage | 
     return await session.get(Stage, interaction.state_id)
 
 
+def _event(
+    session: AsyncSession,
+    interaction: Interaction,
+    kind: StageChangeKind,
+    actor_id: str,
+    comment: str | None,
+) -> None:
+    """событие истории без движения: заявка там же, где была"""
+    session.add(
+        InteractionStageHistory(
+            interaction_id=interaction.id,
+            from_stage_id=interaction.state_id,
+            to_stage_id=interaction.state_id,
+            kind=kind,
+            actor_id=actor_id,
+            comment=comment,
+        )
+    )
+
+
 async def _release(session: AsyncSession, interaction_id: int) -> None:
     await session.execute(
         update(InteractionAssignment)
@@ -261,6 +284,7 @@ async def pause(
     )
     interaction.paused_until = until
     interaction.pause_comment = comment
+    _event(session, interaction, StageChangeKind.PAUSE, actor_id, comment)
     record(
         session,
         actor_id=actor_id,
@@ -309,6 +333,7 @@ def resume(
     interaction.pause_state = PauseState.ACTIVE
     interaction.paused_until = None
     interaction.pause_comment = None
+    _event(session, interaction, StageChangeKind.UNPAUSE, actor_id, None)
     record(
         session,
         actor_id=actor_id,
@@ -376,7 +401,12 @@ async def update_fields(
 
 
 async def cancel_draft(
-    session: AsyncSession, *, interaction_id: int, actor_id: str, comment: str
+    session: AsyncSession,
+    *,
+    interaction_id: int,
+    actor_id: str,
+    close_reason_id: int,
+    comment: str | None,
 ) -> Interaction:
     """черновик не удаляется, а отменяется (Р3): закрыт без стадии.
     Проверки - под блокировкой: черновик могли успеть поставить на стадию"""
@@ -386,7 +416,12 @@ async def cancel_draft(
         raise OperationForbiddenException("cancel this interaction")
     if interaction.state_id is not None:
         raise DomainRuleException(409, "Only a draft is cancelled, close the rest")
+    reason = await check_reason(
+        session, close_reason_id, CloseLevel.INTERACTION_BEFORE_SIGNING, comment
+    )
     interaction.closed_at = func.now()
+    interaction.close_reason_id = reason.id
+    _event(session, interaction, StageChangeKind.CANCEL, actor_id, comment)
     record(
         session,
         actor_id=actor_id,
@@ -394,7 +429,7 @@ async def cancel_draft(
         target_type=TargetType.INTERACTION,
         target_id=interaction.id,
         old_value={"owner_id": interaction.owner_id},
-        new_value={"comment": comment},
+        new_value={"reason": reason.code, "comment": comment},
     )
     await session.flush()
     await session.refresh(interaction)

@@ -14,6 +14,7 @@ from quoll.auth.dependencies import (
 from quoll.auth.models import User, UserRole
 from quoll.catalog import service
 from quoll.catalog.models import (
+    CloseReason,
     Contact,
     DocumentKind,
     ItDirection,
@@ -24,6 +25,9 @@ from quoll.catalog.models import (
 )
 from quoll.catalog.regions import REGIONS
 from quoll.catalog.schemas import (
+    CloseReasonPatch,
+    CloseReasonRead,
+    CloseReasonWrite,
     ContactPatch,
     ContactRead,
     ContactWrite,
@@ -118,6 +122,14 @@ async def list_directions(
         limit,
         offset,
     )
+
+
+@catalog_router.get("/close-reasons", response_model=list[CloseReasonRead])
+async def list_close_reasons(session: SessionDep, level: str | None = None):
+    stmt = select(CloseReason).order_by(CloseReason.id)
+    if level is not None:
+        stmt = stmt.where(CloseReason.level == level)
+    return (await session.scalars(stmt)).all()
 
 
 @catalog_router.get("/document-kinds", response_model=list[DocumentKindRead])
@@ -326,6 +338,14 @@ _crud(
     DirectionWrite,
     DirectionPatch,
     DirectionRead,
+)
+_crud(
+    "/close-reasons",
+    CloseReason,
+    TargetType.CLOSE_REASON,
+    CloseReasonWrite,
+    CloseReasonPatch,
+    CloseReasonRead,
 )
 _crud(
     "/document-kinds",

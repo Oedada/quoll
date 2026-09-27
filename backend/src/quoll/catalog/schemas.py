@@ -50,6 +50,30 @@ class DocumentKindRead(AppBaseModel):
     is_system: bool
 
 
+class CloseReasonWrite(_Write):
+    code: str = Field(pattern=r"^[A-Z][A-Z0-9_]{0,49}$")
+    label: str = Field(min_length=1, max_length=255)
+    level: Literal["INTERACTION_BEFORE_SIGNING", "INTERACTION_AFTER_SIGNING", "BRANCH"]
+    outcome: Literal["DONE", "REFUSED"]
+    needs_comment: bool = False
+
+
+class CloseReasonPatch(_Patch):
+    required = ("label", "needs_comment")
+    label: str | None = Field(default=None, min_length=1, max_length=255)
+    needs_comment: bool | None = None
+
+
+class CloseReasonRead(AppBaseModel):
+    id: int
+    code: str
+    label: str
+    level: str
+    outcome: str
+    needs_comment: bool
+    is_system: bool
+
+
 class DirectionRead(AppBaseModel):
     id: int
     name: str

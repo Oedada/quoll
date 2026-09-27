@@ -14,6 +14,7 @@ from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.keycloak_admin import verify_target
 from quoll.auth.models import Manager, User, UserRole
+from quoll.catalog.models import CloseLevel
 from quoll.core.exceptions import (
     DomainRuleException,
     IdNotExistsException,
@@ -22,6 +23,7 @@ from quoll.core.exceptions import (
 from quoll.core.locking import lock_row
 from quoll.interactions import branch_service
 from quoll.interactions.access_policy import can_close
+from quoll.interactions.close_reasons import check_reason, interaction_level
 from quoll.interactions.models import (
     Branch,
     Interaction,
@@ -97,6 +99,7 @@ async def create(
     target_manager_id: str | None,
     reason: str,
     branch_id: int | None = None,
+    close_reason_id: int | None = None,
 ) -> InteractionRequest:
     # под захватом области: просьба не создаётся одновременно со сменой владельца
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
@@ -106,9 +109,13 @@ async def create(
     current = await _open_stage(session, interaction)
 
     transition_id = None
-    if branch_id is not None and kind != RequestKind.TRANSITION:
-        raise DomainRuleException(400, "Only a step approval is asked for a branch")
-    if kind == RequestKind.TRANSITION:
+    if branch_id is not None and kind == RequestKind.TRANSFER:
+        raise DomainRuleException(400, "A branch is not transferred on its own")
+    if kind == RequestKind.CLOSE and branch_id is not None:
+        await branch_service.open_branch(session, scope, branch_id)
+        # обоснование менеджера и есть комментарий к причине
+        await check_reason(session, close_reason_id, CloseLevel.BRANCH, reason)
+    elif kind == RequestKind.TRANSITION:
         if branch_id is not None:
             # шаг ветки: откуда просят - стадия ветки, не договора
             branch = await branch_service.open_branch(session, scope, branch_id)
@@ -123,6 +130,9 @@ async def create(
         stage = await _check_close_target(session, interaction, target_stage_id)
         if stage.archived_at is not None:
             raise DomainRuleException(409, f"Stage '{stage.id}' is archived")
+        await check_reason(
+            session, close_reason_id, interaction_level(interaction), reason
+        )
     elif (
         target_manager_id is not None
         and await session.get(Manager, target_manager_id) is None
@@ -151,6 +161,7 @@ async def create(
         target_manager_id=target_manager_id,
         transition_id=transition_id,
         branch_id=branch_id,
+        close_reason_id=close_reason_id,
         reason=reason,
     )
     session.add(request)
@@ -199,7 +210,7 @@ async def _lock_for_decision(
     found = await session.get(InteractionRequest, request_id)
     if found is None:
         raise IdNotExistsException(InteractionRequest.__name__)
-    if found.branch_id is not None:
+    if found.kind == RequestKind.TRANSITION and found.branch_id is not None:
         edge = await session.get(WorkflowTransition, found.transition_id)
         for stage_id in sorted(
             {found.target_stage_id, edge.reject_to_stage_id} - {None}
@@ -238,6 +249,9 @@ async def _stale_reason(
         return "interaction owner changed"
     if interaction.closed_at is not None:
         return "interaction closed"
+    if request.kind == RequestKind.CLOSE and request.branch_id is not None:
+        branch = await session.get(Branch, request.branch_id)
+        return "branch closed" if branch.closed_at is not None else None
     if request.kind == RequestKind.TRANSITION:
         edge = await session.get(WorkflowTransition, request.transition_id)
         if request.branch_id is not None:
@@ -348,9 +362,23 @@ async def approve(
             approved=True,
         )
         outcome = {"target_stage_id": request.target_stage_id}
+    elif request.branch_id is not None:
+        branch = await branch_service.open_branch(session, scope, request.branch_id)
+        await branch_service.close_locked(
+            session,
+            scope,
+            branch,
+            close_reason_id=request.close_reason_id,
+            comment=request.reason,
+        )
+        outcome = {"branch_id": request.branch_id}
     else:
         await close_locked(
-            session, scope, to_stage_id=request.target_stage_id, comment=request.reason
+            session,
+            scope,
+            to_stage_id=request.target_stage_id,
+            close_reason_id=request.close_reason_id,
+            comment=request.reason,
         )
         outcome = {"target_stage_id": request.target_stage_id}
 

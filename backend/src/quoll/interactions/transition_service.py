@@ -23,6 +23,7 @@ from quoll.interactions.capacity_policy import (
     assert_can_take_new_work,
     counts_toward_capacity,
 )
+from quoll.interactions.close_reasons import check_reason, interaction_level
 from quoll.interactions.document_service import replaced_expression
 from quoll.interactions.models import (
     DocumentStatus,
@@ -403,6 +404,8 @@ def place(
     закрытия и переоткрытия"""
     interaction.state_id = target.id
     interaction.closed_at = func.now() if target.is_terminal else None
+    if not target.is_terminal:
+        interaction.close_reason_id = None
     if target.is_terminal and interaction.is_paused:
         # закрытая заявка на паузе - бессмыслица
         interaction.is_paused = False
@@ -429,7 +432,8 @@ async def close(
     actor_id: str,
     to_stage_id: int,
     expected_state_id: int | None,
-    comment: str,
+    close_reason_id: int,
+    comment: str | None,
 ) -> Interaction:
     """досрочное закрытие: с любого шага в терминальную стадию, без ребра.
     Дееспособность владельца не проверяется - иначе офбординг не дождался бы
@@ -437,11 +441,22 @@ async def close(
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if scope.interaction.state_id != expected_state_id:
         raise StaleStateException("Interaction stage", scope.interaction.state_id)
-    return await close_locked(session, scope, to_stage_id=to_stage_id, comment=comment)
+    return await close_locked(
+        session,
+        scope,
+        to_stage_id=to_stage_id,
+        close_reason_id=close_reason_id,
+        comment=comment,
+    )
 
 
 async def close_locked(
-    session: AsyncSession, scope: InteractionScope, *, to_stage_id: int, comment: str
+    session: AsyncSession,
+    scope: InteractionScope,
+    *,
+    to_stage_id: int,
+    close_reason_id: int,
+    comment: str | None,
 ) -> Interaction:
     """закрытие под уже захваченной областью - его зовёт и одобрение просьбы"""
     interaction = scope.interaction
@@ -453,9 +468,10 @@ async def close_locked(
         await session.get(Stage, interaction.state_id) if interaction.state_id else None
     )
     if current is None:
-        raise DomainRuleException(409, "Draft is deleted, not closed")
-    if current.is_terminal:
-        raise DomainRuleException(409, "Interaction is already closed")
+        raise DomainRuleException(409, "Draft is cancelled, not closed")
+    reason = await check_reason(
+        session, close_reason_id, interaction_level(interaction), comment
+    )
     target = await lock_target_stage(session, to_stage_id)
     if target.workflow_id != interaction.workflow_id:
         raise DomainRuleException(400, "Stage belongs to another workflow")
@@ -465,6 +481,7 @@ async def close_locked(
     await contract_service.close_all_branches(
         session, interaction.id, actor_id, comment
     )
+    interaction.close_reason_id = reason.id
     place(
         session,
         interaction,
@@ -485,7 +502,7 @@ async def close_locked(
         target_type=TargetType.INTERACTION,
         target_id=interaction.id,
         old_value={"state_id": current.id},
-        new_value={"state_id": target.id, "comment": comment},
+        new_value={"state_id": target.id, "reason": reason.code, "comment": comment},
     )
     await session.flush()
     await session.refresh(interaction)

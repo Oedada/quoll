@@ -10,12 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
+from quoll.catalog.models import CloseLevel
 from quoll.core.exceptions import (
     DomainRuleException,
     OperationForbiddenException,
     StaleStateException,
 )
 from quoll.interactions.access_policy import can_change, can_close
+from quoll.interactions.close_reasons import check_reason
+from quoll.interactions.contract_service import open_branch_count
 from quoll.interactions.models import (
     Branch,
     InteractionStageHistory,
@@ -195,6 +198,76 @@ async def rollback(
     )
 
 
+async def close(
+    session: AsyncSession,
+    *,
+    interaction_id: int,
+    branch_id: int,
+    actor_id: str,
+    close_reason_id: int,
+    comment: str | None,
+) -> Branch:
+    """руководитель владельца закрывает ветку сам; менеджер - просьбой"""
+    scope = await lock_interaction_scope(session, interaction_id, actor_id)
+    if not can_close(scope.actor, scope.ownership):
+        raise OperationForbiddenException("close this branch")
+    branch = await open_branch(session, scope, branch_id)
+    return await close_locked(
+        session, scope, branch, close_reason_id=close_reason_id, comment=comment
+    )
+
+
+async def close_locked(
+    session: AsyncSession,
+    scope: InteractionScope,
+    branch: Branch,
+    *,
+    close_reason_id: int,
+    comment: str | None,
+) -> Branch:
+    """досрочно: ветка остаётся на своём шаге, закрыта причиной (П6)"""
+    reason = await check_reason(session, close_reason_id, CloseLevel.BRANCH, comment)
+    branch.closed_at = func.now()
+    branch.close_reason_id = reason.id
+    session.add(
+        InteractionStageHistory(
+            interaction_id=branch.interaction_id,
+            branch_id=branch.id,
+            from_stage_id=branch.state_id,
+            to_stage_id=branch.state_id,
+            kind=StageChangeKind.CLOSE,
+            actor_id=scope.actor.id,
+            comment=comment,
+        )
+    )
+    record(
+        session,
+        actor_id=scope.actor.id,
+        event_type=AuditEventType.BRANCH_CLOSED,
+        target_type=TargetType.INTERACTION,
+        target_id=scope.interaction.id,
+        new_value={"branch_id": branch.id, "reason": reason.code, "comment": comment},
+    )
+    await session.flush()
+    await _offer_to_close(session, scope)
+    await session.refresh(branch)
+    return branch
+
+
+async def _offer_to_close(session: AsyncSession, scope: InteractionScope) -> None:
+    """последняя ветка закрыта - заявка сама не закрывается: вуз может ещё
+    взять продукт допсоглашением. Руководителю - предложение (О 4)"""
+    if scope.owner is None or await open_branch_count(session, scope.interaction.id):
+        return
+    notify(
+        session,
+        scope.owner.superviser_id,
+        "Все ветки закрыты",
+        f"Взаимодействие {scope.interaction.id}: ветки закрыты, заявку можно закрыть",
+        {"interaction_id": scope.interaction.id},
+    )
+
+
 async def _place(
     session: AsyncSession,
     scope: InteractionScope,
@@ -209,6 +282,7 @@ async def _place(
     branch.state_id = target.id
     if target.is_terminal:
         branch.closed_at = func.now()
+        branch.close_reason_id = None
     session.add(
         InteractionStageHistory(
             interaction_id=scope.interaction.id,
@@ -231,5 +305,7 @@ async def _place(
         new_value={"state_id": target.id, "kind": kind},
     )
     await session.flush()
+    if target.is_terminal:
+        await _offer_to_close(session, scope)
     await session.refresh(branch)
     return branch

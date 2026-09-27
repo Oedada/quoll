@@ -151,6 +151,10 @@ class Interaction(Base, IdMixin, TimestampMixin):
         DateTime(timezone=True), nullable=True
     )
     planned_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # у досрочного закрытия и отмены; штатное завершение по ребру - без причины
+    close_reason_id: Mapped[int | None] = mapped_column(
+        ForeignKey("close_reasons.id", ondelete="RESTRICT"), nullable=True
+    )
 
     # Relationships
     university: Mapped[University] = relationship(back_populates="interactions")
@@ -168,6 +172,18 @@ class StageChangeKind(StrEnum):
     RELOCATION = "RELOCATION"  # перенос при архивации стадии
     REJECTION = "REJECTION"  # отказ в аппруве увёл на доработку
     ROLLBACK = "ROLLBACK"  # откат руководителем на несколько шагов
+    CANCEL = "CANCEL"  # отмена черновика, стадии нет
+    PAUSE = "PAUSE"
+    UNPAUSE = "UNPAUSE"
+    BRANCH_ADDED = "BRANCH_ADDED"
+    BRANCH_REMOVED = "BRANCH_REMOVED"
+    SA_OPENED = "SA_OPENED"
+    SA_APPROVED = "SA_APPROVED"
+    SA_REJECTED = "SA_REJECTED"
+    LICENSE_EXTENDED = "LICENSE_EXTENDED"
+    CONTRACT_EXTENDED = "CONTRACT_EXTENDED"
+    IMPORT = "IMPORT"
+    COMMENT = "COMMENT"
 
 
 class InteractionStageHistory(Base):
@@ -180,8 +196,7 @@ class InteractionStageHistory(Base):
     __tablename__ = "interaction_stage_history"
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('TRANSITION', 'CLOSE', 'REOPEN', 'RELOCATION', "
-            "'REJECTION', 'ROLLBACK')",
+            "kind IN (" + ", ".join(f"'{k}'" for k in StageChangeKind) + ")",
             name="chk_stage_history_kind",
         ),
         Index("ix_stage_history_interaction_created", "interaction_id", "created_at"),
@@ -191,18 +206,19 @@ class InteractionStageHistory(Base):
     interaction_id: Mapped[int] = mapped_column(
         ForeignKey("interactions.id", ondelete="CASCADE")
     )
-    # NULL - заявка встала на первую стадию из черновика
+    # NULL - заявка встала на первую стадию из черновика; у событий без
+    # движения (отмена черновика, пауза до принятия) пусты обе
     from_stage_id: Mapped[int | None] = mapped_column(
         ForeignKey("stages.id", ondelete="RESTRICT"), nullable=True
     )
-    to_stage_id: Mapped[int] = mapped_column(
-        ForeignKey("stages.id", ondelete="RESTRICT")
+    to_stage_id: Mapped[int | None] = mapped_column(
+        ForeignKey("stages.id", ondelete="RESTRICT"), nullable=True
     )
     # NULL у закрытия, переоткрытия и переноса - они идут не по ребру
     transition_id: Mapped[int | None] = mapped_column(
         ForeignKey("workflow_transitions.id", ondelete="RESTRICT"), nullable=True
     )
-    kind: Mapped[str] = mapped_column(String(20))
+    kind: Mapped[str] = mapped_column(String(30))
     actor_id: Mapped[str | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
     )
@@ -281,9 +297,12 @@ class InteractionRequest(Base):
             name="chk_request_status",
         ),
         # у закрытия цель - стадия, у передачи - предложение менеджера, не стадия
+        # закрытие заявки - в терминальную стадию; ветки - без стадии,
+        # она остаётся на своём шаге (П6). Причина - всегда
         CheckConstraint(
-            "kind <> 'CLOSE' OR (target_stage_id IS NOT NULL "
-            "AND target_manager_id IS NULL)",
+            "kind <> 'CLOSE' OR (target_manager_id IS NULL "
+            "AND close_reason_id IS NOT NULL "
+            "AND (branch_id IS NULL) = (target_stage_id IS NOT NULL))",
             name="chk_request_close_target",
         ),
         CheckConstraint(
@@ -307,7 +326,7 @@ class InteractionRequest(Base):
             postgresql_nulls_not_distinct=True,
         ),
         CheckConstraint(
-            "branch_id IS NULL OR kind = 'TRANSITION'",
+            "branch_id IS NULL OR kind IN ('TRANSITION', 'CLOSE')",
             name="chk_request_branch_only_transition",
         ),
     )
@@ -333,9 +352,12 @@ class InteractionRequest(Base):
     transition_id: Mapped[int | None] = mapped_column(
         ForeignKey("workflow_transitions.id", ondelete="RESTRICT"), nullable=True
     )
-    # аппрув шага ветки продукта
+    # аппрув шага или закрытие ветки
     branch_id: Mapped[int | None] = mapped_column(
         ForeignKey("branches.id", ondelete="CASCADE"), nullable=True
+    )
+    close_reason_id: Mapped[int | None] = mapped_column(
+        ForeignKey("close_reasons.id", ondelete="RESTRICT"), nullable=True
     )
     reason: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(
@@ -555,6 +577,9 @@ class Branch(Base):
     )
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
+    )
+    close_reason_id: Mapped[int | None] = mapped_column(
+        ForeignKey("close_reasons.id", ondelete="RESTRICT"), nullable=True
     )
     # лицензия: until = подписание + срок, продление меняет только until
     license_signed_at: Mapped[date | None] = mapped_column(Date, nullable=True)

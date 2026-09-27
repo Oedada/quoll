@@ -126,6 +126,9 @@ async def delete(
     actor_id: str,
 ) -> None:
     """на что-то ссылается - 409 от обработчика IntegrityError, не 500"""
+    item = await session.get(model, item_id)
+    if getattr(item, "is_system", False):
+        raise DomainRuleException(409, "Built-in entry is not deleted")
     if model is DocumentKind:
         await _check_kind_removable(session, item_id)
     if not await BaseRepository(session, model).delete(item_id):
@@ -145,8 +148,6 @@ async def _check_kind_removable(session: AsyncSession, kind_id: int) -> None:
     kind = await session.get(DocumentKind, kind_id)
     if kind is None:
         return
-    if kind.is_system:
-        raise DomainRuleException(409, f"Document kind '{kind.code}' is built in")
     if await session.scalar(
         select(WorkflowTransition.id)
         .where(WorkflowTransition.required_document_kinds.contains([kind.code]))

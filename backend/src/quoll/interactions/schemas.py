@@ -101,8 +101,19 @@ class CloseRequest(AppBaseModel):
 
     to_stage_id: int
     expected_state_id: int | None
-    # досрочное закрытие - всегда с объяснением
-    comment: str = Field(min_length=1)
+    # причина из справочника; комментарий обязателен у «другое» (Д9)
+    close_reason_id: int
+    comment: str | None = None
+
+
+class ReasonedRequest(AppBaseModel):
+    """досрочное закрытие ветки (остаётся на своём шаге, П6) или отмена
+    черновика"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    close_reason_id: int
+    comment: str | None = None
 
 
 class PauseRequest(AppBaseModel):
@@ -123,6 +134,7 @@ class InteractionRead(AppBaseModel):
     pause_state: str
     paused_until: datetime | None
     pause_comment: str | None
+    close_reason_id: int | None
     planned_date: date | None
     signed_at: datetime | None
     closed_at: datetime | None
@@ -138,7 +150,7 @@ class InteractionDetailRead(InteractionRead):
 
 class StageHistoryRead(AppBaseModel):
     from_stage_id: int | None
-    to_stage_id: int
+    to_stage_id: int | None
     transition_id: int | None
     kind: str
     actor_id: str | None
@@ -167,19 +179,27 @@ class RequestCreate(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
     kind: Literal["TRANSFER", "CLOSE", "TRANSITION"]
-    # аппрув шага ветки продукта
+    # аппрув шага или закрытие ветки
     branch_id: int | None = None
-    # у закрытия - куда закрыть; у передачи - кому, но это лишь предложение
+    # у закрытия заявки - куда закрыть; у передачи - кому, но это лишь предложение
     target_stage_id: int | None = None
     target_manager_id: str | None = None
+    close_reason_id: int | None = None
     reason: str = Field(min_length=1)
 
     @model_validator(mode="after")
     def _targets_fit_kind(self):
         if self.kind == "CLOSE" and (
-            self.target_stage_id is None or self.target_manager_id
+            (self.target_stage_id is None) == (self.branch_id is None)
+            or self.target_manager_id
+            or self.close_reason_id is None
         ):
-            raise ValueError("CLOSE needs target_stage_id and no target_manager_id")
+            raise ValueError(
+                "CLOSE needs close_reason_id and target_stage_id for the "
+                "interaction or branch_id for a branch"
+            )
+        if self.kind != "CLOSE" and self.close_reason_id is not None:
+            raise ValueError("close_reason_id is only for CLOSE")
         if self.kind == "TRANSFER" and self.target_stage_id is not None:
             raise ValueError("TRANSFER has no target_stage_id")
         if self.kind == "TRANSITION" and (
@@ -216,6 +236,7 @@ class RequestRead(AppBaseModel):
     target_manager_id: str | None
     transition_id: int | None
     branch_id: int | None
+    close_reason_id: int | None
     reason: str
     decided_by: str | None
     decided_at: datetime | None
@@ -338,6 +359,7 @@ class BranchRead(AppBaseModel):
     state_id: int | None
     opened_at: datetime | None
     closed_at: datetime | None
+    close_reason_id: int | None
     license_signed_at: date | None
     license_term_years: int | None
     license_until: date | None

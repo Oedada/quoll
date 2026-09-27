@@ -239,7 +239,7 @@ async def open_branch_count(session: AsyncSession, interaction_id: int) -> int:
 
 
 async def close_all_branches(
-    session: AsyncSession, interaction_id: int, actor_id: str, comment: str
+    session: AsyncSession, interaction_id: int, actor_id: str, comment: str | None
 ) -> None:
     """досрочное закрытие договора закрывает и ветки - с записью в историю
     каждой: переоткрытие вернёт именно эти"""
@@ -251,11 +251,12 @@ async def close_all_branches(
 async def reopen_branches(
     session: AsyncSession, interaction_id: int, actor_id: str, comment: str
 ) -> None:
-    """переоткрытие подписанного договора возвращает ветки, закрытые досрочно,
-    - не дошедшие до своего конца"""
+    """переоткрытие подписанного договора возвращает ветки, закрытые вместе с
+    ним. Закрытые по отдельности - со своей причиной - остаются закрытыми,
+    их возвращает допсоглашение (RESUME)"""
     for branch in await _branches(session, interaction_id, closed=True):
         stage = await session.get(Stage, branch.state_id)
-        if not stage.is_terminal:
+        if not stage.is_terminal and branch.close_reason_id is None:
             branch.closed_at = None
             _history(session, branch, StageChangeKind.REOPEN, actor_id, comment)
 

@@ -1,5 +1,6 @@
 """Справочники: ИТ-направления, продукты, ИТ-программы, специальности, контакты"""
 
+from enum import StrEnum
 from typing import Any
 
 from sqlalchemy import (
@@ -192,6 +193,41 @@ class DocumentKind(Base, IdMixin, TimestampMixin):
 
     code: Mapped[str] = mapped_column(String(50), unique=True)
     label: Mapped[str_255]
+    is_system: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+
+
+class CloseLevel(StrEnum):
+    INTERACTION_BEFORE_SIGNING = "INTERACTION_BEFORE_SIGNING"
+    INTERACTION_AFTER_SIGNING = "INTERACTION_AFTER_SIGNING"
+    BRANCH = "BRANCH"
+
+
+class CloseReason(Base, IdMixin, TimestampMixin):
+    """причина закрытия (О 4) - для отчёта «почему теряем вузы».
+    У «другое» комментарий обязателен (Д9)"""
+
+    __tablename__ = "close_reasons"
+    __table_args__ = (
+        CheckConstraint(
+            "level IN ('INTERACTION_BEFORE_SIGNING', 'INTERACTION_AFTER_SIGNING', "
+            "'BRANCH')",
+            name="chk_close_reason_level",
+        ),
+        CheckConstraint(
+            "outcome IN ('DONE', 'REFUSED')", name="chk_close_reason_outcome"
+        ),
+    )
+
+    code: Mapped[str] = mapped_column(String(50), unique=True)
+    label: Mapped[str_255]
+    level: Mapped[str] = mapped_column(String(30))
+    outcome: Mapped[str] = mapped_column(String(10))
+    needs_comment: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    # на код опирается сама система (исключение допсоглашением)
     is_system: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
     )
