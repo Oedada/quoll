@@ -488,7 +488,7 @@ async def put_stage_values(
     session: SessionDep,
     branch_id: int | None = None,
 ):
-    return await step_service.set_values(
+    row = await step_service.set_values(
         session,
         interaction_id=id,
         stage_id=stage_id,
@@ -496,6 +496,7 @@ async def put_stage_values(
         actor_id=user.id,
         branch_id=branch_id,
     )
+    return await step_service.view(session, row)
 
 
 @interactions_router.post(
@@ -510,7 +511,7 @@ async def approve_stage_values(
     session: SessionDep,
     branch_id: int | None = None,
 ):
-    return await step_service.decide(
+    row = await step_service.decide(
         session,
         interaction_id=id,
         stage_id=stage_id,
@@ -518,6 +519,7 @@ async def approve_stage_values(
         approve=True,
         branch_id=branch_id,
     )
+    return await step_service.view(session, row)
 
 
 @interactions_router.post(
@@ -532,7 +534,7 @@ async def reject_stage_values(
     session: SessionDep,
     branch_id: int | None = None,
 ):
-    return await step_service.decide(
+    row = await step_service.decide(
         session,
         interaction_id=id,
         stage_id=stage_id,
@@ -540,6 +542,7 @@ async def reject_stage_values(
         approve=False,
         branch_id=branch_id,
     )
+    return await step_service.view(session, row)
 
 
 @interactions_router.post(

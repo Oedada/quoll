@@ -18,6 +18,7 @@ from quoll.core.exceptions import (
 )
 from quoll.interactions import contract_service
 from quoll.interactions.access_policy import can_change, can_close
+from quoll.interactions.bindings import read_bound
 from quoll.interactions.capacity_policy import (
     assert_can_keep_working,
     assert_can_take_new_work,
@@ -218,7 +219,12 @@ async def stage_values(
             InteractionStageValues.branch_id.is_not_distinct_from(branch_id),
         )
     )
-    return found or {}
+    # привязанные поля - из колонок, см. bindings.py
+    stage = await session.get(Stage, stage_id)
+    return {
+        **(found or {}),
+        **await read_bound(session, stage, interaction_id, branch_id),
+    }
 
 
 async def current_document_kinds(

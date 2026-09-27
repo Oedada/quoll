@@ -19,12 +19,30 @@ class StageField(AppBaseModel):
     required: bool = False
     # правку на пройденном шаге менеджером одобряет руководитель
     approval_after_pass: bool = False
+    # явная колонка, куда пишется значение: contract.number, branch.teachers_trained
+    bind: str | None = None
+
+    @model_validator(mode="after")
+    def _bind_fits(self):
+        from quoll.interactions.bindings import BINDINGS
+
+        if self.bind is None:
+            return self
+        if self.bind not in BINDINGS:
+            raise ValueError(f"Unknown bind '{self.bind}'")
+        kind = BINDINGS[self.bind][2]
+        if self.type not in ({"string", "text"} if kind == "string" else {kind}):
+            raise ValueError(f"Bind '{self.bind}' needs type {kind}")
+        return self
 
 
 def _unique_keys(fields: list[StageField] | None) -> list[StageField] | None:
     keys = [f.key for f in fields or []]
     if len(keys) != len(set(keys)):
         raise ValueError("Stage field keys must be unique")
+    binds = [f.bind for f in fields or [] if f.bind]
+    if len(binds) != len(set(binds)):
+        raise ValueError("One column is bound to one field")
     return fields
 
 

@@ -164,7 +164,11 @@ async def create_stage(
             raise DomainRuleException(
                 400, "Parent is a main stage of the same workflow and level"
             )
-    stage = Stage(**schema.model_dump())
+    data = schema.model_dump()
+    await _check_binds(
+        session, schema.workflow_id, None, schema.is_branch_stage, data["fields"]
+    )
+    stage = Stage(**data)
     session.add(stage)
     await session.flush()
     _journal(
@@ -177,6 +181,31 @@ async def create_stage(
     )
     await session.refresh(stage)
     return stage
+
+
+async def _check_binds(
+    session: AsyncSession,
+    workflow_id: int,
+    stage_id: int | None,
+    is_branch: bool,
+    fields,
+) -> None:
+    """П11: поля ветки - на шагах веток, договора - на шагах заявки; одна
+    колонка на весь воркфлоу - одно поле"""
+    binds = {f["bind"] for f in fields if f.get("bind")}
+    wrong = {b for b in binds if b.startswith("branch.") != is_branch}
+    if wrong:
+        raise DomainRuleException(400, f"Bind {sorted(wrong)} is for another level")
+    others = await session.scalars(
+        select(Stage.fields).where(
+            Stage.workflow_id == workflow_id,
+            Stage.archived_at.is_(None),
+            Stage.id.is_distinct_from(stage_id),
+        )
+    )
+    taken = {f.get("bind") for other in others for f in other} & binds
+    if taken:
+        raise DomainRuleException(409, f"Bind {sorted(taken)} is on another stage")
 
 
 async def _stage(session: AsyncSession, stage_id: int) -> Stage:
@@ -193,6 +222,10 @@ async def update_stage(
     stage = await _stage(session, stage_id)
     await lock_workflow(session, stage.workflow_id)
     new = changes.model_dump(exclude_unset=True)
+    if "fields" in new:
+        await _check_binds(
+            session, stage.workflow_id, stage.id, stage.is_branch_stage, new["fields"]
+        )
     old = {field: getattr(stage, field) for field in new}
     for field, value in new.items():
         setattr(stage, field, value)

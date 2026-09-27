@@ -16,6 +16,7 @@ from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import UserRole
 from quoll.core.exceptions import DomainRuleException, OperationForbiddenException
 from quoll.interactions.access_policy import can_change, can_close
+from quoll.interactions.bindings import read_bound, write_bound
 from quoll.interactions.models import (
     Branch,
     InteractionStageHistory,
@@ -87,6 +88,7 @@ async def set_values(
         if free != {k: v for k, v in old.items() if k not in gated}:
             _journal(session, actor_id, interaction_id, stage_id, old, kept | free)
             row.values = kept | free
+            await write_bound(session, stage, interaction_id, branch_id, free)
         row.pending_values = {k: values.get(k) for k in changed & gated}
         row.pending_by = actor_id
         await session.flush()
@@ -103,6 +105,7 @@ async def set_values(
             )
         return row
 
+    await write_bound(session, stage, interaction_id, branch_id, values)
     row = await _upsert(session, interaction_id, stage_id, branch_id, values, actor_id)
     _journal(session, actor_id, interaction_id, stage_id, old, values)
     return row
@@ -139,6 +142,8 @@ async def decide(
         # вливаем только одобренные поля - правки после подачи не затираются
         merged = {**row.values, **pending}
         _journal(session, actor_id, interaction_id, stage_id, row.values, merged)
+        stage = await session.get(Stage, stage_id)
+        await write_bound(session, stage, interaction_id, branch_id, pending)
         row.values = merged
         row.updated_by = author
     await session.flush()
@@ -192,13 +197,26 @@ def _journal(session, actor_id, interaction_id, stage_id, old, new) -> None:
     )
 
 
-async def all_values(
-    session: AsyncSession, interaction_id: int
-) -> list[InteractionStageValues]:
-    return list(
-        await session.scalars(
-            select(InteractionStageValues)
-            .where(InteractionStageValues.interaction_id == interaction_id)
-            .order_by(InteractionStageValues.stage_id)
-        )
+async def all_values(session: AsyncSession, interaction_id: int) -> list[dict]:
+    rows = await session.scalars(
+        select(InteractionStageValues)
+        .where(InteractionStageValues.interaction_id == interaction_id)
+        .order_by(InteractionStageValues.stage_id)
     )
+    return [await view(session, row) for row in rows]
+
+
+async def view(session: AsyncSession, row: InteractionStageValues) -> dict:
+    """привязанные поля - из колонок: их могли поменять не через шаг
+    (реквизиты при загрузке договора, продление допсоглашением)"""
+    stage = await session.get(Stage, row.stage_id)
+    bound = await read_bound(session, stage, row.interaction_id, row.branch_id)
+    return {
+        "stage_id": row.stage_id,
+        "branch_id": row.branch_id,
+        "values": {**row.values, **bound},
+        "updated_by": row.updated_by,
+        "updated_at": row.updated_at,
+        "pending_values": row.pending_values,
+        "pending_by": row.pending_by,
+    }

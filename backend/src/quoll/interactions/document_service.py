@@ -28,6 +28,7 @@ from quoll.core.exceptions import (
     OperationForbiddenException,
 )
 from quoll.interactions.access_policy import can_change, can_close, can_read
+from quoll.interactions.bindings import check_contract_dates
 from quoll.interactions.models import (
     Branch,
     DocumentStatus,
@@ -206,6 +207,7 @@ async def _document_values(
         raise DomainRuleException(400, "Contract details belong to a contract")
     if fields.kind == "CONTRACT" and not fields.contract_number:
         raise DomainRuleException(422, "Contract needs a number")
+    check_contract_dates(fields.contract_signed_at, fields.contract_valid_until)
     return fields
 
 
