@@ -159,8 +159,12 @@ class Interaction(Base, IdMixin, TimestampMixin):
     closed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True
     )
-    # проход точки невозврата или импорт подписанного договора
+    # флажок «договор подписан» на шаге 4 (Д13); по нему «подписано за период»
     signed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # точка невозврата пройдена (4 -> 5): ветки открыты, состав зафиксирован
+    no_return_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True
     )
     planned_date: Mapped[date | None] = mapped_column(Date, nullable=True)
@@ -447,10 +451,6 @@ class InteractionDocument(Base):
             "kind = 'CONTRACT' OR (contract_number IS NULL AND "
             "contract_signed_at IS NULL AND contract_valid_until IS NULL)",
             name="chk_document_contract_fields",
-        ),
-        CheckConstraint(
-            "kind <> 'CONTRACT' OR contract_number IS NOT NULL",
-            name="chk_document_contract_number",
         ),
         # у версии один преемник - иначе цепочка раздвоится
         Index(

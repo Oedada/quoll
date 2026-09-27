@@ -10,7 +10,7 @@ from quoll.interactions.models import Interaction
 def interaction_level(interaction: Interaction) -> CloseLevel:
     return (
         CloseLevel.INTERACTION_AFTER_SIGNING
-        if interaction.signed_at is not None
+        if interaction.no_return_at is not None
         else CloseLevel.INTERACTION_BEFORE_SIGNING
     )
 

@@ -44,7 +44,7 @@ from quoll.interactions.transition_service import (
     reached_since_no_return,
 )
 from quoll.notifications import kinds
-from quoll.workflows.graph_policy import EdgeFacts, reachable_from_start
+from quoll.workflows.graph_policy import edge_facts, reachable_from_start
 from quoll.workflows.models import Stage, WorkflowTransition
 from quoll.workflows.repository import WorkflowRepository
 
@@ -483,9 +483,7 @@ async def reopen(
             WorkflowTransition.is_active.is_(True),
         )
     )
-    reachable = reachable_from_start(
-        [EdgeFacts(e.from_stage_id, e.to_stage_id) for e in edges]
-    )
+    reachable = reachable_from_start(edge_facts(edges))
     if stage.id not in reachable:
         raise DomainRuleException(409, "Stage is not reachable from the start")
     # только туда, где заявка уже была: иначе переоткрытие перескочило бы

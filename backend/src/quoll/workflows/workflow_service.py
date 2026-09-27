@@ -12,7 +12,7 @@ from quoll.core.exceptions import (
     PublishedGraphChangeException,
 )
 from quoll.core.locking import lock_row
-from quoll.workflows.graph_policy import EdgeFacts, StageFacts, graph_problems
+from quoll.workflows.graph_policy import StageFacts, edge_facts, graph_problems
 from quoll.workflows.models import Stage, Workflow, WorkflowTransition
 from quoll.workflows.schemas import (
     StageCreate,
@@ -86,7 +86,7 @@ async def check_graph(
             )
             for s in stages
         ],
-        [EdgeFacts(e.from_stage_id, e.to_stage_id, e.is_irreversible) for e in edges],
+        edge_facts(edges),
         occupied,
         full=full,
     )

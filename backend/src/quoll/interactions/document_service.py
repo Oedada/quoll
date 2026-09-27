@@ -27,6 +27,7 @@ from quoll.core.exceptions import (
     IdNotExistsException,
     OperationForbiddenException,
 )
+from quoll.interactions import contract_service
 from quoll.interactions.access_policy import can_change, can_close, can_read
 from quoll.interactions.bindings import check_contract_dates
 from quoll.interactions.models import (
@@ -121,7 +122,9 @@ async def upload(
                 )
             current = branch.state_id
         # правка файла пройденного шага - с аппрувом руководителя (AS IS)
-        pending = actor.role == UserRole.MANAGER and stage_id != current
+        pending = actor.role == UserRole.MANAGER and contract_service.step_passed(
+            scope.interaction, stage_id, current, branch_id
+        )
         document = InteractionDocument(
             status=DocumentStatus.PENDING if pending else DocumentStatus.ACTIVE,
             interaction_id=interaction_id,
@@ -209,8 +212,6 @@ async def _document_values(
     )
     if fields.kind != "CONTRACT" and has_contract_fields:
         raise DomainRuleException(400, "Contract details belong to a contract")
-    if fields.kind == "CONTRACT" and not fields.contract_number:
-        raise DomainRuleException(422, "Contract needs a number")
     check_contract_dates(fields.contract_signed_at, fields.contract_valid_until)
     return fields
 

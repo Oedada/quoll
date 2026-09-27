@@ -31,7 +31,7 @@ async def _draft_scope(
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_change(scope.actor, scope.ownership):
         raise OperationForbiddenException("change branches of this interaction")
-    if scope.interaction.signed_at is not None:
+    if scope.interaction.no_return_at is not None:
         raise DomainRuleException(
             409, "Contract is signed, branches change by a supplementary agreement"
         )
@@ -164,10 +164,9 @@ def _journal(session, actor_id, interaction_id, new, old=None) -> None:
 async def open_branches(
     session: AsyncSession, interaction: Interaction, actor_id: str
 ) -> None:
-    """подписание: одобренные ветки состава встают на начало шагов веток.
-    Воркфлоу без веток - только отметка о подписании"""
-    if interaction.signed_at is None:
-        interaction.signed_at = func.now()
+    """точка невозврата: одобренные ветки состава встают на начало шагов
+    веток. Воркфлоу без веток - только отметка"""
+    interaction.no_return_at = func.now()
     start = await session.scalar(
         select(Stage).where(
             Stage.workflow_id == interaction.workflow_id,
@@ -176,15 +175,6 @@ async def open_branches(
         )
     )
     if start is None:
-        return
-    # ветки открываются один раз - повторный проход точки невозврата их не множит
-    if await session.scalar(
-        select(
-            exists().where(
-                Branch.interaction_id == interaction.id, Branch.state_id.is_not(None)
-            )
-        )
-    ):
         return
     approved = list(
         await session.scalars(
@@ -225,6 +215,30 @@ async def open_branches(
 def is_open_branch():
     """ветка идёт по шагам: стоит на стадии и не закрыта. Без стадии - черновик"""
     return and_(Branch.state_id.is_not(None), Branch.closed_at.is_(None))
+
+
+def step_passed(
+    interaction: Interaction, stage_id: int, current: int | None, branch_id: int | None
+) -> bool:
+    """пройден ли шаг для правил правки: не текущий - или шаг подписания,
+    когда точка невозврата пройдена, а заявка на нём так и стоит (В5)"""
+    if stage_id != current:
+        return True
+    return branch_id is None and interaction.no_return_at is not None
+
+
+async def has_branch_stages(session: AsyncSession, workflow_id: int | None) -> bool:
+    return bool(
+        await session.scalar(
+            select(
+                exists().where(
+                    Stage.workflow_id == workflow_id,
+                    Stage.is_branch_stage.is_(True),
+                    Stage.archived_at.is_(None),
+                )
+            )
+        )
+    )
 
 
 async def open_branch_count(session: AsyncSession, interaction_id: int) -> int:

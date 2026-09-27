@@ -16,17 +16,24 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from quoll.core.exceptions import DomainRuleException
 from quoll.interactions.models import (
     Branch,
+    ContractStatus,
     DocumentStatus,
+    Interaction,
     InteractionDocument,
     TransferStatus,
 )
 from quoll.workflows.models import Stage
+
+# даты договоров - по календарю заказчика
+BUSINESS_TZ = ZoneInfo("Europe/Moscow")
 
 # привязка -> (чья колонка, колонка, тип поля)
 BINDINGS: dict[str, tuple[str, str, str]] = {
     "contract.number": ("contract", "contract_number", "string"),
     "contract.signed_at": ("contract", "contract_signed_at", "date"),
     "contract.valid_until": ("contract", "contract_valid_until", "date"),
+    # флажок «договор подписан» (Д13) - отдельная операция, не переход
+    "interaction.signed": ("interaction", "signed_at", "bool"),
     "branch.license_signed_at": ("branch", "license_signed_at", "date"),
     "branch.license_term_years": ("branch", "license_term_years", "number"),
     "branch.transfer_status": ("branch", "transfer_status", "string"),
@@ -62,6 +69,8 @@ async def _owner(
 ):
     if level == "branch":
         return await session.get(Branch, branch_id)
+    if level == "interaction":
+        return await session.get(Interaction, interaction_id)
     return await current_contract(session, interaction_id)
 
 
@@ -75,7 +84,11 @@ async def read_bound(
         owner = await _owner(session, level, interaction_id, branch_id)
         if owner is not None:
             value = getattr(owner, column)
-            result[key] = value.isoformat() if isinstance(value, date) else value
+            if column == "signed_at":
+                value = value is not None
+            elif isinstance(value, date):
+                value = value.isoformat()
+            result[key] = value
     return result
 
 
@@ -96,10 +109,11 @@ async def write_bound(
         if owner is None:
             raise DomainRuleException(409, "Upload the contract before its details")
         value = values[key]
+        if column == "signed_at":
+            await _mark_signed(session, owner, bool(value))
+            continue
         if kind == "date" and value is not None:
             value = date.fromisoformat(value)
-        if column == "contract_number" and not value:
-            raise DomainRuleException(422, "Contract needs a number")
         if column == "transfer_status" and value not in set(TransferStatus):
             raise DomainRuleException(422, f"Unknown transfer status '{value}'")
         setattr(owner, column, value)
@@ -109,6 +123,32 @@ async def write_bound(
             _derive_license(owner)
         else:
             check_contract_dates(owner.contract_signed_at, owner.contract_valid_until)
+
+
+async def _mark_signed(session: AsyncSession, interaction, signed: bool) -> None:
+    """дата - только при переходе «нет» -> «да»: повторное сохранение формы
+    не должно её сдвигать (по ней отчёт «подписано за период»)"""
+    from quoll.interactions.contract_service import has_branch_stages
+
+    if not signed:
+        if interaction.no_return_at is not None:
+            raise DomainRuleException(409, "Branches are open, contract stays signed")
+        interaction.signed_at = None
+        return
+    if interaction.signed_at is not None:
+        return
+    if await has_branch_stages(
+        session, interaction.workflow_id
+    ) and not await session.scalar(
+        select(Branch.id)
+        .where(
+            Branch.interaction_id == interaction.id,
+            Branch.contract_status == ContractStatus.APPROVED,
+        )
+        .limit(1)
+    ):
+        raise DomainRuleException(409, "Approve at least one branch before signing")
+    interaction.signed_at = datetime.now(BUSINESS_TZ)
 
 
 def _derive_license(branch: Branch) -> None:
@@ -126,10 +166,6 @@ def _add_years(start: date, years: int) -> date:
         return start.replace(year=start.year + years)
     except ValueError:  # 29 февраля в невисокосный год
         return start.replace(year=start.year + years, day=28)
-
-
-# даты договоров - по календарю заказчика
-BUSINESS_TZ = ZoneInfo("Europe/Moscow")
 
 
 def check_signed_date(signed: date | None) -> None:

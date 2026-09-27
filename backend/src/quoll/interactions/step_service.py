@@ -15,6 +15,7 @@ from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import UserRole
 from quoll.core.exceptions import DomainRuleException, OperationForbiddenException
+from quoll.interactions import contract_service
 from quoll.interactions.access_policy import can_change, can_close
 from quoll.interactions.bindings import read_bound, write_bound
 from quoll.interactions.models import (
@@ -80,7 +81,8 @@ async def set_values(
     old = await stage_values(session, interaction_id, stage_id, branch_id)
     gated = {f["key"] for f in stage.fields if f.get("approval_after_pass")}
     changed = {k for k in old.keys() | values.keys() if old.get(k) != values.get(k)}
-    if scope.actor.role == UserRole.MANAGER and stage_id != current and changed & gated:
+    passed = contract_service.step_passed(interaction, stage_id, current, branch_id)
+    if scope.actor.role == UserRole.MANAGER and passed and changed & gated:
         # правку пройденного шага с такими полями одобряет руководитель
         row = await _upsert(session, interaction_id, stage_id, branch_id, old, actor_id)
         # ждут только поля с аппрувом; остальное применяется сразу

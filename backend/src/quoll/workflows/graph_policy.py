@@ -3,7 +3,9 @@
 после правки опубликованного воркфлоу: ровно одна начальная стадия и из всего,
 куда заявка может попасть - от начальной или с занятых стадий, - достижима
 терминальная. Недостижимая пустая стадия разрешена: админ собирает новый шаг.
-Публикация строже - достижимо должно быть всё
+Публикация строже - достижимо должно быть всё, кроме терминальных: в «Отказ»
+попадают досрочным закрытием. Отказ в аппруве - тоже путь (3 -> 3.1),
+вызывающий передаёт его как ребро
 """
 
 from collections import defaultdict
@@ -25,6 +27,20 @@ class EdgeFacts:
     from_stage_id: int | None
     to_stage_id: int
     irreversible: bool = False
+
+
+def edge_facts(edges) -> list[EdgeFacts]:
+    """активные рёбра графа плюс пути отказа в аппруве (3 -> 3.1): заявка
+    попадает туда без ребра, но это законный путь"""
+    facts = [
+        EdgeFacts(e.from_stage_id, e.to_stage_id, e.is_irreversible) for e in edges
+    ]
+    facts += [
+        EdgeFacts(e.from_stage_id, e.reject_to_stage_id)
+        for e in edges
+        if e.reject_to_stage_id is not None
+    ]
+    return facts
 
 
 def _reachable(starts: Iterable[int], forward: dict[int, set[int]]) -> set[int]:
@@ -80,18 +96,29 @@ def graph_problems(
         )
     if any(live[s].is_terminal for s in branch_starts):
         problems.append("branch start stage cannot be terminal")
+    # уровни соединяет только точка невозврата: из шага заявки в начало
+    # веток (4 -> 5). Заявка по ней не едет, ветки встают на начало
     crossing = [
         e
         for e in edges
         if e.from_stage_id in live
         and e.to_stage_id in live
         and live[e.from_stage_id].branch != live[e.to_stage_id].branch
+        and not (
+            e.irreversible
+            and not live[e.from_stage_id].branch
+            and live[e.to_stage_id].branch_start
+        )
     ]
     if crossing:
         problems.append("transitions cross between contract and branch stages")
-    # точка невозврата - подписание, оно одно: на нём открываются ветки
-    if sum(e.irreversible for e in edges) > 1:
+    irreversible = [e for e in edges if e.irreversible]
+    if len(irreversible) > 1:
         problems.append("expected at most one point of no return")
+    if branch_starts and any(e.to_stage_id not in branch_starts for e in irreversible):
+        problems.append("point of no return leads to the branch start stage")
+    if full and branch_starts and not irreversible:
+        problems.append("branches need a point of no return into their start")
     starts = [*starts, *branch_starts]
 
     forward: dict[int, set[int]] = defaultdict(set)
@@ -113,7 +140,12 @@ def graph_problems(
         problems.append(f"interactions stand on archived stages {stranded}")
 
     if full:
-        unreachable = sorted(set(live) - _reachable(starts, forward))
+        # в «Отказ» попадают досрочным закрытием, без ребра
+        unreachable = sorted(
+            s
+            for s in set(live) - _reachable(starts, forward)
+            if not live[s].is_terminal
+        )
         if unreachable:
             problems.append(f"stages {unreachable} are unreachable from the start")
     return problems

@@ -122,13 +122,12 @@ async def move_locked(
     if edge.is_backward and not comment:
         raise DomainRuleException(422, "Backward transition needs a comment")
     await check_step(session, interaction, current, edge, approved=approved)
-    # договор закрывается, когда закрыты все ветки продуктов
-    if target.is_terminal and await contract_service.open_branch_count(
-        session, interaction.id
-    ):
-        raise DomainRuleException(409, "Close product branches first")
+    await _check_contract_rules(session, interaction, edge, target, workflow_id)
     if edge.is_irreversible:
         await contract_service.open_branches(session, interaction, actor_id)
+        if target.is_branch_stage:
+            # 4 -> 5: ветки встают на 5, а заявка остаётся на шаге 4 (М 3.11)
+            target = current
 
     if scope.owner is not None:
         # закрытие сбрасывает паузу, поэтому вклад цели считаем без неё
@@ -180,6 +179,36 @@ async def move_locked(
     await session.flush()
     await session.refresh(interaction)
     return interaction
+
+
+async def _check_contract_rules(
+    session: AsyncSession,
+    interaction: Interaction,
+    edge: WorkflowTransition,
+    target: Stage,
+    workflow_id: int,
+) -> None:
+    """системные условия договора (Д13, О 6) - только у воркфлоу с ветками"""
+    if not await contract_service.has_branch_stages(session, workflow_id):
+        return
+    if edge.is_irreversible:
+        if interaction.no_return_at is not None:
+            raise DomainRuleException(409, "Point of no return is already passed")
+        if interaction.signed_at is None:
+            raise DomainRuleException(409, "Mark the contract signed first")
+    signed_not_sealed = (
+        interaction.signed_at is not None and interaction.no_return_at is None
+    )
+    if signed_not_sealed and edge.is_backward:
+        raise DomainRuleException(409, "Contract is marked signed, unmark it first")
+    if target.is_terminal and not target.is_branch_stage:
+        # «Завершено» - только после подписания и когда закрыты все ветки
+        if interaction.no_return_at is None:
+            raise DomainRuleException(
+                409, "Contract is not signed, close the interaction with a reason"
+            )
+        if await contract_service.open_branch_count(session, interaction.id):
+            raise DomainRuleException(409, "Close product branches first")
 
 
 async def check_step(
@@ -300,6 +329,8 @@ async def rollback(
     )
     if current is None or current.is_terminal:
         raise DomainRuleException(409, "Only an interaction in work is rolled back")
+    if interaction.signed_at is not None and interaction.no_return_at is None:
+        raise DomainRuleException(409, "Contract is marked signed, unmark it first")
     if to_stage_id == current.id:
         raise DomainRuleException(409, "Interaction is already on this stage")
     if not await reached_since_no_return(session, interaction.id, to_stage_id):
