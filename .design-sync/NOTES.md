@@ -6,7 +6,7 @@
 - Для примеров использовался Storybook актуальной версии из MCP (rtk design). API сохранившихся компонентов в основном совпадает, но в 0.1.3 нет Box, Pagination, FileUpload, TableGrid, Tree, SideMenu, Modal/Drawer как экспортов и части пропсов (например, `Popover.title/body/footer`, `Breadcrumbs.colorScheme`, `DropdownMenu.onClickItem`). Сверять с `.d.ts` в `ds-bundle`, а не с MCP.
 
 ## Установка (не в корне репо)
-- Пакет ставится в `.ds-sync/ds/` в обход корневого `.npmrc`, который направляет `@atomaro` в ПЦП:
+- Пакет ставится в `.ds-sync/ds/`, реестр для `@atomaro` задаётся явно (ПЦП недоступен):
   `cd .ds-sync/ds && npm i --@atomaro:registry=https://registry.npmjs.org @atomaro/ui-kit@0.1.3 @atomaro/icons@1.0.1 react@18 react-dom@18 styled-components@6 react-transition-group prop-types @types/react@18 sass @fontsource/manrope`
 - Нужен `{"name":"ds-src","private":true}` в `.ds-sync/ds/package.json`. `--node-modules .ds-sync/ds/node_modules`.
 - После установки: `node .design-sync/prepare-atomaro.mjs .ds-sync/ds/node_modules` (это `cfg.buildCmd`, идемпотентен).
