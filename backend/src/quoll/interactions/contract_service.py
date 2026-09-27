@@ -19,6 +19,7 @@ from quoll.interactions.models import (
     ContractStatus,
     Interaction,
     InteractionStageHistory,
+    PauseState,
     StageChangeKind,
 )
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
@@ -191,6 +192,7 @@ async def open_branches(
     for branch in approved:
         branch.state_id = start.id
         branch.opened_at = func.now()
+        branch.stall_since = func.now()
         session.add(
             InteractionStageHistory(
                 interaction_id=interaction.id,
@@ -225,6 +227,13 @@ def step_passed(
     if stage_id != current:
         return True
     return branch_id is None and interaction.no_return_at is not None
+
+
+def unpause_branch(branch: Branch) -> None:
+    """закрытая ветка на паузе - бессмыслица (CHECK это держит)"""
+    branch.pause_state = PauseState.ACTIVE
+    branch.paused_until = None
+    branch.pause_comment = None
 
 
 async def has_branch_stages(session: AsyncSession, workflow_id: int | None) -> bool:
@@ -263,6 +272,7 @@ async def close_all_branches(
     завершить»; переоткрытие вернёт именно эти"""
     for branch in await _branches(session, interaction_id, closed=False):
         branch.closed_at = func.now()
+        unpause_branch(branch)
         branch.close_reason_id = close_reason_id
         branch.closed_with_interaction = True
         _history(session, branch, StageChangeKind.CLOSE, actor_id, comment)
@@ -277,6 +287,7 @@ async def reopen_branches(
         stage = await session.get(Stage, branch.state_id)
         if not stage.is_terminal and branch.closed_with_interaction:
             branch.closed_at = None
+            branch.stall_since = func.now()
             branch.close_reason_id = None
             branch.closed_with_interaction = False
             _history(session, branch, StageChangeKind.REOPEN, actor_id, comment)

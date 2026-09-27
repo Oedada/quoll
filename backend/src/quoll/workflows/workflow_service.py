@@ -165,6 +165,8 @@ async def create_stage(
                 400, "Parent is a main stage of the same workflow and level"
             )
     data = schema.model_dump()
+    if schema.passive_after_days is not None and not schema.is_branch_stage:
+        raise DomainRuleException(400, "Only branch stages are long-term")
     await _check_binds(
         session, schema.workflow_id, None, schema.is_branch_stage, data["fields"]
     )
@@ -222,6 +224,8 @@ async def update_stage(
     stage = await _stage(session, stage_id)
     await lock_workflow(session, stage.workflow_id)
     new = changes.model_dump(exclude_unset=True)
+    if new.get("passive_after_days") is not None and not stage.is_branch_stage:
+        raise DomainRuleException(400, "Only branch stages are long-term")
     if "fields" in new:
         await _check_binds(
             session, stage.workflow_id, stage.id, stage.is_branch_stage, new["fields"]
@@ -586,7 +590,7 @@ async def archive_stage(
         await session.execute(
             update(Interaction)
             .where(Interaction.id.in_(standing))
-            .values(state_id=target.id)
+            .values(state_id=target.id, stall_since=func.now())
         )
         session.add_all(
             InteractionStageHistory(
@@ -603,7 +607,7 @@ async def archive_stage(
             await session.execute(
                 update(Branch)
                 .where(Branch.id.in_([b.id for b in branches]))
-                .values(state_id=target.id)
+                .values(state_id=target.id, stall_since=func.now())
             )
             session.add_all(
                 InteractionStageHistory(

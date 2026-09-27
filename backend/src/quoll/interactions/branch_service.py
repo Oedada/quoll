@@ -18,7 +18,7 @@ from quoll.core.exceptions import (
 )
 from quoll.interactions.access_policy import can_change, can_close
 from quoll.interactions.close_reasons import check_reason
-from quoll.interactions.contract_service import open_branch_count
+from quoll.interactions.contract_service import open_branch_count, unpause_branch
 from quoll.interactions.models import (
     Branch,
     InteractionStageHistory,
@@ -236,6 +236,7 @@ async def close_locked(
     """досрочно: ветка остаётся на своём шаге, закрыта причиной (П6)"""
     reason = await check_reason(session, close_reason_id, CloseLevel.BRANCH, comment)
     branch.closed_at = func.now()
+    unpause_branch(branch)
     branch.close_reason_id = reason.id
     session.add(
         InteractionStageHistory(
@@ -282,8 +283,10 @@ async def _place(
     comment: str | None,
 ) -> Branch:
     branch.state_id = target.id
+    branch.stall_since = func.now()
     if target.is_terminal:
         branch.closed_at = func.now()
+        unpause_branch(branch)
         branch.close_reason_id = None
     session.add(
         InteractionStageHistory(

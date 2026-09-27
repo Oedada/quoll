@@ -59,6 +59,10 @@ class StageBase(AppBaseModel):
     is_branch_start: bool = False
     # подшаг x.1 шага x; как и флаги, после создания не меняется
     parent_stage_id: int | None = None
+    # порог застоя по умолчанию; пусто - на шаге застоя нет
+    stall_days: int | None = Field(default=None, ge=1)
+    # долгосрочный этап веток: через столько дней без действий - в пассивные
+    passive_after_days: int | None = Field(default=None, ge=1)
     fields: Annotated[list[StageField], AfterValidator(_unique_keys)] = Field(
         default_factory=list
     )
@@ -90,6 +94,8 @@ class StageUpdate(AppBaseModel):
     name: str | None = None
     description: str | None = None
     position: int | None = None
+    stall_days: int | None = Field(default=None, ge=1)
+    passive_after_days: int | None = Field(default=None, ge=1)
     # поля шага меняются: правило «флаги не меняются» про слоты и закрытие
     fields: Annotated[list[StageField] | None, AfterValidator(_unique_keys)] = None
 
@@ -174,9 +180,16 @@ WorkflowTransitionDetailRead = WorkflowTransitionRead
 
 
 # Workflow
+WarnDays = Annotated[
+    list[Annotated[int, Field(ge=1, le=365)]], Field(min_length=1, max_length=5)
+]
+
+
 class WorkflowBase(AppBaseModel):
     name: str
     description: str | None = None
+    # за сколько дней предупреждать о конце лицензии и договора (Т-3)
+    warn_days: WarnDays = Field(default_factory=lambda: [60, 30])
 
 
 class WorkflowCreate(WorkflowBase):
@@ -186,6 +199,7 @@ class WorkflowCreate(WorkflowBase):
 class WorkflowUpdate(AppBaseModel):
     name: str | None = None
     description: str | None = None
+    warn_days: WarnDays | None = None
 
 
 class WorkflowRead(WorkflowBase):

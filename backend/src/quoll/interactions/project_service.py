@@ -27,10 +27,12 @@ from quoll.interactions.capacity_policy import (
 )
 from quoll.interactions.close_reasons import check_reason
 from quoll.interactions.models import (
+    Branch,
     Interaction,
     InteractionAssignment,
     InteractionStageHistory,
     PauseState,
+    SlotKind,
     StageChangeKind,
 )
 from quoll.interactions.notify import notify
@@ -143,7 +145,8 @@ async def assign_locked(
     if target.superviser_id is None:
         raise DomainRuleException(409, f"Manager '{manager_id}' has no supervisor")
 
-    delta = 1 if counts_toward_capacity(stage, interaction.is_paused) else 0
+    # пассивная у нового владельца тоже пассивна - места не просит
+    delta = int(counts_toward_capacity(stage, interaction.is_paused, interaction.slot))
     await assert_can_take_new_work(session, target, delta)
 
     previous = interaction.owner_id
@@ -175,6 +178,34 @@ async def _stage_of(session: AsyncSession, interaction: Interaction) -> Stage | 
     if interaction.state_id is None:
         return None
     return await session.get(Stage, interaction.state_id)
+
+
+async def set_slot(
+    session: AsyncSession,
+    interaction: Interaction,
+    slot: SlotKind,
+    actor_id: str | None,
+) -> None:
+    """смена вида слота - в историю: отчёт за прошлый период её увидит"""
+    interaction.slot = slot
+    interaction.slot_changed_at = func.now()
+    _event(
+        session,
+        interaction,
+        StageChangeKind.SLOT_ACTIVE
+        if slot == SlotKind.ACTIVE
+        else StageChangeKind.SLOT_PASSIVE,
+        actor_id,
+        None,
+    )
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=AuditEventType.INTERACTION_SLOT_CHANGED,
+        target_type=TargetType.INTERACTION,
+        target_id=interaction.id,
+        new_value={"slot": slot},
+    )
 
 
 def _event(
@@ -310,17 +341,17 @@ async def unpause(
     if scope.owner is None:
         raise DomainRuleException(409, "Assign a manager before resuming")
     # слот возвращается, только если стадия его занимает
-    delta = int(counts_toward_capacity(stage, False)) - int(
-        counts_toward_capacity(stage, True)
+    delta = int(counts_toward_capacity(stage, False, interaction.slot)) - int(
+        counts_toward_capacity(stage, True, interaction.slot)
     )
     await assert_can_keep_working(session, scope.owner, delta)
-    resume(session, interaction, actor_id)
+    await resume(session, interaction, actor_id)
     await session.flush()
     await session.refresh(interaction)
     return interaction
 
 
-def resume(
+async def resume(
     session: AsyncSession, interaction: Interaction, actor_id: str | None
 ) -> None:
     """снять паузу - руками или воркером по истечении срока. Ёмкость проверяет
@@ -330,6 +361,17 @@ def resume(
     interaction.pause_state = PauseState.ACTIVE
     interaction.paused_until = None
     interaction.pause_comment = None
+    # после паузы застой считается заново - и у заявки, и у её веток (П8)
+    interaction.stall_since = func.now()
+    await session.execute(
+        update(Branch)
+        .where(
+            Branch.interaction_id == interaction.id,
+            Branch.state_id.is_not(None),
+            Branch.closed_at.is_(None),
+        )
+        .values(stall_since=func.now())
+    )
     _event(session, interaction, StageChangeKind.UNPAUSE, actor_id, None)
     record(
         session,
@@ -495,7 +537,10 @@ async def reopen(
     if target.superviser_id is None:
         raise DomainRuleException(409, f"Manager '{manager_id}' has no supervisor")
     await assert_can_take_new_work(
-        session, target, int(counts_toward_capacity(stage, False))
+        # переоткрытая всегда активна - место считаем от нового вида слота
+        session,
+        target,
+        int(counts_toward_capacity(stage, False, SlotKind.ACTIVE)),
     )
 
     previous_owner = interaction.owner_id
@@ -506,6 +551,8 @@ async def reopen(
             interaction.last_owner_id = previous_owner
         await _hand_over(session, interaction.id, manager_id, comment)
     await contract_service.reopen_branches(session, interaction.id, actor_id, comment)
+    if interaction.slot != SlotKind.ACTIVE:
+        await set_slot(session, interaction, SlotKind.ACTIVE, actor_id)
     place(
         session,
         interaction,

@@ -17,22 +17,23 @@ from quoll.core.exceptions import (
     ManagerNotActiveException,
     ManagerUnavailableException,
 )
-from quoll.interactions.models import Interaction
+from quoll.interactions.models import Interaction, SlotKind
 from quoll.workflows.models import Stage
 
 logger = logging.getLogger(__name__)
 
 
-def counts_toward_capacity(stage: Stage | None, is_paused: bool) -> bool:
-    """занимает ли заявка слот менеджера.
+def counts_toward_capacity(stage: Stage | None, is_paused: bool, slot: str) -> bool:
+    """занимает ли заявка активный слот менеджера.
 
-    черновик без стадии, закрытая заявка и заявка на паузе слот не занимают
+    черновик без стадии, закрытая, на паузе и пассивная (Д19) - не занимают
     """
     return (
         stage is not None
         and not stage.is_terminal
         and stage.consumes_capacity
         and not is_paused
+        and slot == SlotKind.ACTIVE
     )
 
 
@@ -50,6 +51,7 @@ def capacity_filter_expression() -> ColumnElement[bool]:
         Interaction.closed_at.is_(None),
         Stage.consumes_capacity.is_(True),
         Interaction.is_paused.is_(False),
+        Interaction.slot == SlotKind.ACTIVE,
     )
 
 

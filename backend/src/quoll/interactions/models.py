@@ -74,6 +74,11 @@ class Vendor(Base, IdMixin, TimestampMixin):
     kind: Mapped[str | None] = mapped_column(String(255), nullable=True)
 
 
+class SlotKind(StrEnum):
+    ACTIVE = "ACTIVE"
+    PASSIVE = "PASSIVE"
+
+
 class InteractionStatus(StrEnum):
     """состояние заявки для людей (М 3.11); первое сработавшее"""
 
@@ -106,6 +111,18 @@ class Interaction(Base, IdMixin, TimestampMixin):
             "(pause_state = 'PAUSED_TIMED' AND is_paused = TRUE AND paused_until IS NOT NULL) OR "
             "(pause_state = 'EXPIRED_WAITING_CAPACITY' AND is_paused = TRUE AND paused_until IS NULL)",
             name="chk_interaction_pause_state",
+        ),
+        CheckConstraint("slot IN ('ACTIVE', 'PASSIVE')", name="chk_interaction_slot"),
+        # в пассивные - только после подписания
+        CheckConstraint(
+            "slot = 'ACTIVE' OR no_return_at IS NOT NULL",
+            name="chk_interaction_passive_after_signing",
+        ),
+        # подсчёт ёмкости
+        Index(
+            "ix_interactions_active_slots",
+            "owner_id",
+            postgresql_where=text("slot = 'ACTIVE' AND closed_at IS NULL"),
         ),
         # у вуза не больше одной незакрытой заявки (М 4)
         Index(
@@ -154,6 +171,23 @@ class Interaction(Base, IdMixin, TimestampMixin):
     )
     # причина текущей паузы, история пауз - в журнале
     pause_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+    # застой: от этого момента; пороги руководителя по шагам {stage_id: дней}
+    stall_since: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    stall_overrides: Mapped[dict[str, int]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
+    # сроки предупреждений руководителя; пусто - как у воркфлоу
+    warn_days: Mapped[list[int] | None] = mapped_column(JSONB, nullable=True)
+    # активный слот считается в предел КАМа, пассивный - нет (Д19)
+    slot: Mapped[str] = mapped_column(
+        String(10), default=SlotKind.ACTIVE, server_default=SlotKind.ACTIVE
+    )
+    slot_changed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     # единственный признак закрытой: терминальная стадия или отменённый черновик
     closed_at: Mapped[datetime | None] = mapped_column(
@@ -233,6 +267,8 @@ class StageChangeKind(StrEnum):
     CONTRACT_EXTENDED = "CONTRACT_EXTENDED"
     IMPORT = "IMPORT"
     COMMENT = "COMMENT"
+    SLOT_PASSIVE = "SLOT_PASSIVE"  # увели в пассивные слоты (Д19)
+    SLOT_ACTIVE = "SLOT_ACTIVE"
 
 
 class InteractionStageHistory(Base):
@@ -596,6 +632,16 @@ class Branch(Base):
             "transfer_status IN ('NOT_TRANSFERRED', 'TRANSFERRED')",
             name="chk_branch_transfer_status",
         ),
+        CheckConstraint(
+            "(pause_state = 'ACTIVE' AND paused_until IS NULL) OR "
+            "(pause_state = 'PAUSED_MANUAL' AND paused_until IS NULL) OR "
+            "(pause_state = 'PAUSED_TIMED' AND paused_until IS NOT NULL)",
+            name="chk_branch_pause_state",
+        ),
+        CheckConstraint(
+            "closed_at IS NULL OR pause_state = 'ACTIVE'",
+            name="chk_branch_closed_not_paused",
+        ),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -634,6 +680,17 @@ class Branch(Base):
     closed_with_interaction: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
     )
+    stall_since: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    # своя пауза ветки; слот КАМа не трогает (10.2/16)
+    pause_state: Mapped[str] = mapped_column(
+        String(30), default=PauseState.ACTIVE, server_default=PauseState.ACTIVE
+    )
+    paused_until: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    pause_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
     # лицензия: until = подписание + срок, продление меняет только until
     license_signed_at: Mapped[date | None] = mapped_column(Date, nullable=True)
     license_term_years: Mapped[int | None] = mapped_column(Integer, nullable=True)

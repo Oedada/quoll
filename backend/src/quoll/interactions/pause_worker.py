@@ -92,15 +92,15 @@ async def _expire_one(
         _wait(db, interaction, "no owner")
         return 0
     stage = await db.get(Stage, interaction.state_id)
-    delta = int(counts_toward_capacity(stage, False)) - int(
-        counts_toward_capacity(stage, True)
+    delta = int(counts_toward_capacity(stage, False, interaction.slot)) - int(
+        counts_toward_capacity(stage, True, interaction.slot)
     )
     try:
         await assert_can_keep_working(db, owner, delta)
     except (CapacityExceededException, ManagerNotActiveException) as refusal:
         _wait(db, interaction, refusal.message)
         return 0
-    resume(db, interaction, actor_id=None)
+    await resume(db, interaction, actor_id=None)
     return 1
 
 

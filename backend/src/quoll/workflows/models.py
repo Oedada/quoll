@@ -30,6 +30,10 @@ class Workflow(Base, IdMixin, TimestampMixin):
     is_published: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false", index=True
     )
+    # за сколько дней предупреждать о конце лицензии и договора (Т-3)
+    warn_days: Mapped[list[int]] = mapped_column(
+        JSONB, default=lambda: [60, 30], server_default=text("'[60, 30]'::jsonb")
+    )
 
     stages: Mapped[list["Stage"]] = relationship(
         back_populates="workflow",
@@ -53,6 +57,13 @@ class Stage(Base, IdMixin, TimestampMixin):
         UniqueConstraint("id", "workflow_id", name="uq_stages_id_workflow_id"),
         CheckConstraint(
             "NOT is_branch_start OR is_branch_stage", name="chk_stage_branch_start"
+        ),
+        CheckConstraint(
+            "stall_days IS NULL OR stall_days > 0", name="chk_stage_stall_days"
+        ),
+        CheckConstraint(
+            "passive_after_days IS NULL OR (passive_after_days > 0 AND is_branch_stage)",
+            name="chk_stage_passive_after_days",
         ),
         # после подписания ветки встают в одну стадию
         Index(
@@ -94,6 +105,11 @@ class Stage(Base, IdMixin, TimestampMixin):
         JSONB, default=list, server_default=text("'[]'::jsonb")
     )
 
+    # порог застоя по умолчанию (Т-3); пусто - застой на шаге не считается
+    stall_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # долгосрочный этап веток: столько дней без действий - и заявка уходит
+    # в пассивные слоты (Д19)
+    passive_after_days: Mapped[int | None] = mapped_column(Integer, nullable=True)
     # подшаг x.1 шага x: его документ может заменить документ родителя
     parent_stage_id: Mapped[int | None] = mapped_column(
         ForeignKey("stages.id", ondelete="RESTRICT"), nullable=True

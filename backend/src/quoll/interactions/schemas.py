@@ -139,6 +139,13 @@ class InteractionRead(AppBaseModel):
     close_reason_id: int | None
     # вычисляемое: черновик / ждёт принятия / в работе / на паузе / подписан / закрыта
     status: str
+    no_return_at: datetime | None
+    # активный слот входит в предел КАМа, пассивный - нет (Д19)
+    slot: str
+    slot_changed_at: datetime | None
+    stall_since: datetime | None
+    stall_overrides: dict[str, int]
+    warn_days: list[int] | None
     planned_date: date | None
     signed_at: datetime | None
     closed_at: datetime | None
@@ -371,6 +378,10 @@ class BranchRead(AppBaseModel):
     opened_at: datetime | None
     closed_at: datetime | None
     close_reason_id: int | None
+    stall_since: datetime | None
+    pause_state: str
+    paused_until: datetime | None
+    pause_comment: str | None
     license_signed_at: date | None
     license_term_years: int | None
     license_until: date | None

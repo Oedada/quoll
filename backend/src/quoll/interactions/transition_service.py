@@ -132,8 +132,10 @@ async def move_locked(
     if scope.owner is not None:
         # закрытие сбрасывает паузу, поэтому вклад цели считаем без неё
         paused_after = interaction.is_paused and not target.is_terminal
-        delta = int(counts_toward_capacity(target, paused_after)) - int(
-            counts_toward_capacity(current, interaction.is_paused)
+        delta = int(
+            counts_toward_capacity(target, paused_after, interaction.slot)
+        ) - int(
+            counts_toward_capacity(current, interaction.is_paused, interaction.slot)
         )
         # принятие - новая работа: «не давать новых» его тоже закрывает
         check = assert_can_take_new_work if new_work else assert_can_keep_working
@@ -411,8 +413,10 @@ async def return_locked(
     ):
         raise DomainRuleException(400, "Return goes to a working stage of the workflow")
     if scope.owner is not None:
-        delta = int(counts_toward_capacity(target, interaction.is_paused)) - int(
-            counts_toward_capacity(current, interaction.is_paused)
+        delta = int(
+            counts_toward_capacity(target, interaction.is_paused, interaction.slot)
+        ) - int(
+            counts_toward_capacity(current, interaction.is_paused, interaction.slot)
         )
         await assert_can_keep_working(session, scope.owner, delta)
     place(
@@ -453,6 +457,8 @@ def place(
     """поставить заявку на стадию и записать это в историю - общее у перехода,
     закрытия и переоткрытия"""
     interaction.state_id = target.id
+    # любой вход в шаг - переход, возврат, откат, отказ, переоткрытие - новый отсчёт
+    interaction.stall_since = func.now()
     interaction.closed_at = func.now() if target.is_terminal else None
     if not target.is_terminal:
         interaction.close_reason_id = None
