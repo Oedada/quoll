@@ -16,6 +16,7 @@ from quoll.auth.task_queue import run_queue
 from quoll.config import settings
 from quoll.core.worker import Periodic
 from quoll.interactions.pause_worker import expire_branch_pauses, expire_pauses
+from quoll.interactions.watcher import watch
 
 logger = logging.getLogger(__name__)
 
@@ -48,6 +49,11 @@ def background_jobs(session_maker: async_sessionmaker) -> list[Periodic]:
         if processed:
             logger.info(f"Processed {processed} org tasks")
 
+    async def watch_tick() -> None:
+        handled = await watch(session_maker)
+        if handled:
+            logger.info(f"Watcher handled {handled} stalls and expiring terms")
+
     async def reconcile_tick() -> None:
         await reconcile(session_maker)
 
@@ -60,4 +66,5 @@ def background_jobs(session_maker: async_sessionmaker) -> list[Periodic]:
         Periodic(
             "pause-expiry", settings.pause_expiry_interval_seconds, expire_pauses_tick
         ),
+        Periodic("watcher", settings.watcher_interval_seconds, watch_tick),
     ]

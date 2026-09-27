@@ -18,7 +18,12 @@ from quoll.core.exceptions import (
     WorkflowNotPublishedException,
 )
 from quoll.interactions import contract_service
-from quoll.interactions.access_policy import can_assign, can_cancel, can_pause
+from quoll.interactions.access_policy import (
+    can_assign,
+    can_cancel,
+    can_close,
+    can_pause,
+)
 from quoll.interactions.capacity_policy import (
     assert_can_keep_working,
     assert_can_take_new_work,
@@ -399,6 +404,58 @@ async def _pausable(
     if stage.is_terminal:
         raise DomainRuleException(409, "Closed interaction cannot be paused")
     return scope, stage
+
+
+async def update_settings(
+    session: AsyncSession,
+    *,
+    interaction_id: int,
+    actor_id: str,
+    changes: dict,
+) -> Interaction:
+    """руководитель КАМа меняет пороги застоя и сроки предупреждений"""
+    scope = await lock_interaction_scope(session, interaction_id, actor_id)
+    interaction = scope.interaction
+    if not can_close(scope.actor, scope.ownership):
+        raise OperationForbiddenException("change settings of this interaction")
+    old = {
+        "stall_overrides": dict(interaction.stall_overrides),
+        "warn_days": interaction.warn_days,
+    }
+    if (overrides := changes.get("stall_overrides")) is not None:
+        own = set(
+            await session.scalars(
+                select(Stage.id).where(Stage.workflow_id == interaction.workflow_id)
+            )
+        )
+        if foreign := set(overrides) - own:
+            raise DomainRuleException(
+                400, f"Stages {sorted(foreign)} are not in this workflow"
+            )
+        merged = dict(interaction.stall_overrides)
+        for stage_id, days in overrides.items():
+            if days is None:
+                merged.pop(str(stage_id), None)
+            else:
+                merged[str(stage_id)] = days
+        interaction.stall_overrides = merged
+    if "warn_days" in changes:
+        interaction.warn_days = changes["warn_days"]
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=AuditEventType.INTERACTION_SETTINGS_CHANGED,
+        target_type=TargetType.INTERACTION,
+        target_id=interaction.id,
+        old_value=old,
+        new_value={
+            "stall_overrides": interaction.stall_overrides,
+            "warn_days": interaction.warn_days,
+        },
+    )
+    await session.flush()
+    await session.refresh(interaction)
+    return interaction
 
 
 async def update_fields(

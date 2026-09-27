@@ -123,3 +123,25 @@ WORKFLOW_CHANGE_DECIDED = _kind(
     "{comment}",
 )
 MANUAL = _kind("MANUAL", Severity.INFO, [Role.USER], "{title}", "{body}")
+STALL = _kind(
+    "STALL",
+    Severity.CRITICAL,
+    [Role.OWNER, Role.OWNER_SUPERVISOR],
+    "Застой на шаге",
+    "{interaction}{branch}: на шаге «{stage}» нет движения {days} дн.",
+    critical=True,
+)
+LICENSE_EXPIRING = _kind(
+    "LICENSE_EXPIRING",
+    Severity.WARNING,
+    [Role.OWNER, Role.OWNER_SUPERVISOR],
+    "Лицензия скоро закончится",
+    "{interaction}{branch}: лицензия действует до {until}",
+)
+CONTRACT_EXPIRING = _kind(
+    "CONTRACT_EXPIRING",
+    Severity.WARNING,
+    [Role.OWNER, Role.OWNER_SUPERVISOR],
+    "Договор скоро закончится",
+    "{interaction}: договор действует до {until}",
+)

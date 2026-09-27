@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
 from pydantic import ConfigDict, Field, ValidationError, model_validator
 
@@ -38,6 +38,21 @@ class InteractionUpdate(AppBaseModel):
 
     university_id: int | None = None
     planned_date: date | None = None
+
+
+class InteractionSettings(AppBaseModel):
+    """пороги руководителя (Т-3): застой по шагам {stage_id: дней, null -
+    снять} и сроки предупреждений (null - как у воркфлоу)"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    stall_overrides: dict[int, Annotated[int, Field(ge=1)] | None] | None = None
+    warn_days: (
+        Annotated[
+            list[Annotated[int, Field(ge=1, le=365)]], Field(min_length=1, max_length=5)
+        ]
+        | None
+    ) = None
 
 
 class AssignRequest(AppBaseModel):

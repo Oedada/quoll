@@ -63,6 +63,7 @@ from quoll.interactions.schemas import (
     InteractionHistoryRead,
     InteractionImportResult,
     InteractionRead,
+    InteractionSettings,
     InteractionUpdate,
     PauseRequest,
     ReasonedRequest,
@@ -406,6 +407,22 @@ async def attach_document(
         ),
     )
     return _document(view)
+
+
+@interactions_router.patch(
+    "/{id}/settings",
+    response_model=InteractionRead,
+    summary="Owner's supervisor sets stall thresholds per step and warning terms",
+)
+async def update_interaction_settings(
+    id: InteractionId, body: InteractionSettings, user: CurrentUser, session: SessionDep
+):
+    return await project_service.update_settings(
+        session,
+        interaction_id=id,
+        actor_id=user.id,
+        changes=body.model_dump(exclude_unset=True),
+    )
 
 
 @interactions_router.post(

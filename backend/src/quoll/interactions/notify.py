@@ -47,7 +47,7 @@ async def notify(
         interaction_id=interaction.id,
         audience=audience(scope, **who),
         context={"interaction": await label(session, interaction), **(context or {})},
-        actor_id=scope.actor.id,
+        actor_id=scope.actor.id if scope.actor else None,
         payload={"interaction_id": interaction.id, **(payload or {})},
         dedup_key=dedup_key,
     )
