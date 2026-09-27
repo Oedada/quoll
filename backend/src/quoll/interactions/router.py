@@ -257,6 +257,7 @@ async def close_interaction(
         to_stage_id=body.to_stage_id,
         expected_state_id=body.expected_state_id,
         close_reason_id=body.close_reason_id,
+        branch_close_reason_id=body.branch_close_reason_id,
         comment=body.comment,
     )
 
@@ -305,6 +306,7 @@ async def create_request(
         reason=body.reason,
         branch_id=body.branch_id,
         close_reason_id=body.close_reason_id,
+        branch_close_reason_id=body.branch_close_reason_id,
     )
 
 

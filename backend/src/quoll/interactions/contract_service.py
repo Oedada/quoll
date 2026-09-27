@@ -239,25 +239,32 @@ async def open_branch_count(session: AsyncSession, interaction_id: int) -> int:
 
 
 async def close_all_branches(
-    session: AsyncSession, interaction_id: int, actor_id: str, comment: str | None
+    session: AsyncSession,
+    interaction_id: int,
+    actor_id: str,
+    comment: str | None,
+    close_reason_id: int | None,
 ) -> None:
-    """досрочное закрытие договора закрывает и ветки - с записью в историю
-    каждой: переоткрытие вернёт именно эти"""
+    """закрытие договора закрывает и открытые ветки - «закрыть все ветки и
+    завершить»; переоткрытие вернёт именно эти"""
     for branch in await _branches(session, interaction_id, closed=False):
         branch.closed_at = func.now()
+        branch.close_reason_id = close_reason_id
+        branch.closed_with_interaction = True
         _history(session, branch, StageChangeKind.CLOSE, actor_id, comment)
 
 
 async def reopen_branches(
     session: AsyncSession, interaction_id: int, actor_id: str, comment: str
 ) -> None:
-    """переоткрытие подписанного договора возвращает ветки, закрытые вместе с
-    ним. Закрытые по отдельности - со своей причиной - остаются закрытыми,
-    их возвращает допсоглашение (RESUME)"""
+    """переоткрытие возвращает ветки, закрытые вместе с заявкой. Закрытые
+    раньше по отдельности остаются закрытыми - их возвращает допсоглашение"""
     for branch in await _branches(session, interaction_id, closed=True):
         stage = await session.get(Stage, branch.state_id)
-        if not stage.is_terminal and branch.close_reason_id is None:
+        if not stage.is_terminal and branch.closed_with_interaction:
             branch.closed_at = None
+            branch.close_reason_id = None
+            branch.closed_with_interaction = False
             _history(session, branch, StageChangeKind.REOPEN, actor_id, comment)
 
 

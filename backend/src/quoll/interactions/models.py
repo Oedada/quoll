@@ -359,6 +359,10 @@ class InteractionRequest(Base):
     close_reason_id: Mapped[int | None] = mapped_column(
         ForeignKey("close_reasons.id", ondelete="RESTRICT"), nullable=True
     )
+    # «закрыть все ветки и завершить»: причина для открытых веток
+    branch_close_reason_id: Mapped[int | None] = mapped_column(
+        ForeignKey("close_reasons.id", ondelete="RESTRICT"), nullable=True
+    )
     reason: Mapped[str] = mapped_column(Text)
     status: Mapped[str] = mapped_column(
         String(20), default=RequestStatus.PENDING, server_default="PENDING"
@@ -580,6 +584,10 @@ class Branch(Base):
     )
     close_reason_id: Mapped[int | None] = mapped_column(
         ForeignKey("close_reasons.id", ondelete="RESTRICT"), nullable=True
+    )
+    # закрыта вместе с заявкой - переоткрытие заявки её вернёт
+    closed_with_interaction: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
     )
     # лицензия: until = подписание + срок, продление меняет только until
     license_signed_at: Mapped[date | None] = mapped_column(Date, nullable=True)

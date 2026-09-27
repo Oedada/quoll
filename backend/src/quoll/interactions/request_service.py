@@ -100,6 +100,7 @@ async def create(
     reason: str,
     branch_id: int | None = None,
     close_reason_id: int | None = None,
+    branch_close_reason_id: int | None = None,
 ) -> InteractionRequest:
     # под захватом области: просьба не создаётся одновременно со сменой владельца
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
@@ -133,6 +134,10 @@ async def create(
         await check_reason(
             session, close_reason_id, interaction_level(interaction), reason
         )
+        if branch_close_reason_id is not None:
+            await check_reason(
+                session, branch_close_reason_id, CloseLevel.BRANCH, reason
+            )
     elif (
         target_manager_id is not None
         and await session.get(Manager, target_manager_id) is None
@@ -162,6 +167,7 @@ async def create(
         transition_id=transition_id,
         branch_id=branch_id,
         close_reason_id=close_reason_id,
+        branch_close_reason_id=branch_close_reason_id,
         reason=reason,
     )
     session.add(request)
@@ -378,6 +384,7 @@ async def approve(
             scope,
             to_stage_id=request.target_stage_id,
             close_reason_id=request.close_reason_id,
+            branch_close_reason_id=request.branch_close_reason_id,
             comment=request.reason,
         )
         outcome = {"target_stage_id": request.target_stage_id}

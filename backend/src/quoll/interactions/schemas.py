@@ -103,6 +103,8 @@ class CloseRequest(AppBaseModel):
     expected_state_id: int | None
     # причина из справочника; комментарий обязателен у «другое» (Д9)
     close_reason_id: int
+    # у подписанной с открытыми ветками: «закрыть все ветки и завершить»
+    branch_close_reason_id: int | None = None
     comment: str | None = None
 
 
@@ -185,6 +187,8 @@ class RequestCreate(AppBaseModel):
     target_stage_id: int | None = None
     target_manager_id: str | None = None
     close_reason_id: int | None = None
+    # закрытие подписанной заявки закрывает и открытые ветки - с этой причиной
+    branch_close_reason_id: int | None = None
     reason: str = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -200,6 +204,10 @@ class RequestCreate(AppBaseModel):
             )
         if self.kind != "CLOSE" and self.close_reason_id is not None:
             raise ValueError("close_reason_id is only for CLOSE")
+        if self.branch_close_reason_id is not None and (
+            self.kind != "CLOSE" or self.branch_id is not None
+        ):
+            raise ValueError("branch_close_reason_id is for closing the interaction")
         if self.kind == "TRANSFER" and self.target_stage_id is not None:
             raise ValueError("TRANSFER has no target_stage_id")
         if self.kind == "TRANSITION" and (
@@ -237,6 +245,7 @@ class RequestRead(AppBaseModel):
     transition_id: int | None
     branch_id: int | None
     close_reason_id: int | None
+    branch_close_reason_id: int | None
     reason: str
     decided_by: str | None
     decided_at: datetime | None

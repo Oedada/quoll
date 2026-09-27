@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
+from quoll.catalog.models import CloseLevel
 from quoll.core.exceptions import (
     DomainRuleException,
     OperationForbiddenException,
@@ -440,6 +441,7 @@ async def close(
     expected_state_id: int | None,
     close_reason_id: int,
     comment: str | None,
+    branch_close_reason_id: int | None = None,
 ) -> Interaction:
     """досрочное закрытие: с любого шага в терминальную стадию, без ребра.
     Дееспособность владельца не проверяется - иначе офбординг не дождался бы
@@ -453,6 +455,7 @@ async def close(
         to_stage_id=to_stage_id,
         close_reason_id=close_reason_id,
         comment=comment,
+        branch_close_reason_id=branch_close_reason_id,
     )
 
 
@@ -463,6 +466,7 @@ async def close_locked(
     to_stage_id: int,
     close_reason_id: int,
     comment: str | None,
+    branch_close_reason_id: int | None = None,
 ) -> Interaction:
     """закрытие под уже захваченной областью - его зовёт и одобрение просьбы"""
     interaction = scope.interaction
@@ -484,8 +488,22 @@ async def close_locked(
     if not target.is_terminal or target.is_branch_stage:
         raise DomainRuleException(400, "Interaction is closed into a terminal stage")
 
+    # отказ подписанного вуза - только по веткам: у открытых своя причина
+    branch_reason = None
+    if await contract_service.open_branch_count(session, interaction.id):
+        if branch_close_reason_id is None:
+            raise DomainRuleException(
+                422, "Open branches close too, give branch_close_reason_id"
+            )
+        branch_reason = await check_reason(
+            session, branch_close_reason_id, CloseLevel.BRANCH, comment
+        )
     await contract_service.close_all_branches(
-        session, interaction.id, actor_id, comment
+        session,
+        interaction.id,
+        actor_id,
+        comment,
+        branch_reason.id if branch_reason else None,
     )
     interaction.close_reason_id = reason.id
     place(
