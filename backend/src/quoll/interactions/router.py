@@ -36,6 +36,7 @@ from quoll.interactions import (
     import_service,
     project_service,
     request_service,
+    slots,
     step_service,
     transition_service,
 )
@@ -407,6 +408,28 @@ async def attach_document(
         ),
     )
     return _document(view)
+
+
+@interactions_router.post(
+    "/{id}/activate",
+    response_model=InteractionRead,
+    summary="The manager returns a passive interaction into active slots",
+)
+async def activate_interaction(
+    id: InteractionId, user: CurrentUser, session: SessionDep
+):
+    return await slots.activate(session, interaction_id=id, actor_id=user.id)
+
+
+@interactions_router.post(
+    "/{id}/passivate",
+    response_model=InteractionRead,
+    summary="The manager moves a signed interaction on long-term steps to passive",
+)
+async def passivate_interaction(
+    id: InteractionId, user: CurrentUser, session: SessionDep
+):
+    return await slots.passivate(session, interaction_id=id, actor_id=user.id)
 
 
 @interactions_router.patch(

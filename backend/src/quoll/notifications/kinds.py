@@ -145,3 +145,11 @@ CONTRACT_EXPIRING = _kind(
     "Договор скоро закончится",
     "{interaction}: договор действует до {until}",
 )
+MOVED_TO_PASSIVE = _kind(
+    "MOVED_TO_PASSIVE",
+    Severity.INFO,
+    [Role.OWNER],
+    "Заявка переведена в пассивные",
+    "{interaction}: давно без действий на долгосрочных этапах. "
+    "Вернуть в активные можно кнопкой на карточке",
+)

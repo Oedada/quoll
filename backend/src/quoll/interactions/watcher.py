@@ -15,7 +15,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from sqlalchemy.orm import aliased
 
 from quoll.interactions.bindings import BUSINESS_TZ, current_contract
-from quoll.interactions.models import Branch, Interaction, PauseState
+from quoll.interactions.models import Branch, Interaction, PauseState, SlotKind
 from quoll.interactions.notify import notify
 from quoll.interactions.scope import lock_interaction_scope
 from quoll.notifications import kinds
@@ -221,6 +221,40 @@ async def _warn(
     return 1
 
 
+async def _passive_tick(session_maker: async_sessionmaker) -> int:
+    """давно без действий на долгосрочных этапах - в пассивные (Д19).
+    Обратно сторож не переводит никогда"""
+    from quoll.interactions.project_service import set_slot
+    from quoll.interactions.slots import passive_problem
+
+    async with session_maker() as db:
+        candidates = list(
+            await db.scalars(
+                select(Interaction.id).where(
+                    Interaction.slot == SlotKind.ACTIVE,
+                    Interaction.no_return_at.is_not(None),
+                    Interaction.closed_at.is_(None),
+                )
+            )
+        )
+
+    async def handle(db: AsyncSession, scope) -> int:
+        interaction = scope.interaction
+        if interaction.slot != SlotKind.ACTIVE:
+            return 0
+        if await passive_problem(db, interaction, idle=True) is not None:
+            return 0
+        await set_slot(db, interaction, SlotKind.PASSIVE, None)
+        await notify(db, kinds.MOVED_TO_PASSIVE, scope)
+        return 1
+
+    return await _each(session_maker, candidates, handle)
+
+
 async def watch(session_maker: async_sessionmaker) -> int:
     """один проход; возвращает, сколько поводов обработано"""
-    return await _stall_tick(session_maker) + await _expiry_tick(session_maker)
+    return (
+        await _stall_tick(session_maker)
+        + await _expiry_tick(session_maker)
+        + await _passive_tick(session_maker)
+    )
