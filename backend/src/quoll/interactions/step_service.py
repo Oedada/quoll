@@ -26,6 +26,7 @@ from quoll.interactions.notify import notify
 from quoll.interactions.scope import lock_interaction_scope
 from quoll.interactions.step_policy import value_problems
 from quoll.interactions.transition_service import stage_values
+from quoll.notifications import kinds
 from quoll.workflows.models import Stage
 
 
@@ -94,15 +95,13 @@ async def set_values(
         await session.flush()
         # updated_at ставит база - без refresh ответ полез бы за ним вне greenlet
         await session.refresh(row)
-        if scope.owner is not None:
-            notify(
-                session,
-                scope.owner.superviser_id,
-                "Правка шага ждёт одобрения",
-                f"Взаимодействие {interaction_id}, шаг «{stage.name}»: "
-                + ", ".join(sorted(changed & gated)),
-                {"interaction_id": interaction_id, "stage_id": stage_id},
-            )
+        await notify(
+            session,
+            kinds.STEP_EDIT_PENDING,
+            scope,
+            context={"stage": stage.name, "fields": ", ".join(sorted(changed & gated))},
+            payload={"stage_id": stage_id, "branch_id": branch_id},
+        )
         return row
 
     await write_bound(session, stage, interaction_id, branch_id, values)
@@ -147,12 +146,17 @@ async def decide(
         row.values = merged
         row.updated_by = author
     await session.flush()
-    notify(
+    stage = await session.get(Stage, stage_id)
+    await notify(
         session,
-        author,
-        "Правка шага одобрена" if approve else "Правка шага отклонена",
-        f"Взаимодействие {interaction_id}",
-        {"interaction_id": interaction_id, "stage_id": stage_id},
+        kinds.STEP_EDIT_DECIDED,
+        scope,
+        context={
+            "decision": "одобрена" if approve else "отклонена",
+            "stage": stage.name,
+        },
+        payload={"stage_id": stage_id, "branch_id": branch_id},
+        editor_id=author,
     )
     await session.refresh(row)
     return row

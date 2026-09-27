@@ -8,7 +8,9 @@ from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import User, UserRole
 from quoll.core.exceptions import DomainRuleException, IdNotExistsException
 from quoll.core.locking import lock_row
-from quoll.interactions.notify import notify
+from quoll.notifications import kinds
+from quoll.notifications.emit import Audience, emit
+from quoll.notifications.kinds import Subject
 from quoll.workflows.models import Workflow, WorkflowChangeRequest
 
 
@@ -64,12 +66,18 @@ async def decide(
             "comment": comment,
         },
     )
-    notify(
+    await emit(
         session,
-        request.requested_by,
-        "Изменение воркфлоу одобрено" if approve else "Изменение воркфлоу отклонено",
-        comment or request.text,
-        {"workflow_change_request_id": request.id},
+        kinds.WORKFLOW_CHANGE_DECIDED,
+        subject=Subject.WORKFLOW_CHANGE,
+        subject_id=request.id,
+        audience=Audience(requester_id=request.requested_by),
+        context={
+            "decision": "одобрено" if approve else "отклонено",
+            "comment": comment or request.text,
+        },
+        actor_id=actor_id,
+        payload={"workflow_id": request.workflow_id, "request_id": request.id},
     )
     await session.refresh(request)
     return request

@@ -4,25 +4,37 @@ from typing import Annotated
 from fastapi import (
     APIRouter,
     Depends,
-    HTTPException,
     Query,
     WebSocket,
     WebSocketDisconnect,
     status,
 )
+from sqlalchemy import select
 
 from quoll.auth.dependencies import (
     AdminOnly,
+    AdminUser,
     CurrentUser,
     WebSocketUser,
     get_current_user,
     get_websocket_user,
 )
-from quoll.auth.models import UserRole
+from quoll.auth.models import User, UserRole
 from quoll.core import SystemDefaults
+from quoll.core.exceptions import DomainRuleException
+from quoll.db import SessionDep
+from quoll.notifications import kinds, queries
 from quoll.notifications.connection_storage import ConnectionStorage
-from quoll.notifications.dependencies import NotifyRepoDep, NotifyServiceDep
-from quoll.notifications.schemas import NotifyCreate, NotifyRead
+from quoll.notifications.emit import Audience, emit
+from quoll.notifications.kinds import Severity, Subject
+from quoll.notifications.schemas import (
+    ManualNotification,
+    MarkedRead,
+    MarkRead,
+    NotificationHistoryRead,
+    NotificationRead,
+    UnreadCount,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -37,67 +49,98 @@ ws_router = APIRouter(
     dependencies=[Depends(get_websocket_user)],
 )
 
-PageLimit = Annotated[int, Query(ge=1, le=SystemDefaults.MAX_PAGE_SIZE)]
-PageOffset = Annotated[int, Query(ge=0)]
+Limit = Annotated[int, Query(ge=1, le=SystemDefaults.MAX_PAGE_SIZE)]
 
 
-@router.get("/", response_model=list[NotifyRead], dependencies=[AdminOnly])
-async def list_all_notifications(
-    repo: NotifyRepoDep,
-    limit: PageLimit = SystemDefaults.DEFAULT_PAGE_SIZE,
-    offset: PageOffset = 0,
-) -> list[NotifyRead]:
-    """все уведомления системы - единственное место, где читают чужие"""
-    notifications = await repo.get_all(limit=limit, offset=offset)
-    return [NotifyRead.model_validate(n) for n in notifications]
-
-
-@router.get("/me", response_model=list[NotifyRead])
-async def get_my_notifications(
+@router.get("/me", response_model=list[NotificationRead])
+async def my_notifications(
     user: CurrentUser,
-    repo: NotifyRepoDep,
-    limit: PageLimit = SystemDefaults.DEFAULT_PAGE_SIZE,
-    offset: PageOffset = 0,
-) -> list[NotifyRead]:
-    notifications = await repo.get_by_user(user.id, limit=limit, offset=offset)
-    return [NotifyRead.model_validate(n) for n in notifications]
+    session: SessionDep,
+    unread: bool | None = None,
+    type: str | None = None,
+    severity: Severity | None = None,
+    interaction_id: int | None = None,
+    before_id: int | None = Query(default=None, description="cursor: older than id"),
+    limit: Limit = SystemDefaults.DEFAULT_PAGE_SIZE,
+):
+    """свои уведомления, новые сверху; всё непрочитанное лежит здесь, даже
+    если в момент отправки платформа была закрыта"""
+    return await queries.deliveries(
+        session,
+        user_id=user.id,
+        unread=unread,
+        type=type,
+        severity=severity,
+        interaction_id=interaction_id,
+        before_id=before_id,
+        limit=limit,
+    )
+
+
+@router.get("/me/unread-count", response_model=UnreadCount)
+async def my_unread_count(user: CurrentUser, session: SessionDep):
+    return await queries.unread_count(session, user.id)
+
+
+@router.post("/me/read", response_model=MarkedRead)
+async def mark_read(body: MarkRead, user: CurrentUser, session: SessionDep):
+    updated = await queries.mark_read(
+        session,
+        user.id,
+        ids=body.ids,
+        interaction_id=body.interaction_id,
+    )
+    return {"updated": updated}
+
+
+@router.get("/", response_model=list[NotificationRead], dependencies=[AdminOnly])
+async def all_notifications(
+    session: SessionDep,
+    user_id: str | None = None,
+    type: str | None = None,
+    interaction_id: int | None = None,
+    before_id: int | None = None,
+    limit: Limit = SystemDefaults.DEFAULT_PAGE_SIZE,
+):
+    """все доставки - разобрать «почему не пришло»"""
+    return await queries.deliveries(
+        session,
+        user_id=user_id,
+        type=type,
+        interaction_id=interaction_id,
+        before_id=before_id,
+        limit=limit,
+    )
 
 
 @router.post(
     "/",
-    response_model=NotifyRead,
+    response_model=NotificationHistoryRead,
     status_code=status.HTTP_201_CREATED,
-    dependencies=[AdminOnly],
 )
-async def send_notification(
-    schema: NotifyCreate, service: NotifyServiceDep
-) -> NotifyRead:
-    """ручная отправка. Изнутри системы уведомления шлёт NotifyService, не HTTP"""
-    notify = await service.create_and_send(
-        user_id=schema.user_id,
-        title=schema.title,
-        message=schema.message,
-    )
-    return NotifyRead.model_validate(notify)
-
-
-@router.patch("/{notify_id}/read", response_model=NotifyRead)
-async def mark_as_read(
-    notify_id: int,
-    user: CurrentUser,
-    repo: NotifyRepoDep,
-) -> NotifyRead:
-    logger.info(f"mark_as_read: notify_id={notify_id}, user={user.id}")
-    notify = await repo.get(notify_id)
-    if notify.user_id != user.id and user.role != UserRole.ADMIN:
-        logger.warning(
-            f"mark_as_read: forbidden for user {user.id} on notify {notify_id}"
+async def send_manual(body: ManualNotification, admin: AdminUser, session: SessionDep):
+    """ручное уведомление админа людям или всем с ролью"""
+    if body.user_ids is not None:
+        known = set(
+            await session.scalars(select(User.id).where(User.id.in_(body.user_ids)))
         )
-        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="Forbidden")
-    await repo.update(notify_id, {"is_read": True})
-    notify.is_read = True
-    logger.info(f"mark_as_read: done for notify {notify_id}")
-    return NotifyRead.model_validate(notify)
+        if unknown := set(body.user_ids) - known:
+            raise DomainRuleException(409, f"Unknown users: {sorted(unknown)}")
+    notification = await emit(
+        session,
+        kinds.MANUAL,
+        subject=Subject.SYSTEM,
+        audience=Audience(
+            users=tuple(body.user_ids or ()),
+            system_role=UserRole(body.role) if body.role else None,
+        ),
+        context={"title": body.title, "body": body.body},
+        actor_id=admin.id,
+    )
+    if notification is None:
+        raise DomainRuleException(409, "Nobody to notify")
+    [item] = await queries.history(session, notification_id=notification.id)
+    return item
 
 
 @ws_router.websocket("/notifications")

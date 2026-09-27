@@ -1,24 +1,53 @@
-"""Доменные уведомления: строка в той же транзакции, что и событие.
-
-в сокет не толкаем - откат оставил бы пришедшее уведомление о несбывшемся.
-Клиент видит новое при следующем чтении списка
-"""
+"""Уведомления о заявке: получатели - из захваченной области, подпись - вуз
+и номер. Отправка - общий emit(), см. notifications/emit.py"""
 
 from typing import Any
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quoll.notifications.models import Notify
+from quoll.interactions.models import University
+from quoll.interactions.scope import InteractionScope
+from quoll.notifications.emit import Audience, emit
+from quoll.notifications.kinds import Kind, Subject
 
 
-def notify(
+def audience(scope: InteractionScope, **extra: Any) -> Audience:
+    interaction = scope.interaction
+    return Audience(
+        owner_id=interaction.owner_id,
+        owner_superviser_id=scope.owner.superviser_id if scope.owner else None,
+        author_id=interaction.created_by,
+        **extra,
+    )
+
+
+async def label(session: AsyncSession, interaction) -> str:
+    university = await session.get(University, interaction.university_id)
+    return f"{university.short_name}, заявка {interaction.id}"
+
+
+async def notify(
     session: AsyncSession,
-    user_id: str | None,
-    title: str,
-    message: str,
-    extra: dict[str, Any] | None = None,
+    kind: Kind,
+    scope: InteractionScope,
+    *,
+    context: dict[str, Any] | None = None,
+    subject: Subject = Subject.INTERACTION,
+    subject_id: Any = None,
+    payload: dict[str, Any] | None = None,
+    dedup_key: str | None = None,
+    **who: Any,
 ) -> None:
-    if user_id is not None:
-        session.add(
-            Notify(user_id=user_id, title=title, message=message, extra_data=extra)
-        )
+    interaction = scope.interaction
+    await emit(
+        session,
+        kind,
+        subject=subject,
+        subject_id=interaction.id if subject_id is None else subject_id,
+        interaction_id=interaction.id,
+        audience=audience(scope, **who),
+        context={"interaction": await label(session, interaction), **(context or {})},
+        actor_id=scope.actor.id,
+        payload={"interaction_id": interaction.id, **(payload or {})},
+        dedup_key=dedup_key,
+    )

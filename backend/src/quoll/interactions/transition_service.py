@@ -40,6 +40,7 @@ from quoll.interactions.notify import notify
 from quoll.interactions.requests import cancel_pending_requests
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
 from quoll.interactions.step_policy import transition_problems
+from quoll.notifications import kinds
 from quoll.workflows.graph_policy import EdgeFacts, leads_to
 from quoll.workflows.models import Stage, Workflow, WorkflowTransition
 
@@ -154,14 +155,18 @@ async def move_locked(
         await cancel_pending_requests(
             session, interaction.id, actor_id, "interaction closed"
         )
-    if edge.is_backward and scope.owner is not None:
+    if edge.is_backward:
         # любой возврат - руководитель узнаёт и смотрит, что пошло не так
-        notify(
+        await notify(
             session,
-            scope.owner.superviser_id,
-            "Возврат на шаг назад",
-            f"Взаимодействие {interaction.id}: {current.name} → {target.name}. {comment}",
-            {"interaction_id": interaction.id},
+            kinds.BACKWARD_MOVE,
+            scope,
+            context={
+                "branch": "",
+                "from_stage": current.name,
+                "to_stage": target.name,
+                "comment": comment,
+            },
         )
     record(
         session,

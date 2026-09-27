@@ -26,6 +26,7 @@ from quoll.auth.dependencies import (
     SupervisorUser,
     get_current_user,
 )
+from quoll.auth.models import UserRole
 from quoll.core import SystemDefaults
 from quoll.core.exceptions import DomainRuleException
 from quoll.interactions import (
@@ -75,6 +76,8 @@ from quoll.interactions.schemas import (
     StageValuesWrite,
     TransitionRequest,
 )
+from quoll.notifications import queries as notification_queries
+from quoll.notifications.schemas import NotificationHistoryRead
 
 interactions_router = APIRouter(
     prefix="/api/v1/interactions",
@@ -452,6 +455,25 @@ async def update_interaction(
     session: SessionDep,
 ):
     return await project_service.update_fields(session, interaction, schema, user.id)
+
+
+@interactions_router.get(
+    "/{id}/notifications",
+    response_model=list[NotificationHistoryRead],
+    summary="What was notified about an interaction, to whom and whether read",
+)
+async def interaction_notifications(
+    interaction: ReadableInteraction,
+    user: CurrentUser,
+    repo: InteractionRepoDep,
+    session: SessionDep,
+):
+    """руководитель владельца и админ видят все доставки, остальные - свои"""
+    ownership = await repo.ownership(interaction)
+    sees_all = user.role == UserRole.ADMIN or ownership.owner_superviser_id == user.id
+    return await notification_queries.history(
+        session, interaction_id=interaction.id, only_user=None if sees_all else user.id
+    )
 
 
 @interactions_router.get(

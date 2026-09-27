@@ -43,6 +43,7 @@ from quoll.interactions.transition_service import (
     place,
     reached_since_no_return,
 )
+from quoll.notifications import kinds
 from quoll.workflows.graph_policy import EdgeFacts, reachable_from_start
 from quoll.workflows.models import Stage, WorkflowTransition
 from quoll.workflows.repository import WorkflowRepository
@@ -240,12 +241,8 @@ async def decline(
         session, interaction.id, actor_id, "interaction declined"
     )
     # причину видит автор: журнал читает только админ
-    notify(
-        session,
-        interaction.created_by,
-        "Менеджер отказался от заявки",
-        f"Взаимодействие {interaction.id}: {comment}",
-        {"interaction_id": interaction.id},
+    await notify(
+        session, kinds.INTERACTION_DECLINED, scope, context={"comment": comment}
     )
     record(
         session,

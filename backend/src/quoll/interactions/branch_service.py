@@ -32,6 +32,8 @@ from quoll.interactions.transition_service import (
     lock_target_stage,
     share_stage,
 )
+from quoll.notifications import kinds
+from quoll.notifications.kinds import Subject
 from quoll.workflows.graph_policy import EdgeFacts, leads_to
 from quoll.workflows.models import Stage, WorkflowTransition
 
@@ -96,14 +98,20 @@ async def move_locked(
     await check_step(
         session, interaction, current, edge, approved=approved, branch_id=branch.id
     )
-    if edge.is_backward and scope.owner is not None:
-        notify(
+    if edge.is_backward:
+        await notify(
             session,
-            scope.owner.superviser_id,
-            "Возврат на шаг назад",
-            f"Взаимодействие {interaction.id}, ветка {branch.id}: "
-            f"{current.name} → {target.name}. {comment}",
-            {"interaction_id": interaction.id, "branch_id": branch.id},
+            kinds.BACKWARD_MOVE,
+            scope,
+            context={
+                "branch": f", ветка {branch.id}",
+                "from_stage": current.name,
+                "to_stage": target.name,
+                "comment": comment,
+            },
+            subject=Subject.BRANCH,
+            subject_id=branch.id,
+            payload={"branch_id": branch.id},
         )
     return await _place(
         session,
@@ -259,13 +267,7 @@ async def _offer_to_close(session: AsyncSession, scope: InteractionScope) -> Non
     взять продукт допсоглашением. Руководителю - предложение (О 4)"""
     if scope.owner is None or await open_branch_count(session, scope.interaction.id):
         return
-    notify(
-        session,
-        scope.owner.superviser_id,
-        "Все ветки закрыты",
-        f"Взаимодействие {scope.interaction.id}: ветки закрыты, заявку можно закрыть",
-        {"interaction_id": scope.interaction.id},
-    )
+    await notify(session, kinds.ALL_BRANCHES_CLOSED, scope)
 
 
 async def _place(

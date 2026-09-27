@@ -37,6 +37,8 @@ from quoll.interactions.models import (
 from quoll.interactions.notify import notify
 from quoll.interactions.repository import InteractionRepository
 from quoll.interactions.scope import lock_interaction_scope
+from quoll.notifications import kinds
+from quoll.notifications.kinds import Subject
 from quoll.workflows.models import Stage, TransitionAttachment
 
 # вид ставится сам на своих кнопках и не живёт на шагах веток (Д5)
@@ -143,13 +145,15 @@ async def upload(
         await attachments.s3.delete(attachment.storage_key)
         raise
 
-    if pending and scope.owner is not None:
-        notify(
+    if pending:
+        await notify(
             session,
-            scope.owner.superviser_id,
-            "Файл ждёт одобрения",
-            f"Взаимодействие {interaction_id}: «{document.title}» на пройденный шаг",
-            {"interaction_id": interaction_id, "document_id": document.id},
+            kinds.DOCUMENT_PENDING,
+            scope,
+            context={"document": document.title},
+            subject=Subject.DOCUMENT,
+            subject_id=document.id,
+            payload={"document_id": document.id},
         )
     record(
         session,
@@ -367,12 +371,19 @@ async def decide(
         target_id=document.id,
         new_value={"comment": comment},
     )
-    notify(
+    await notify(
         session,
-        document.uploaded_by,
-        "Файл одобрен" if approve else "Файл отклонён",
-        f"«{document.title}»" + (f": {comment}" if comment else ""),
-        {"interaction_id": document.interaction_id, "document_id": document.id},
+        kinds.DOCUMENT_DECIDED,
+        scope,
+        context={
+            "decision": "одобрен" if approve else "отклонён",
+            "document": document.title,
+            "comment": comment or "",
+        },
+        subject=Subject.DOCUMENT,
+        subject_id=document.id,
+        payload={"document_id": document.id},
+        editor_id=document.uploaded_by,
     )
     attachment = await session.get(Attachment, document.attachment_id)
     await session.refresh(document)
