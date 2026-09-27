@@ -2,13 +2,13 @@
 
 from typing import Any
 
-from sqlalchemy import func, select, update
+from sqlalchemy import func, or_, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.notifications.models import Notification, NotificationRecipient
 
 
-def _flat(row: NotificationRecipient) -> dict[str, Any]:
+def flat(row: NotificationRecipient) -> dict[str, Any]:
     n = row.notification
     return {
         "id": row.id,
@@ -63,7 +63,40 @@ async def deliveries(
     rows = await session.scalars(
         stmt.order_by(NotificationRecipient.id.desc()).limit(limit)
     )
-    return [_flat(r) for r in rows]
+    return [flat(r) for r in rows]
+
+
+async def sync_items(
+    session: AsyncSession, user_id: str, after_id: int, limit: int
+) -> list[dict[str, Any]]:
+    """после переподключения: всё непрочитанное и всё новее курсора. Одного
+    курсора мало - id выдаются при вставке, а коммитятся транзакции в другом
+    порядке, и более раннее уведомление могло прийти позже"""
+    rows = await session.scalars(
+        select(NotificationRecipient)
+        .join(NotificationRecipient.notification)
+        .where(
+            NotificationRecipient.user_id == user_id,
+            or_(
+                NotificationRecipient.read_at.is_(None),
+                NotificationRecipient.id > after_id,
+            ),
+        )
+        .order_by(NotificationRecipient.id)
+        .limit(limit)
+    )
+    return [flat(r) for r in rows]
+
+
+async def last_id(session: AsyncSession, user_id: str) -> int:
+    return (
+        await session.scalar(
+            select(func.max(NotificationRecipient.id)).where(
+                NotificationRecipient.user_id == user_id
+            )
+        )
+        or 0
+    )
 
 
 async def unread_count(session: AsyncSession, user_id: str) -> dict[str, Any]:

@@ -26,6 +26,7 @@ from quoll.jobs import background_jobs
 from quoll.notifications import router as notifications_router
 from quoll.notifications import ws_router as notifications_ws_router
 from quoll.notifications.connection_storage import ConnectionStorage
+from quoll.notifications.listener import NotificationListener
 from quoll.org import org_router
 from quoll.workflows import (
     change_requests_router,
@@ -69,6 +70,18 @@ async def lifespan(app: FastAPI):
             await session.rollback()
     await app.state.s3.ensure_bucket()
     app.state.connection_storage = ConnectionStorage()
+    listener = NotificationListener(
+        {
+            "user": settings.postgres_user,
+            "password": settings.postgres_password,
+            "host": settings.postgres_host,
+            "port": settings.postgres_port,
+            "database": settings.postgres_path,
+        },
+        app.state.db_session_maker,
+        app.state.connection_storage,
+    )
+    listener.start()
     workers = Workers(background_jobs(app.state.db_session_maker))
     if settings.workers_enabled:
         workers.start()
@@ -76,6 +89,7 @@ async def lifespan(app: FastAPI):
 
     yield
 
+    await listener.stop()
     if settings.workers_enabled:
         await workers.stop()
     logger.debug("Disposing database engine")

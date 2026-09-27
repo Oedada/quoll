@@ -1,3 +1,4 @@
+import json
 import logging
 from typing import Annotated
 
@@ -7,6 +8,7 @@ from fastapi import (
     Query,
     WebSocket,
     WebSocketDisconnect,
+    WebSocketException,
     status,
 )
 from sqlalchemy import select
@@ -143,22 +145,57 @@ async def send_manual(body: ManualNotification, admin: AdminUser, session: Sessi
     return item
 
 
+SYNC_PAGE = 100
+
+
+def _items(rows: list[dict]) -> list[dict]:
+    return [NotificationRead.model_validate(r).model_dump(mode="json") for r in rows]
+
+
 @ws_router.websocket("/notifications")
 async def websocket_endpoint(websocket: WebSocket, user: WebSocketUser) -> None:
+    """hello - счётчик и последний id; {"type": "sync", "after_id": K} -
+    догрузка; ping - заодно проверка, что сессия ещё жива. Сюда же приходят
+    {"type": "notification"} и {"type": "resync"} от слушателя"""
     connections: ConnectionStorage = websocket.app.state.connection_storage
-    logger.debug(f"WS: adding connection for user {user.id}")
+    maker = websocket.app.state.db_session_maker
     await websocket.accept()
+    async with maker() as session:
+        hello = {
+            "type": "hello",
+            "unread": (await queries.unread_count(session, user.id))["total"],
+            "last_id": await queries.last_id(session, user.id),
+        }
+    await websocket.send_json(hello)
     await connections.add(user.id, websocket)
-    logger.info(f"WS: connected for user {user.id}")
-
     try:
         while True:
             data = await websocket.receive_text()
-            logger.debug(f"WS: received from {user.id}: {data}")
             if data == "ping":
+                # сессию могли отозвать или человека уволить, пока сокет открыт
+                try:
+                    await get_websocket_user(websocket)
+                except WebSocketException as denied:
+                    await websocket.close(code=denied.code, reason=denied.reason)
+                    return
                 await websocket.send_text("pong")
+                continue
+            try:
+                message = json.loads(data)
+                after_id = (
+                    int(message["after_id"]) if message.get("type") == "sync" else None
+                )
+            except (ValueError, KeyError, TypeError):
+                after_id = None
+            if after_id is None:
+                await websocket.send_json(
+                    {"type": "error", "detail": "Unknown message"}
+                )
+                continue
+            async with maker() as session:
+                rows = await queries.sync_items(session, user.id, after_id, SYNC_PAGE)
+            await websocket.send_json({"type": "sync", "items": _items(rows)})
     except WebSocketDisconnect:
         logger.info(f"WS: disconnected for user {user.id}")
     finally:
-        logger.info(f"WS: cleaning up for user {user.id}")
         await connections.remove(user.id, websocket)

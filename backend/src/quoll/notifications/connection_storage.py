@@ -55,6 +55,10 @@ class ConnectionStorage:
                     logger.warning(e)
         return sent
 
+    async def online_users(self) -> set[str]:
+        async with self._lock:
+            return set(self._connections)
+
     async def is_user_online(self, user_id: str) -> bool:
         async with self._lock:
             return bool(self._connections.get(user_id))
