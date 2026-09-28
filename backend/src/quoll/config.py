@@ -39,6 +39,8 @@ class Settings(BaseSettings):
     pause_expiry_interval_seconds: int = 30
     # сторож застоя и сроков: раз в час (дни календарные, точнее не нужно)
     watcher_interval_seconds: int = 3600
+    # демо для жюри: эталонный воркфлоу и учётки ролей при старте (О 30)
+    demo_mode: bool = False
     org_queue_interval_seconds: int = 30
     reconciler_interval_seconds: int = 60
 

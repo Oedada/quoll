@@ -28,6 +28,7 @@ from quoll.notifications import ws_router as notifications_ws_router
 from quoll.notifications.connection_storage import ConnectionStorage
 from quoll.notifications.listener import NotificationListener
 from quoll.org import org_router
+from quoll.seed.workflow import ensure_reference_workflow
 from quoll.workflows import (
     change_requests_router,
     stages_router,
@@ -41,6 +42,17 @@ logging.basicConfig(
 for logger_name in ["httpcore", "httpx"]:
     logging.getLogger(logger_name).setLevel(logging.WARNING)
 logger = logging.getLogger(__name__)
+
+
+async def _seed_demo(session_maker) -> None:
+    async with session_maker() as session:
+        try:
+            if await ensure_reference_workflow(session):
+                logger.info("Reference workflow created")
+            await session.commit()
+        except IntegrityError:
+            # другой процесс успел раньше
+            await session.rollback()
 
 
 @asynccontextmanager
@@ -68,6 +80,8 @@ async def lifespan(app: FastAPI):
         except IntegrityError:
             logger.debug("Admin projection already created by another process")
             await session.rollback()
+    if settings.demo_mode:
+        await _seed_demo(app.state.db_session_maker)
     await app.state.s3.ensure_bucket()
     app.state.connection_storage = ConnectionStorage()
     listener = NotificationListener(
