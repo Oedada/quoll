@@ -36,6 +36,7 @@ from quoll.interactions import (
     import_service,
     project_service,
     request_service,
+    sa_service,
     slots,
     step_service,
     transition_service,
@@ -51,6 +52,11 @@ from quoll.interactions.dependencies import (
 from quoll.interactions.models import InteractionStatus, RequestKind, RequestStatus
 from quoll.interactions.schemas import (
     AcceptRequest,
+    AgreementActionRead,
+    AgreementActionWrite,
+    AgreementComment,
+    AgreementRead,
+    AgreementUpdate,
     AssignRequest,
     BranchRead,
     BranchWrite,
@@ -517,6 +523,121 @@ async def interaction_notifications(
     return await notification_queries.history(
         session, interaction_id=interaction.id, only_user=None if sees_all else user.id
     )
+
+
+SA = "/{id}/supplementary-agreements"
+
+
+@interactions_router.get(SA, response_model=list[AgreementRead])
+async def list_agreements(interaction: ReadableInteraction, session: SessionDep):
+    return await sa_service.listing(session, interaction.id)
+
+
+@interactions_router.post(
+    SA,
+    response_model=AgreementRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="The manager opens a supplementary agreement after signing (step 4.1)",
+)
+async def open_agreement(id: InteractionId, user: CurrentUser, session: SessionDep):
+    sa = await sa_service.open_agreement(session, interaction_id=id, actor_id=user.id)
+    return await sa_service.view(session, sa)
+
+
+@interactions_router.patch(SA + "/{sa_id}", response_model=AgreementRead)
+async def update_agreement(
+    id: InteractionId,
+    sa_id: int,
+    body: AgreementUpdate,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    sa = await sa_service.update(
+        session,
+        interaction_id=id,
+        sa_id=sa_id,
+        actor_id=user.id,
+        changes=body.model_dump(exclude_unset=True),
+    )
+    return await sa_service.view(session, sa)
+
+
+@interactions_router.post(
+    SA + "/{sa_id}/actions",
+    response_model=AgreementActionRead,
+    status_code=status.HTTP_201_CREATED,
+)
+async def add_agreement_action(
+    id: InteractionId,
+    sa_id: int,
+    body: AgreementActionWrite,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    return await sa_service.add_action(
+        session,
+        interaction_id=id,
+        sa_id=sa_id,
+        actor_id=user.id,
+        fields=body.model_dump(exclude_none=True),
+    )
+
+
+@interactions_router.delete(
+    SA + "/{sa_id}/actions/{action_id}", status_code=status.HTTP_204_NO_CONTENT
+)
+async def remove_agreement_action(
+    id: InteractionId,
+    sa_id: int,
+    action_id: int,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    await sa_service.remove_action(
+        session, interaction_id=id, sa_id=sa_id, action_id=action_id, actor_id=user.id
+    )
+    return Response(status_code=status.HTTP_204_NO_CONTENT)
+
+
+@interactions_router.post(
+    SA + "/{sa_id}/scan",
+    response_model=DocumentRead,
+    status_code=status.HTTP_201_CREATED,
+    summary="Scan of the agreement - its own button, the kind is set automatically",
+)
+async def upload_agreement_scan(
+    id: InteractionId,
+    sa_id: int,
+    user: CurrentUser,
+    session: SessionDep,
+    attachments: AttachmentServiceDep,
+    file: Annotated[UploadFile, File()],
+    replaces_document_id: Annotated[int | None, Form()] = None,
+):
+    view = await sa_service.upload_scan(
+        session,
+        attachments,
+        interaction_id=id,
+        sa_id=sa_id,
+        actor=user,
+        file=file,
+        replaces_document_id=replaces_document_id,
+    )
+    return _document(view)
+
+
+@interactions_router.post(SA + "/{sa_id}/cancel", response_model=AgreementRead)
+async def cancel_agreement(
+    id: InteractionId,
+    sa_id: int,
+    body: AgreementComment,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    sa = await sa_service.cancel(
+        session, interaction_id=id, sa_id=sa_id, actor_id=user.id, comment=body.comment
+    )
+    return await sa_service.view(session, sa)
 
 
 @interactions_router.get(

@@ -31,9 +31,12 @@ from quoll.interactions import contract_service
 from quoll.interactions.access_policy import can_change, can_close, can_read
 from quoll.interactions.bindings import check_contract_dates
 from quoll.interactions.models import (
+    AgreementStatus,
     Branch,
     DocumentStatus,
+    Interaction,
     InteractionDocument,
+    SupplementaryAgreement,
 )
 from quoll.interactions.notify import notify
 from quoll.interactions.repository import InteractionRepository
@@ -80,6 +83,7 @@ async def upload(
     replaces_document_id: int | None,
     fields: DocumentFields,
     branch_id: int | None = None,
+    supplementary_agreement_id: int | None = None,
 ) -> DocumentView:
     """право - дважды: без блокировок до загрузки, чтобы не держать строки на
     время сети, и под блокировкой перед вставкой"""
@@ -110,7 +114,16 @@ async def upload(
                     400,
                     "New version goes to the stage of the replaced one or its sub-step",
                 )
-        values = await _document_values(session, fields, previous, branch_id)
+        await _check_agreement_scan(
+            session, scope.interaction, stage_id, previous, supplementary_agreement_id
+        )
+        values = await _document_values(
+            session,
+            fields,
+            previous,
+            branch_id,
+            for_agreement=supplementary_agreement_id is not None,
+        )
         current = scope.interaction.state_id
         if branch_id is not None:
             branch = await session.get(Branch, branch_id)
@@ -121,9 +134,14 @@ async def upload(
                     409, "Branch is a draft until the contract is signed"
                 )
             current = branch.state_id
-        # правка файла пройденного шага - с аппрувом руководителя (AS IS)
-        pending = actor.role == UserRole.MANAGER and contract_service.step_passed(
-            scope.interaction, stage_id, current, branch_id
+        # правка файла пройденного шага - с аппрувом руководителя (AS IS);
+        # скан допсоглашения одобряют вместе с ним
+        pending = (
+            supplementary_agreement_id is None
+            and actor.role == UserRole.MANAGER
+            and contract_service.step_passed(
+                scope.interaction, stage_id, current, branch_id
+            )
         )
         document = InteractionDocument(
             status=DocumentStatus.PENDING if pending else DocumentStatus.ACTIVE,
@@ -139,6 +157,7 @@ async def upload(
             contract_number=values.contract_number,
             contract_signed_at=values.contract_signed_at,
             contract_valid_until=values.contract_valid_until,
+            supplementary_agreement_id=supplementary_agreement_id,
             meta=values.meta,
         )
         session.add(document)
@@ -177,11 +196,60 @@ async def upload(
     return DocumentView(document, attachment, is_current=not pending)
 
 
+async def _check_agreement_scan(
+    session: AsyncSession,
+    interaction: Interaction,
+    stage_id: int,
+    previous: InteractionDocument | None,
+    sa_id: int | None,
+) -> None:
+    """скан допсоглашения меняется только через него и только в черновике;
+    обычная загрузка на 4.1 - только после подписания"""
+    if sa_id is not None:
+        sa = await session.get(SupplementaryAgreement, sa_id, populate_existing=True)
+        if sa is None or sa.interaction_id != interaction.id:
+            raise DomainRuleException(
+                404, "Supplementary agreement is not in this interaction"
+            )
+        if sa.status != AgreementStatus.DRAFT:
+            raise DomainRuleException(
+                409, f"Supplementary agreement is {sa.status}, only a draft is changed"
+            )
+        if previous is not None and previous.supplementary_agreement_id != sa_id:
+            raise DomainRuleException(400, "Replace a scan of this agreement")
+        if previous is None and await current_scan(session, sa_id) is not None:
+            raise DomainRuleException(409, "Agreement already has a scan, replace it")
+        return
+    if previous is not None and previous.supplementary_agreement_id is not None:
+        raise DomainRuleException(
+            400, "Supplementary agreement scan is replaced through the agreement"
+        )
+    stage = await session.get(Stage, stage_id)
+    if stage.is_parallel and interaction.no_return_at is None:
+        raise DomainRuleException(409, "Step 4.1 is not active before signing")
+
+
+async def current_scan(session: AsyncSession, sa_id: int) -> InteractionDocument | None:
+    """действующий скан допсоглашения: ACTIVE и без действующей преемницы"""
+    return await session.scalar(
+        select(InteractionDocument)
+        .where(
+            InteractionDocument.supplementary_agreement_id == sa_id,
+            InteractionDocument.status == DocumentStatus.ACTIVE,
+            ~replaced_expression(),
+        )
+        .order_by(InteractionDocument.id.desc())
+        .limit(1)
+    )
+
+
 async def _document_values(
     session: AsyncSession,
     fields: DocumentFields,
     previous: InteractionDocument | None,
     branch_id: int | None,
+    *,
+    for_agreement: bool = False,
 ) -> DocumentFields:
     """вид из справочника; «другое» - с описанием; реквизиты - только у
     договора, и номер у него обязателен"""
@@ -203,6 +271,10 @@ async def _document_values(
         raise DomainRuleException(400, f"Unknown document kind '{fields.kind}'")
     if fields.kind == "OTHER" and not fields.description:
         raise DomainRuleException(422, "Describe a document of kind OTHER")
+    if fields.kind == "SUPPLEMENTARY_AGREEMENT" and not for_agreement:
+        raise DomainRuleException(
+            400, "Supplementary agreement scan is uploaded through the agreement"
+        )
     if fields.kind in CONTRACT_KINDS and branch_id is not None:
         raise DomainRuleException(
             400, "Contracts and supplementary agreements are not branch files"

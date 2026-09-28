@@ -410,3 +410,93 @@ class BranchRead(AppBaseModel):
     teachers_trained: int | None
     added_by: str | None
     created_at: datetime
+
+
+# допсоглашение (шаг 4.1)
+
+_SHAPES = {
+    # тип -> (обязательные, допустимые)
+    "NEW_BRANCH": ({"program_id"}, {"program_id", "product_id"}),
+    "EXTEND_LICENSE": ({"branch_id", "license_until"}, {"branch_id", "license_until"}),
+    "RESUME": ({"branch_id"}, {"branch_id"}),
+    "EXCLUDE": ({"branch_id"}, {"branch_id"}),
+    "EXTEND_CONTRACT": ({"contract_valid_until"}, {"contract_valid_until"}),
+}
+
+
+class AgreementActionWrite(AppBaseModel):
+    """форма действия по типу - то же, что CHECK chk_sa_action_shape"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    type: Literal[
+        "NEW_BRANCH", "EXTEND_LICENSE", "RESUME", "EXCLUDE", "EXTEND_CONTRACT"
+    ]
+    branch_id: int | None = None
+    program_id: int | None = None
+    product_id: int | None = None
+    license_until: date | None = None
+    contract_valid_until: date | None = None
+
+    @model_validator(mode="after")
+    def _shape(self):
+        required, allowed = _SHAPES[self.type]
+        given = {
+            name
+            for name in (
+                "branch_id",
+                "program_id",
+                "product_id",
+                "license_until",
+                "contract_valid_until",
+            )
+            if getattr(self, name) is not None
+        }
+        if missing := required - given:
+            raise ValueError(f"{self.type} needs {sorted(missing)}")
+        if extra := given - allowed:
+            raise ValueError(f"{self.type} does not take {sorted(extra)}")
+        return self
+
+
+class AgreementActionRead(AppBaseModel):
+    id: int
+    type: str
+    branch_id: int | None
+    program_id: int | None
+    product_id: int | None
+    license_until: date | None
+    contract_valid_until: date | None
+    result_branch_id: int | None
+
+
+class AgreementUpdate(AppBaseModel):
+    """null очищает; номер и дата необязательны (Д20)"""
+
+    model_config = ConfigDict(extra="forbid")
+
+    number: str | None = Field(default=None, max_length=100)
+    signed_at: date | None = None
+
+
+class AgreementComment(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comment: str | None = None
+
+
+class AgreementRead(AppBaseModel):
+    id: int
+    interaction_id: int
+    number: str | None
+    signed_at: date | None
+    status: str
+    created_by: str | None
+    created_at: datetime
+    decided_by: str | None
+    decided_at: datetime | None
+    decision_comment: str | None
+    stall_since: datetime | None
+    scan_document_id: int | None
+    pending_request_id: int | None
+    actions: list[AgreementActionRead]
