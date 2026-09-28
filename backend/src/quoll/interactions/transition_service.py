@@ -528,6 +528,7 @@ def place(
     transition_id: int | None,
     actor_id: str,
     comment: str | None,
+    payload: dict | None = None,
 ) -> None:
     """поставить заявку на стадию и записать это в историю - общее у перехода,
     закрытия и переоткрытия"""
@@ -552,6 +553,7 @@ def place(
             kind=kind,
             actor_id=actor_id,
             comment=comment,
+            payload=payload or {},
         )
     )
 
@@ -645,6 +647,8 @@ async def close_locked(
         transition_id=None,
         actor_id=actor_id,
         comment=comment,
+        # причина в событии - итог отчёта за прошлый период не зависит от поздних закрытий
+        payload={"close_reason_id": reason.id},
     )
     await cancel_pending_requests(
         session, interaction.id, actor_id, "interaction closed"

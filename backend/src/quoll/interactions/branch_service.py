@@ -258,6 +258,7 @@ async def close_locked(
             kind=StageChangeKind.CLOSE,
             actor_id=scope.actor.id,
             comment=comment,
+            payload={"close_reason_id": reason.id},
         )
     )
     record(

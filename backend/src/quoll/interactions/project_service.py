@@ -220,6 +220,7 @@ def _event(
     kind: StageChangeKind,
     actor_id: str,
     comment: str | None,
+    payload: dict | None = None,
 ) -> None:
     """событие истории без движения: заявка там же, где была"""
     session.add(
@@ -230,6 +231,7 @@ def _event(
             kind=kind,
             actor_id=actor_id,
             comment=comment,
+            payload=payload or {},
         )
     )
 
@@ -523,7 +525,15 @@ async def cancel_draft(
     )
     interaction.closed_at = func.now()
     interaction.close_reason_id = reason.id
-    _event(session, interaction, StageChangeKind.CANCEL, actor_id, comment)
+    # причина в событии - итог отчёта за прошлый период не зависит от поздних закрытий
+    _event(
+        session,
+        interaction,
+        StageChangeKind.CANCEL,
+        actor_id,
+        comment,
+        {"close_reason_id": reason.id},
+    )
     record(
         session,
         actor_id=actor_id,

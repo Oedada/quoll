@@ -306,7 +306,14 @@ async def close_all_branches(
         unpause_branch(branch)
         branch.close_reason_id = close_reason_id
         branch.closed_with_interaction = True
-        _history(session, branch, StageChangeKind.CLOSE, actor_id, comment)
+        _history(
+            session,
+            branch,
+            StageChangeKind.CLOSE,
+            actor_id,
+            comment,
+            {"close_reason_id": close_reason_id},
+        )
 
 
 async def reopen_branches(
@@ -342,7 +349,7 @@ async def _branches(
     )
 
 
-def _history(session, branch, kind, actor_id, comment) -> None:
+def _history(session, branch, kind, actor_id, comment, payload=None) -> None:
     session.add(
         InteractionStageHistory(
             interaction_id=branch.interaction_id,
@@ -352,6 +359,7 @@ def _history(session, branch, kind, actor_id, comment) -> None:
             kind=kind,
             actor_id=actor_id,
             comment=comment,
+            payload=payload or {},
         )
     )
 
