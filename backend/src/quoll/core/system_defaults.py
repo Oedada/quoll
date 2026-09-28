@@ -20,3 +20,12 @@ class SystemDefaults:
     MAX_PAGE_SIZE = 100
     MIN_PAUSE_HOURS = 1
     MAX_PAUSE_HOURS = 720
+
+    # отчёты: пороги спеки, их подтвердит нагрузочный тест
+    REPORT_PARALLEL_LIMIT = 10
+    REPORT_TIMEOUT_SECONDS = 300
+    REPORT_UPLOAD_TIMEOUT_SECONDS = 60
+    # лист xls - 65 536 строк, из них шапка (13), заголовки и итог
+    REPORT_XLS_MAX_ROWS = 65_521
+    REPORT_PDF_MAX_ROWS = 5_000
+    REPORT_FILE_TTL_HOURS = 24

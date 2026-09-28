@@ -3,13 +3,17 @@
 только чтение бизнес-таблиц: отчёт в них не пишет (IR12)
 """
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
-from sqlalchemy import ColumnElement, exists, or_, select, true
-from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import ColumnElement, exists, func, or_, select, true, update
+from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
+
+from quoll.auth.audit import record
+from quoll.auth.audit_models import AuditEventType, TargetType
 
 from quoll.auth.models import Manager, User, UserRole
 from quoll.catalog.models import CloseReason, ItDirection, ItProgram, Product
+from quoll.core.system_defaults import SystemDefaults
 from quoll.interactions.access_policy import readable_filter
 from quoll.interactions.document_service import replaced_expression
 from quoll.interactions.models import (
@@ -22,7 +26,10 @@ from quoll.interactions.models import (
     University,
     Vendor,
 )
+from quoll.reports import labels
+from quoll.reports.models import ExportStatus, ReportExport
 from quoll.reports.policy import (
+    NO_PRODUCT,
     Assignment,
     BranchFact,
     Event,
@@ -366,3 +373,209 @@ async def options(session: AsyncSession, actor: User) -> dict:
         "people": await _people(session, manager_ids),
         "stages": stages,
     }
+
+
+# --- очередь выгрузок (§9)
+
+# ключ advisory-блокировки захвата: "REPO"
+CLAIM_LOCK = 0x5245504F
+# аренда длиннее построения и загрузки - живое задание к её концу уже завершено
+LEASE_SECONDS = (
+    SystemDefaults.REPORT_TIMEOUT_SECONDS
+    + SystemDefaults.REPORT_UPLOAD_TIMEOUT_SECONDS
+    + 30
+)
+
+
+async def claim(
+    session_maker: async_sessionmaker, worker_id: str, local_free: int
+) -> list[tuple[int, int]]:
+    """жнец и захват одной транзакцией под advisory-блокировкой: подсчёт
+    RUNNING и перевод в RUNNING не пересекаются между процессами (IR4)"""
+    if local_free <= 0:
+        return []
+    async with session_maker() as session, session.begin():
+        await session.execute(select(func.pg_advisory_xact_lock(CLAIM_LOCK)))
+        reaped = await session.scalars(
+            update(ReportExport)
+            .where(
+                ReportExport.status == ExportStatus.RUNNING,
+                ReportExport.lease_until < func.now(),
+            )
+            .values(
+                status=ExportStatus.FAILED,
+                error_code="REP-500",
+                finished_at=func.now(),
+                worker_id=None,
+                lease_until=None,
+            )
+            .returning(ReportExport.id)
+        )
+        for job_id in reaped.all():
+            _failed(session, job_id, "REP-500")
+        running = await session.scalar(
+            select(func.count()).where(ReportExport.status == ExportStatus.RUNNING)
+        )
+        free = min(SystemDefaults.REPORT_PARALLEL_LIMIT - running, local_free)
+        if free <= 0:
+            return []
+        queued = (
+            select(ReportExport.id)
+            .where(ReportExport.status == ExportStatus.QUEUED)
+            .order_by(ReportExport.id)
+            .limit(free)
+            .with_for_update(skip_locked=True)
+        )
+        rows = await session.execute(
+            update(ReportExport)
+            .where(ReportExport.id.in_(queued))
+            .values(
+                status=ExportStatus.RUNNING,
+                worker_id=worker_id,
+                lease_version=ReportExport.lease_version + 1,
+                lease_until=func.now() + timedelta(seconds=LEASE_SECONDS),
+                started_at=func.now(),
+            )
+            .returning(ReportExport.id, ReportExport.lease_version)
+        )
+        return sorted((r.id, r.lease_version) for r in rows)
+
+
+def _failed(session: AsyncSession, job_id: int, code: str) -> None:
+    record(
+        session,
+        actor_id=None,
+        event_type=AuditEventType.REPORT_EXPORT_FAILED,
+        target_type=TargetType.REPORT_EXPORT,
+        target_id=job_id,
+        new_value={"error_code": code},
+    )
+
+
+def _held(job_id: int, version: int):
+    """CAS по поколению аренды: пишет только её текущий держатель (IR7)"""
+    return (
+        ReportExport.id == job_id,
+        ReportExport.lease_version == version,
+        ReportExport.status == ExportStatus.RUNNING,
+    )
+
+
+async def finish(
+    session_maker: async_sessionmaker,
+    job_id: int,
+    version: int,
+    status: ExportStatus,
+    code: str,
+) -> bool:
+    async with session_maker() as session, session.begin():
+        done = await session.scalar(
+            update(ReportExport)
+            .where(*_held(job_id, version))
+            .values(
+                status=status,
+                error_code=code,
+                finished_at=func.now(),
+                worker_id=None,
+                lease_until=None,
+            )
+            .returning(ReportExport.id)
+        )
+        if done is not None:
+            _failed(session, job_id, code)
+        return done is not None
+
+
+async def complete(
+    session_maker: async_sessionmaker, job_id: int, version: int, key: str, rows: int
+) -> bool:
+    async with session_maker() as session, session.begin():
+        done = await session.scalar(
+            update(ReportExport)
+            .where(*_held(job_id, version))
+            .values(
+                status=ExportStatus.DONE,
+                storage_key=key,
+                row_count=rows,
+                finished_at=func.now(),
+                worker_id=None,
+                lease_until=None,
+            )
+            .returning(ReportExport.id)
+        )
+        return done is not None
+
+
+async def expire(session_maker: async_sessionmaker) -> list[str]:
+    """DONE старше срока хранения - в EXPIRED; файлы удаляет вызывающий
+    после коммита, поэтому DONE без файла не бывает (IR5)"""
+    async with session_maker() as session, session.begin():
+        keys = await session.scalars(
+            update(ReportExport)
+            .where(
+                ReportExport.status == ExportStatus.DONE,
+                ReportExport.finished_at
+                < func.now() - timedelta(hours=SystemDefaults.REPORT_FILE_TTL_HOURS),
+            )
+            .values(status=ExportStatus.EXPIRED)
+            .returning(ReportExport.storage_key)
+        )
+        return list(keys.all())
+
+
+async def position(session: AsyncSession, job: ReportExport) -> int | None:
+    """место среди ждущих, считая себя (REP-429)"""
+    if job.status != ExportStatus.QUEUED:
+        return None
+    return await session.scalar(
+        select(func.count()).where(
+            ReportExport.status == ExportStatus.QUEUED, ReportExport.id <= job.id
+        )
+    )
+
+
+async def filter_names(session: AsyncSession, params) -> dict[str, list[str]]:
+    """названия выбранных значений фильтров - для шапки файла"""
+
+    async def names(stmt) -> list[str]:
+        return sorted(await session.scalars(stmt))
+
+    found = {"regions": sorted(params.regions)}
+    if params.university_ids:
+        found["university_ids"] = await names(
+            select(University.short_name).where(
+                University.id.in_(params.university_ids)
+            )
+        )
+    if params.direction_ids:
+        found["direction_ids"] = await names(
+            select(ItDirection.name).where(ItDirection.id.in_(params.direction_ids))
+        )
+    if params.program_ids:
+        found["program_ids"] = await names(
+            select(ItProgram.name).where(ItProgram.id.in_(params.program_ids))
+        )
+    product_ids = [p for p in params.product_ids if p != NO_PRODUCT]
+    products = [labels.NO_PRODUCT] if NO_PRODUCT in params.product_ids else []
+    if product_ids:
+        products = (
+            await names(
+                select(func.concat(Product.name, " (", Vendor.name, ")"))
+                .join(Vendor, Vendor.id == Product.vendor_id)
+                .where(Product.id.in_(product_ids))
+            )
+            + products
+        )
+    found["product_ids"] = products
+    people = await _people(session, set(params.responsible_ids))
+    found["responsible_ids"] = sorted(labels.person(p) for p in people.values())
+    stage_ids = [s for s in params.statuses if isinstance(s, int)]
+    statuses = [
+        labels.SPECIAL_STATUSES[s] for s in params.statuses if isinstance(s, str)
+    ]
+    if stage_ids:
+        statuses = (
+            await names(select(Stage.name).where(Stage.id.in_(stage_ids))) + statuses
+        )
+    found["statuses"] = statuses
+    return found

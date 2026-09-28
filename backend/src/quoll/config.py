@@ -45,6 +45,14 @@ class Settings(BaseSettings):
     demo_password: str = "quoll-demo"
     org_queue_interval_seconds: int = 30
     reconciler_interval_seconds: int = 60
+    # очередь выгрузок отчётов и чистка их файлов
+    report_worker_interval_seconds: int = 2
+    report_cleanup_interval_seconds: int = 3600
+    # процессов рендера отчётов в одном процессе приложения - под число CPU
+    report_render_processes: int = 2
+    # по умолчанию у движка 5 + 10: предпросмотр держит два соединения
+    db_pool_size: int = 20
+    db_max_overflow: int = 10
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

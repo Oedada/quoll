@@ -1,14 +1,22 @@
-"""Отчёты: предпросмотр и значения фильтров (reports-design §8)"""
+"""Отчёты: предпросмотр, значения фильтров, задания выгрузки (reports-design §8, §9)"""
 
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from datetime import date, datetime
 
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
+from quoll.attachments.s3 import S3StorageService
+from quoll.auth.audit import record
+from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import User
+from quoll.core.exceptions import IdNotExistsException, StorageException
+from quoll.core.system_defaults import SystemDefaults
 from quoll.interactions.bindings import BUSINESS_TZ
 from quoll.reports import labels, policy, repository
+from quoll.reports.models import ExportStatus, ReportExport
 from quoll.reports.schemas import (
+    ExportCreate,
     MoveRead,
     PreviewRequest,
     ReportParams,
@@ -155,3 +163,128 @@ def _named(items: dict) -> list[dict]:
     return sorted(
         ({"id": k, "name": v} for k, v in items.items()), key=lambda o: o["name"]
     )
+
+
+# --- выгрузки (§9)
+
+LIMITS = {
+    "xls": SystemDefaults.REPORT_XLS_MAX_ROWS,
+    "pdf": SystemDefaults.REPORT_PDF_MAX_ROWS,
+}
+
+
+async def create_export(
+    session: AsyncSession,
+    session_maker: async_sessionmaker,
+    actor: User,
+    body: ExportCreate,
+) -> dict:
+    """объём проверяется сразу; строится файл потом, воркером"""
+    rows = await build(session_maker, actor.id, body.params)
+    if not rows:
+        raise policy.ReportError(409, "REP-204", "Report has no rows")
+    limit = LIMITS.get(body.format)
+    if limit is not None and len(rows) > limit:
+        raise policy.ReportError(
+            413,
+            "REP-413",
+            "Too many rows for format",
+            {"format": body.format, "rows": len(rows)},
+        )
+    job = ReportExport(
+        requested_by=actor.id,
+        format=body.format,
+        params=body.params.model_dump(mode="json"),
+        status=ExportStatus.QUEUED,
+        row_count=len(rows),
+    )
+    session.add(job)
+    await session.flush()
+    record(
+        session,
+        actor_id=actor.id,
+        event_type=AuditEventType.REPORT_EXPORT_REQUESTED,
+        target_type=TargetType.REPORT_EXPORT,
+        target_id=job.id,
+        new_value={
+            "format": body.format,
+            "date_from": body.params.date_from.isoformat(),
+            "date_to": body.params.date_to.isoformat(),
+            "row_count": len(rows),
+        },
+    )
+    await session.refresh(job)
+    return await export_view(session, job)
+
+
+async def export_view(session: AsyncSession, job: ReportExport) -> dict:
+    code = None
+    if job.status == ExportStatus.QUEUED:
+        code = "REP-429"
+    elif job.status in (ExportStatus.FAILED, ExportStatus.TIMED_OUT):
+        code = job.error_code
+    return {
+        "id": job.id,
+        "status": job.status,
+        "format": job.format,
+        "row_count": job.row_count,
+        "created_at": job.created_at,
+        "finished_at": job.finished_at,
+        "file_name": file_name(job),
+        "code": code,
+        "position": await repository.position(session, job),
+    }
+
+
+def file_name(job: ReportExport) -> str:
+    made = job.created_at.astimezone(BUSINESS_TZ)
+    start = date.fromisoformat(job.params["date_from"])
+    end = date.fromisoformat(job.params["date_to"])
+    return f"report_{start:%Y%m%d}-{end:%Y%m%d}_{made:%Y%m%d-%H%M}.{job.format}"
+
+
+async def own_export(
+    session: AsyncSession,
+    session_maker: async_sessionmaker,
+    actor: User,
+    export_id: int,
+    endpoint: str,
+) -> ReportExport:
+    job = await session.get(ReportExport, export_id)
+    if job is None:
+        raise IdNotExistsException(ReportExport.__name__)
+    if job.requested_by != actor.id:
+        # ответ 403 откатит транзакцию запроса - журнал пишем отдельной
+        async with session_maker() as detached, detached.begin():
+            record(
+                detached,
+                actor_id=actor.id,
+                event_type=AuditEventType.REPORT_ACCESS_DENIED,
+                target_type=TargetType.REPORT_EXPORT,
+                target_id=export_id,
+                new_value={"error_code": "REP-403", "endpoint": endpoint},
+            )
+        raise policy.ReportError(
+            403, "REP-403", "Report export belongs to another user"
+        )
+    return job
+
+
+async def export_file(
+    session: AsyncSession, s3: S3StorageService, job: ReportExport
+) -> tuple[AsyncIterator[bytes], str]:
+    if job.status == ExportStatus.EXPIRED:
+        raise policy.ReportError(410, "REP-410", "Report file has expired")
+    if job.status != ExportStatus.DONE:
+        raise policy.ReportError(409, "REP-409", "Report file is not available")
+    try:
+        stream, content_type, _ = await s3.download_stream(job.storage_key)
+    except StorageException:
+        # очистка успела между чтением статуса и S3 - это истечение, а не сбой
+        await session.refresh(job)
+        if job.status == ExportStatus.EXPIRED:
+            raise policy.ReportError(
+                410, "REP-410", "Report file has expired"
+            ) from None
+        raise
+    return stream, content_type
