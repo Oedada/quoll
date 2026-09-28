@@ -1,9 +1,10 @@
 from datetime import date, datetime
 from typing import Literal
 
-from pydantic import ConfigDict, Field, field_validator
+from pydantic import ConfigDict, Field, field_validator, model_validator
 
 from quoll.core.schemas import AppBaseModel
+from quoll.interactions.bindings import BUSINESS_TZ
 
 ColumnKey = Literal[
     "university",
@@ -35,8 +36,9 @@ _MANY = 500
 class ReportParams(AppBaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    date_from: date
-    date_to: date
+    # по умолчанию - с 01.01 года даты "по" по сегодня (спека п.3)
+    date_from: date | None = None
+    date_to: date | None = None
     university_ids: list[int] = Field(default_factory=list, max_length=_MANY)
     regions: list[str] = Field(default_factory=list, max_length=_MANY)
     direction_ids: list[int] = Field(default_factory=list, max_length=_MANY)
@@ -48,6 +50,14 @@ class ReportParams(AppBaseModel):
     responsible_ids: list[str] = Field(default_factory=list, max_length=_MANY)
     statuses: list[StatusKey] = Field(default_factory=list, max_length=_MANY)
     columns: list[ColumnKey] = Field(default_factory=lambda: list(DEFAULT_COLUMNS))
+
+    @model_validator(mode="after")
+    def default_period(self):
+        if self.date_to is None:
+            self.date_to = datetime.now(BUSINESS_TZ).date()
+        if self.date_from is None:
+            self.date_from = date(self.date_to.year, 1, 1)
+        return self
 
     @field_validator("columns")
     @classmethod

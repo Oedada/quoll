@@ -58,7 +58,6 @@ SPECIAL_STATUSES = {
 TRANSFER = {"TRANSFERRED": "передано", "NOT_TRANSFERRED": "не передано"}
 ROLES = {"manager": "КАМ", "superviser": "Руководитель", "admin": "Администратор"}
 NO_PRODUCT = "Без продукта"
-INACTIVE = "неактивен"
 
 
 def person(p) -> str:
