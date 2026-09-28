@@ -17,6 +17,7 @@ from quoll.interactions.capacity_policy import (
     counts_toward_capacity,
 )
 from quoll.interactions.models import (
+    AgreementStatus,
     Branch,
     DocumentStatus,
     Interaction,
@@ -28,6 +29,7 @@ from quoll.interactions.models import (
     PauseState,
     RequestStatus,
     SlotKind,
+    SupplementaryAgreement,
 )
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
 from quoll.workflows.models import Stage
@@ -95,8 +97,14 @@ async def passive_problem(
 
 
 async def _waiting(session: AsyncSession, interaction_id: int) -> bool:
-    """ждущие просьбы, правки шагов и файлы - это ещё работа"""
+    """ждущие просьбы, правки шагов, файлы и незавершённое ДС - это ещё работа"""
     checks = [
+        select(SupplementaryAgreement.id).where(
+            SupplementaryAgreement.interaction_id == interaction_id,
+            SupplementaryAgreement.status.in_(
+                [AgreementStatus.DRAFT, AgreementStatus.PENDING]
+            ),
+        ),
         select(InteractionRequest.id).where(
             InteractionRequest.interaction_id == interaction_id,
             InteractionRequest.status == RequestStatus.PENDING,

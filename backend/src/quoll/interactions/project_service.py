@@ -31,6 +31,7 @@ from quoll.interactions.capacity_policy import (
 )
 from quoll.interactions.close_reasons import check_reason
 from quoll.interactions.models import (
+    AgreementStatus,
     Branch,
     Interaction,
     InteractionAssignment,
@@ -38,6 +39,7 @@ from quoll.interactions.models import (
     PauseState,
     SlotKind,
     StageChangeKind,
+    SupplementaryAgreement,
 )
 from quoll.interactions.notify import notify
 from quoll.interactions.pause_policy import check_pause_term
@@ -392,6 +394,16 @@ async def resume(
             Branch.interaction_id == interaction.id,
             Branch.state_id.is_not(None),
             Branch.closed_at.is_(None),
+        )
+        .values(stall_since=func.now())
+    )
+    await session.execute(
+        update(SupplementaryAgreement)
+        .where(
+            SupplementaryAgreement.interaction_id == interaction.id,
+            SupplementaryAgreement.status.in_(
+                [AgreementStatus.DRAFT, AgreementStatus.PENDING]
+            ),
         )
         .values(stall_since=func.now())
     )
