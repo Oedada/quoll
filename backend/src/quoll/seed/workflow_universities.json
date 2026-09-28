@@ -93,9 +93,10 @@
       "key": "agreement",
       "name": "4.1 Допсоглашение",
       "position": 6,
-      "parallel": true,
       "parent": "signing",
-      "stall_days": 30
+      "stall_days": 30,
+      "side": true,
+      "handler": "SUPPLEMENTARY_AGREEMENT"
     },
     {
       "key": "transfer",
@@ -305,6 +306,30 @@
       "name": "Перевнедрение",
       "from": "update",
       "to": "implementation",
+      "backward": true
+    },
+    {
+      "name": "Оформить допсоглашение",
+      "from": "signing",
+      "to": "agreement",
+      "required_document_kinds": [
+        "CONTRACT"
+      ]
+    },
+    {
+      "name": "Допсоглашение согласовано, к передаче",
+      "from": "agreement",
+      "to": "transfer",
+      "irreversible": true,
+      "requires_approval": true,
+      "required_document_kinds": [
+        "SUPPLEMENTARY_AGREEMENT"
+      ]
+    },
+    {
+      "name": "Назад к подписанию",
+      "from": "agreement",
+      "to": "signing",
       "backward": true
     }
   ]

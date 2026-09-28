@@ -47,6 +47,8 @@ from quoll.workflows.models import Stage, TransitionAttachment
 
 # вид ставится сам на своих кнопках и не живёт на шагах веток (Д5)
 CONTRACT_KINDS = frozenset({"CONTRACT", "SUPPLEMENTARY_AGREEMENT"})
+# доп. прохождение не меняет реквизиты договора напрямую (Д48)
+CONTRACT_DOCUMENT_KINDS = frozenset({"CONTRACT", "CONTRACT_DRAFT"})
 
 
 @dataclass(frozen=True)
@@ -84,6 +86,7 @@ async def upload(
     fields: DocumentFields,
     branch_id: int | None = None,
     supplementary_agreement_id: int | None = None,
+    side_pointer_id: int | None = None,
 ) -> DocumentView:
     """право - дважды: без блокировок до загрузки, чтобы не держать строки на
     время сети, и под блокировкой перед вставкой"""
@@ -98,11 +101,21 @@ async def upload(
         scope = await lock_interaction_scope(session, interaction_id, actor.id)
         if not can_change(scope.actor, scope.ownership):
             raise OperationForbiddenException("attach documents to this interaction")
+        pointer = None
+        if side_pointer_id is not None:
+            pointer = await contract_service.active_pass(
+                session, interaction_id, side_pointer_id
+            )
+            contract_service.check_side_target(
+                await session.get(Stage, stage_id), branch_id
+            )
         previous = None
         if replaces_document_id is not None:
             previous = await _check_replaceable(
                 session, interaction_id, replaces_document_id
             )
+            if previous.side_pointer_id != side_pointer_id:
+                raise DomainRuleException(400, "New version stays in its pass")
             # версия живёт на стадии прежней или на её подшаге (Д6) - иначе
             # замена из текущего шага обошла бы аппрув правки пройденного
             stage = await session.get(Stage, stage_id)
@@ -124,6 +137,11 @@ async def upload(
             branch_id,
             for_agreement=supplementary_agreement_id is not None,
         )
+        # вид мог прийти и от заменяемой версии
+        if pointer is not None and values.kind in CONTRACT_DOCUMENT_KINDS:
+            raise DomainRuleException(
+                400, "Contract changes only through agreement actions"
+            )
         current = scope.interaction.state_id
         if branch_id is not None:
             branch = await session.get(Branch, branch_id)
@@ -135,13 +153,18 @@ async def upload(
                 )
             current = branch.state_id
         # правка файла пройденного шага - с аппрувом руководителя (AS IS);
-        # скан допсоглашения одобряют вместе с ним
+        # скан допсоглашения одобряют вместе с ним. У доп. прохождения
+        # пройден любой его шаг, кроме текущего
+        if pointer is not None:
+            passed = stage_id != pointer.stage_id
+        else:
+            passed = contract_service.step_passed(
+                scope.interaction, stage_id, current, branch_id
+            )
         pending = (
             supplementary_agreement_id is None
             and actor.role == UserRole.MANAGER
-            and contract_service.step_passed(
-                scope.interaction, stage_id, current, branch_id
-            )
+            and passed
         )
         if not pending and values.kind == "CONTRACT":
             values = await _keep_extended_term(session, interaction_id, values)
@@ -160,6 +183,7 @@ async def upload(
             contract_signed_at=values.contract_signed_at,
             contract_valid_until=values.contract_valid_until,
             supplementary_agreement_id=supplementary_agreement_id,
+            side_pointer_id=side_pointer_id,
             meta=values.meta,
         )
         session.add(document)
@@ -226,9 +250,6 @@ async def _check_agreement_scan(
         raise DomainRuleException(
             400, "Supplementary agreement scan is replaced through the agreement"
         )
-    stage = await session.get(Stage, stage_id)
-    if stage.is_parallel and interaction.no_return_at is None:
-        raise DomainRuleException(409, "Step 4.1 is not active before signing")
 
 
 async def _keep_extended_term(session: AsyncSession, interaction_id: int, doc):
@@ -458,6 +479,10 @@ async def decide(
     )
     if document.status != DocumentStatus.PENDING:
         raise DomainRuleException(409, f"Document is already {document.status}")
+    if document.side_pointer_id is not None:
+        await contract_service.active_pass(
+            session, document.interaction_id, document.side_pointer_id
+        )
     if approve:
         if document.kind == "CONTRACT":
             await _keep_extended_term(session, document.interaction_id, document)

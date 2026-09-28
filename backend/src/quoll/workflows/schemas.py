@@ -5,6 +5,7 @@ from pydantic import AfterValidator, ConfigDict, Field, model_validator
 
 from quoll.attachments.schemas import AttachmentRead
 from quoll.core.schemas import AppBaseModel
+from quoll.workflows import step_handlers
 
 
 # Stage
@@ -55,8 +56,10 @@ class StageBase(AppBaseModel):
     # флаги веток, как и остальные, после создания не меняются
     is_branch_stage: bool = False
     is_branch_start: bool = False
-    # шаг вне цепочки (4.1 «Допсоглашение»); после создания не меняется
-    is_parallel: bool = False
+    # доп. шаг (4.1 «Допсоглашение»); после создания не меняется
+    is_side: bool = False
+    # особое поведение доп. шага, код из реестра; после создания не меняется
+    handler: str | None = Field(default=None, max_length=40)
     # подшаг x.1 шага x; как и флаги, после создания не меняется
     parent_stage_id: int | None = None
     # порог застоя по умолчанию; пусто - на шаге застоя нет
@@ -68,11 +71,14 @@ class StageBase(AppBaseModel):
     )
 
     @model_validator(mode="after")
-    def check_parallel(self):
-        if self.is_parallel and (
-            self.is_branch_stage or self.is_branch_start or self.is_terminal
-        ):
-            raise ValueError("Parallel stage is a working stage of the interaction")
+    def check_side(self):
+        if self.is_side and (self.is_terminal or self.is_branch_start):
+            raise ValueError("Side stage is a working stage")
+        if self.handler is not None:
+            if self.handler == "":
+                raise ValueError("Stage handler cannot be empty")
+            if not self.is_side or self.is_branch_stage:
+                raise ValueError("Handler belongs to a side stage of the interaction")
         return self
 
     @model_validator(mode="after")
@@ -83,7 +89,14 @@ class StageBase(AppBaseModel):
 
 
 class StageCreate(StageBase):
-    pass
+    model_config = ConfigDict(extra="forbid")
+
+    @model_validator(mode="after")
+    def check_handler_known(self):
+        # реестр читается в момент вызова - тесты могут его подменить
+        if self.handler is not None and self.handler not in step_handlers.HANDLERS:
+            raise ValueError(f"Unknown stage handler '{self.handler}'")
+        return self
 
 
 class StageUpdate(AppBaseModel):
@@ -110,6 +123,11 @@ class StageRead(StageBase):
     archived_at: datetime | None = None
     created_at: datetime
     updated_at: datetime
+
+
+class StageHandlerRead(AppBaseModel):
+    code: str
+    label: str
 
 
 class StageArchiveRequest(AppBaseModel):
