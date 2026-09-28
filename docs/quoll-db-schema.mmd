@@ -1,4 +1,4 @@
-%% схема БД quoll: dev @ 8d59b3c, alembic head 57ea0170aa1e
+%% схема БД quoll: dev @ b1fdc0f, alembic head 092e8988e5c7
 %% собрано из метаданных SQLAlchemy, сверено alembic check на свежей базе
 %% обозначения: "-> таблица ON DELETE", null - допускает NULL, default - серверное значение; CHECK и индексы - комментарии после таблицы
 %% вне метаданных: enum userrole (manager, superviser, admin);
@@ -112,6 +112,73 @@ erDiagram
         timestamptz created_at "default now()"
         timestamptz updated_at "default now()"
     }
+    integration_mappings {
+        string kind
+        string external_key
+        int target_id
+        string created_by FK "-> users SET NULL; null"
+        timestamptz created_at "default now()"
+        int id PK
+    }
+    %% integration_mappings: CHECK chk_integration_mapping_kind: kind IN ('COURSE', 'UNIVERSITY', 'PROGRAM')
+    %% integration_mappings: UNIQUE INDEX uq_integration_mappings_key (kind, external_key)
+    integration_proposals {
+        string kind
+        int university_id FK "-> universities CASCADE"
+        int program_id FK "-> it_programs CASCADE"
+        text reason
+        string status "default PENDING"
+        string decided_by FK "-> users SET NULL; null"
+        timestamptz decided_at "null"
+        text decision_comment "null"
+        int workflow_id FK "-> workflows RESTRICT; null"
+        int result_interaction_id FK "-> interactions SET NULL; null"
+        timestamptz created_at "default now()"
+        int id PK
+    }
+    %% integration_proposals: CHECK chk_integration_proposal_decided: (status = 'PENDING') = (decided_at IS NULL)
+    %% integration_proposals: CHECK chk_integration_proposal_kind: kind IN ('CREATE_INTERACTION', 'ADD_PROGRAM')
+    %% integration_proposals: CHECK chk_integration_proposal_status: status IN ('PENDING', 'APPROVED', 'REJECTED')
+    %% integration_proposals: INDEX ix_integration_proposals_program_id (program_id)
+    %% integration_proposals: INDEX ix_integration_proposals_university_id (university_id)
+    %% integration_proposals: UNIQUE INDEX uq_integration_proposals_pending (kind, university_id, program_id) WHERE status = 'PENDING'
+    integration_runs {
+        string flow
+        string trigger
+        string status
+        timestamptz started_at "default now()"
+        timestamptz finished_at
+        jsonb counters "default '{}'::jsonb"
+        text error "null"
+        string actor_id FK "-> users SET NULL; null"
+        jsonb payload "null"
+        int id PK
+    }
+    %% integration_runs: CHECK chk_integration_run_flow: flow IN ('I2', 'I1', 'B1', 'B2', 'EXPORT')
+    %% integration_runs: CHECK chk_integration_run_status: status IN ('DONE', 'FAILED')
+    %% integration_runs: CHECK chk_integration_run_trigger: trigger IN ('SCHEDULE', 'MANUAL', 'FILE')
+    %% integration_runs: INDEX ix_integration_runs_flow (flow, id)
+    integration_unmatched {
+        string flow
+        string record_key
+        string code
+        string mapping_kind
+        string external_key
+        jsonb record
+        jsonb candidates "default '[]'::jsonb"
+        string status "default PENDING"
+        string decided_by FK "-> users SET NULL; null"
+        timestamptz decided_at "null"
+        timestamptz created_at "default now()"
+        int id PK
+    }
+    %% integration_unmatched: CHECK chk_integration_unmatched_code: code IN ('INT-404', 'INT-409')
+    %% integration_unmatched: CHECK chk_integration_unmatched_decided: (status = 'PENDING') = (decided_at IS NULL)
+    %% integration_unmatched: CHECK chk_integration_unmatched_flow: flow IN ('B1', 'B2')
+    %% integration_unmatched: CHECK chk_integration_unmatched_mapping_kind: mapping_kind IN ('COURSE', 'UNIVERSITY', 'PROGRAM')
+    %% integration_unmatched: CHECK chk_integration_unmatched_status: status IN ('PENDING', 'APPROVED', 'REJECTED')
+    %% integration_unmatched: INDEX ix_integration_unmatched_key (mapping_kind, external_key)
+    %% integration_unmatched: UNIQUE INDEX uq_integration_unmatched_pending (flow, record_key) WHERE status = 'PENDING'
     interaction_assignments {
         bigint id PK
         int interaction_id FK "-> interactions CASCADE"
@@ -279,6 +346,22 @@ erDiagram
         timestamptz updated_at "default now()"
     }
     %% it_programs: INDEX ix_it_programs_direction_id (direction_id)
+    lms_stats {
+        int university_id FK "-> universities CASCADE"
+        int program_id FK "-> it_programs CASCADE"
+        int students
+        int streams
+        int teachers_trained "null"
+        string source
+        timestamptz updated_at "default now()"
+        int id PK
+    }
+    %% lms_stats: CHECK chk_lms_stats_source: source IN ('LMS', 'FILE')
+    %% lms_stats: CHECK chk_lms_stats_streams: streams >= 0
+    %% lms_stats: CHECK chk_lms_stats_students: students >= 0
+    %% lms_stats: CHECK chk_lms_stats_teachers: teachers_trained IS NULL OR teachers_trained >= 0
+    %% lms_stats: INDEX ix_lms_stats_program_id (program_id)
+    %% lms_stats: UNIQUE INDEX uq_lms_stats_pair (university_id, program_id)
     managers {
         string id PK,FK "-> users RESTRICT"
         string superviser_id FK "-> supervisers RESTRICT; null"
@@ -432,6 +515,21 @@ erDiagram
     %% side_pointers: CHECK chk_side_pointer_status: status IN ('ACTIVE', 'FINISHED', 'CANCELLED')
     %% side_pointers: INDEX ix_side_pointers_interaction_id (interaction_id)
     %% side_pointers: UNIQUE INDEX uq_side_pointers_active (interaction_id) WHERE status = 'ACTIVE'
+    site_enrollments {
+        string order_number UK
+        int program_id FK "-> it_programs CASCADE"
+        int stream
+        date enrolled_on
+        string source
+        string email_fingerprint
+        timestamptz created_at "default now()"
+        timestamptz updated_at "default now()"
+        int id PK
+    }
+    %% site_enrollments: CHECK chk_site_enrollment_source: source IN ('SITE', 'FILE')
+    %% site_enrollments: CHECK chk_site_enrollment_stream: stream >= 0
+    %% site_enrollments: INDEX ix_site_enrollments_email_fingerprint (email_fingerprint)
+    %% site_enrollments: INDEX ix_site_enrollments_program_id (program_id)
     specialties {
         string code UK
         string name
@@ -614,6 +712,14 @@ erDiagram
     users |o--o{ branches : "added_by"
     universities |o--o{ contacts : "university_id"
     vendors |o--o{ contacts : "vendor_id"
+    users |o--o{ integration_mappings : "created_by"
+    universities ||--o{ integration_proposals : "university_id"
+    it_programs ||--o{ integration_proposals : "program_id"
+    users |o--o{ integration_proposals : "decided_by"
+    workflows |o--o{ integration_proposals : "workflow_id"
+    interactions |o--o{ integration_proposals : "result_interaction_id"
+    users |o--o{ integration_runs : "actor_id"
+    users |o--o{ integration_unmatched : "decided_by"
     interactions ||--o{ interaction_assignments : "interaction_id"
     users |o--o{ interaction_assignments : "manager_id"
     interaction_documents ||--o{ interaction_documents : "interaction_id"
@@ -659,6 +765,8 @@ erDiagram
     users |o--o{ interactions : "last_owner_id"
     close_reasons |o--o{ interactions : "close_reason_id"
     it_directions ||--o{ it_programs : "direction_id"
+    universities ||--o{ lms_stats : "university_id"
+    it_programs ||--o{ lms_stats : "program_id"
     users ||--o| managers : "id"
     supervisers |o--o{ managers : "superviser_id"
     notifications ||--o{ notification_recipients : "notification_id"
@@ -685,6 +793,7 @@ erDiagram
     stages ||--o{ side_pointers : "stage_id"
     users |o--o{ side_pointers : "started_by"
     users |o--o{ side_pointers : "finished_by"
+    it_programs ||--o{ site_enrollments : "program_id"
     specialties ||--o{ specialty_directions : "specialty_id"
     it_directions ||--o{ specialty_directions : "direction_id"
     workflows ||--o{ stages : "workflow_id"
