@@ -603,7 +603,12 @@ async def apply(
                 payload={"sa_id": sa.id},
             )
             continue
-        branch = await session.get(Branch, action.branch_id, populate_existing=True)
+        # у продления договора ветки нет
+        branch = (
+            await session.get(Branch, action.branch_id, populate_existing=True)
+            if action.branch_id is not None
+            else None
+        )
         if action.type == ActionType.RESUME:
             stage = await session.get(Stage, branch.state_id, populate_existing=True)
             if stage.id not in shared or (
