@@ -154,6 +154,8 @@ class InteractionRead(AppBaseModel):
     close_reason_id: int | None
     # вычисляемое: черновик / ждёт принятия / в работе / на паузе / подписан / закрыта
     status: str
+    # исход закрытой: завершено / отказ / отменена; у незакрытой - null
+    outcome: str | None
     no_return_at: datetime | None
     # активный слот входит в предел КАМа, пассивный - нет (Д19)
     slot: str

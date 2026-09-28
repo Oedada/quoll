@@ -16,11 +16,14 @@ from sqlalchemy import (
     Text,
     UniqueConstraint,
     case,
+    column,
+    select,
+    table,
     text,
 )
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.hybrid import hybrid_property
-from sqlalchemy.orm import Mapped, mapped_column, relationship
+from sqlalchemy.orm import Mapped, column_property, mapped_column, relationship
 
 from quoll.core.mixins import IdMixin, TimestampMixin
 from quoll.db import Base, created_at_dt, str_255
@@ -88,6 +91,19 @@ class InteractionStatus(StrEnum):
     PAUSED = "PAUSED"
     SIGNED = "SIGNED"  # договор подписан
     IN_PROGRESS = "IN_PROGRESS"
+
+
+class InteractionOutcome(StrEnum):
+    """исход закрытой заявки; у незакрытой - None"""
+
+    COMPLETED = "COMPLETED"  # штатно или причина с outcome DONE
+    REFUSED = "REFUSED"
+    CANCELLED = "CANCELLED"  # отменённый черновик, стадии не было
+
+
+# ORM-класс CloseReason не импортируем - catalog.router уже импортирует
+# University/Vendor отсюда, и получился бы цикл. Нужна только колонка outcome
+_close_reasons = table("close_reasons", column("id"), column("outcome"))
 
 
 class Interaction(Base, IdMixin, TimestampMixin):
@@ -205,6 +221,24 @@ class Interaction(Base, IdMixin, TimestampMixin):
     # у досрочного закрытия и отмены; штатное завершение по ребру - без причины
     close_reason_id: Mapped[int | None] = mapped_column(
         ForeignKey("close_reasons.id", ondelete="RESTRICT"), nullable=True
+    )
+
+    # исход закрытой: штатно/по причине DONE, отказ по причине REFUSED,
+    # отменённый черновик - без стадии. Column_property, не hybrid_property -
+    # причину нельзя прочитать без похода в БД, а лениво грузить нельзя (async)
+    outcome: Mapped[str | None] = column_property(
+        case(
+            (closed_at.is_(None), None),
+            (state_id.is_(None), InteractionOutcome.CANCELLED.value),
+            (
+                select(_close_reasons.c.outcome)
+                .where(_close_reasons.c.id == close_reason_id)
+                .scalar_subquery()
+                == "REFUSED",
+                InteractionOutcome.REFUSED.value,
+            ),
+            else_=InteractionOutcome.COMPLETED.value,
+        )
     )
 
     @hybrid_property

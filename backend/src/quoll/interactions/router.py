@@ -50,7 +50,13 @@ from quoll.interactions.dependencies import (
     ReadableInteraction,
     SessionDep,
 )
-from quoll.interactions.models import InteractionStatus, RequestKind, RequestStatus
+from quoll.interactions.models import (
+    InteractionOutcome,
+    InteractionStatus,
+    RequestKind,
+    RequestStatus,
+    SlotKind,
+)
 from quoll.interactions.schemas import (
     AcceptRequest,
     AgreementActionRead,
@@ -148,7 +154,15 @@ async def list_interactions(
     program_id: int | None = Query(
         default=None, ge=1, description="Filter by IT program of any branch"
     ),
-    status: InteractionStatus | None = None,
+    status: Annotated[
+        list[InteractionStatus] | None,
+        Query(description="Filter by status, several allowed"),
+    ] = None,
+    slot: Annotated[SlotKind | None, Query(description="Filter by slot kind")] = None,
+    outcome: Annotated[
+        list[InteractionOutcome] | None,
+        Query(description="Filter closed interactions by outcome, several allowed"),
+    ] = None,
     limit: int = Query(
         default=SystemDefaults.DEFAULT_PAGE_SIZE,
         ge=1,
@@ -161,6 +175,8 @@ async def list_interactions(
         university_id=university_id,
         program_id=program_id,
         status=status,
+        slot=slot,
+        outcome=outcome,
         limit=limit,
         offset=offset,
     )
