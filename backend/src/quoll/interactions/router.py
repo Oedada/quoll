@@ -626,6 +626,34 @@ async def upload_agreement_scan(
     return _document(view)
 
 
+@interactions_router.post(
+    SA + "/{sa_id}/submit",
+    response_model=AgreementRead,
+    summary="Send the agreement to the owner's supervisor for approval",
+)
+async def submit_agreement(
+    id: InteractionId,
+    sa_id: int,
+    body: AgreementComment,
+    user: CurrentUser,
+    session: SessionDep,
+):
+    sa = await sa_service.submit(
+        session, interaction_id=id, sa_id=sa_id, actor_id=user.id, comment=body.comment
+    )
+    return await sa_service.view(session, sa)
+
+
+@interactions_router.post(SA + "/{sa_id}/recall", response_model=AgreementRead)
+async def recall_agreement(
+    id: InteractionId, sa_id: int, user: CurrentUser, session: SessionDep
+):
+    sa = await sa_service.recall(
+        session, interaction_id=id, sa_id=sa_id, actor_id=user.id
+    )
+    return await sa_service.view(session, sa)
+
+
 @interactions_router.post(SA + "/{sa_id}/cancel", response_model=AgreementRead)
 async def cancel_agreement(
     id: InteractionId,

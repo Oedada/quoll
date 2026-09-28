@@ -236,9 +236,16 @@ async def close_locked(
     *,
     close_reason_id: int,
     comment: str | None,
+    allow_system_reason: bool = False,
 ) -> Branch:
     """досрочно: ветка остаётся на своём шаге, закрыта причиной (П6)"""
-    reason = await check_reason(session, close_reason_id, CloseLevel.BRANCH, comment)
+    reason = await check_reason(
+        session,
+        close_reason_id,
+        CloseLevel.BRANCH,
+        comment,
+        allow_system=allow_system_reason,
+    )
     branch.closed_at = func.now()
     unpause_branch(branch)
     branch.close_reason_id = reason.id

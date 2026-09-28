@@ -10,7 +10,7 @@ from datetime import date, datetime
 from typing import Any
 from zoneinfo import ZoneInfo
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.core.exceptions import DomainRuleException
@@ -99,8 +99,10 @@ async def write_bound(
     branch_id: int | None,
     values: dict[str, Any],
 ) -> None:
-    """действующие значения шага - в колонки"""
-    touched = set()
+    """действующие значения шага - в колонки. Пишем только то, что реально
+    поменялось: иначе сохранение шага 7 пересчитало бы продлённую лицензию"""
+    await extension_locks(session, stage, interaction_id, branch_id, values)
+    license_changed, contract_changed = set(), set()
     for key, bind in _bound(stage).items():
         if key not in values:
             continue
@@ -112,17 +114,87 @@ async def write_bound(
         if column == "signed_at":
             await _mark_signed(session, owner, bool(value))
             continue
-        if kind == "date" and value is not None:
-            value = date.fromisoformat(value)
+        value = _coerce(kind, value)
         if column == "transfer_status" and value not in set(TransferStatus):
             raise DomainRuleException(422, f"Unknown transfer status '{value}'")
+        if getattr(owner, column) == value:
+            continue
         setattr(owner, column, value)
-        touched.add(owner)
-    for owner in touched:
-        if isinstance(owner, Branch):
-            _derive_license(owner)
-        else:
-            check_contract_dates(owner.contract_signed_at, owner.contract_valid_until)
+        if column in LICENSE_TERMS:
+            license_changed.add(owner)
+        elif level == "contract":
+            contract_changed.add(owner)
+    for owner in license_changed:
+        _derive_license(owner)
+    for owner in contract_changed:
+        check_contract_dates(owner.contract_signed_at, owner.contract_valid_until)
+
+
+LICENSE_TERMS = ("license_signed_at", "license_term_years")
+
+
+def _coerce(kind: str, value: Any) -> Any:
+    if kind == "date" and value is not None:
+        return date.fromisoformat(value)
+    return value
+
+
+async def extension_locks(
+    session: AsyncSession,
+    stage: Stage,
+    interaction_id: int,
+    branch_id: int | None,
+    values: dict[str, Any],
+) -> None:
+    """продлённое допсоглашением правкой поля шага не откатить (П11, П10):
+    ни прямой записью, ни одобрением ждущей правки"""
+    from quoll.interactions.models import InteractionStageHistory, StageChangeKind
+
+    history = InteractionStageHistory
+    for key, bind in _bound(stage).items():
+        if key not in values:
+            continue
+        level, column, kind = BINDINGS[bind]
+        if column not in (*LICENSE_TERMS, "contract_valid_until"):
+            continue
+        owner = await _owner(session, level, interaction_id, branch_id)
+        if owner is None or getattr(owner, column) == _coerce(kind, values[key]):
+            continue
+        if column in LICENSE_TERMS:
+            restarted = await session.scalar(
+                select(func.max(history.id)).where(
+                    history.branch_id == branch_id,
+                    history.kind == StageChangeKind.RESTART,
+                )
+            )
+            extended = await session.scalar(
+                select(history.id)
+                .where(
+                    history.branch_id == branch_id,
+                    history.kind == StageChangeKind.LICENSE_EXTENDED,
+                    history.id > (restarted or 0),
+                )
+                .limit(1)
+            )
+            if extended is not None:
+                raise DomainRuleException(
+                    409,
+                    "License term was extended by an agreement; "
+                    "add EXTEND_LICENSE to change it",
+                )
+        elif await session.scalar(
+            select(history.id)
+            .where(
+                history.interaction_id == interaction_id,
+                history.kind == StageChangeKind.CONTRACT_EXTENDED,
+            )
+            .limit(1)
+        ):
+            raise DomainRuleException(
+                409,
+                "Contract term was extended by an agreement; "
+                "add EXTEND_CONTRACT to change it",
+            )
 
 
 async def _mark_signed(session: AsyncSession, interaction, signed: bool) -> None:

@@ -17,7 +17,7 @@ from quoll.core.exceptions import (
     StaleStateException,
     WorkflowNotPublishedException,
 )
-from quoll.interactions import contract_service, step_contacts
+from quoll.interactions import contract_service, sa_lifecycle, step_contacts
 from quoll.interactions.access_policy import can_change, can_close
 from quoll.interactions.bindings import read_bound
 from quoll.interactions.capacity_policy import (
@@ -142,6 +142,10 @@ async def move_locked(
         await check(session, scope.owner, delta)
 
     interaction.workflow_id = workflow_id
+    if target.is_terminal:
+        await sa_lifecycle.cancel_open(
+            session, interaction, actor_id, "interaction closed"
+        )
     place(
         session,
         interaction,
@@ -555,6 +559,9 @@ async def close_locked(
         branch_reason.id if branch_reason else None,
     )
     interaction.close_reason_id = reason.id
+    # до place: в SA_CANCELLED попадёт шаг, с которого закрыли; до отмены
+    # просьб: ДС не успеет побывать в черновике
+    await sa_lifecycle.cancel_open(session, interaction, actor_id, "interaction closed")
     place(
         session,
         interaction,

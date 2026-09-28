@@ -199,6 +199,17 @@ async def _resume_problem(session, interaction, action, others, branch):
     )
     if live is not None:
         return f"branch {live.id} of this pair is live"
+    # возобновляется только последняя итерация пары (Д21) - заодно двух
+    # RESUME одной пары в одном ДС не бывает
+    latest = await session.scalar(
+        select(func.max(Branch.iteration)).where(
+            Branch.interaction_id == interaction.id,
+            Branch.program_id.is_not_distinct_from(branch.program_id),
+            Branch.product_id.is_not_distinct_from(branch.product_id),
+        )
+    )
+    if branch.iteration < latest:
+        return f"only the latest iteration {latest} of this pair is resumed"
     if any(
         o.type == ActionType.NEW_BRANCH
         and (o.program_id, o.product_id) == (branch.program_id, branch.product_id)
@@ -206,7 +217,8 @@ async def _resume_problem(session, interaction, action, others, branch):
     ):
         return "resume or a new iteration, not both"
     stage = await session.get(Stage, branch.state_id, populate_existing=True)
-    if stage.archived_at is not None:
+    # с терминальной ветка уходит на начало веток - её архив не мешает
+    if stage.archived_at is not None and not stage.is_terminal:
         return f"branch {branch.id} step is archived"
     if (
         stage.is_terminal
@@ -476,4 +488,379 @@ async def upload_scan(
         replaces_document_id=replaces_document_id,
         fields=DocumentFields(kind="SUPPLEMENTARY_AGREEMENT"),
         supplementary_agreement_id=sa_id,
+    )
+
+
+# --- отправка, отзыв, применение
+
+
+async def stages_to_share(session: AsyncSession, sa_id: int) -> set[int]:
+    """стадии, от которых зависит одобрение: берутся FOR SHARE до области
+    заявки (§4). Читаем без блокировок - под областью сверим"""
+    sa = await session.get(SupplementaryAgreement, sa_id)
+    interaction = await session.get(Interaction, sa.interaction_id)
+    stages: set[int] = set()
+    need_start = False
+    for action in await actions_of(session, sa_id):
+        if action.type == ActionType.NEW_BRANCH:
+            need_start = True
+        elif action.type == ActionType.RESUME:
+            branch = await session.get(Branch, action.branch_id)
+            stages.add(branch.state_id)
+            if (await session.get(Stage, branch.state_id)).is_terminal:
+                need_start = True
+    if need_start:
+        start = await branch_start(session, interaction.workflow_id)
+        if start is not None:
+            stages.add(start.id)
+    return stages
+
+
+async def stale_actions(
+    session: AsyncSession, interaction: Interaction, sa_id: int
+) -> str | None:
+    """почему одобрять уже нельзя: руководитель не виноват, просьба гасится"""
+    sa = await session.get(SupplementaryAgreement, sa_id, populate_existing=True)
+    if sa.status != AgreementStatus.PENDING:
+        return f"agreement is {sa.status}"
+    if await current_scan(session, sa.id) is None:
+        return "scan is missing"
+    actions = await actions_of(session, sa.id)
+    for action in actions:
+        others = [a for a in actions if a.id != action.id]
+        if problem := await action_problem(session, interaction, action, others):
+            return f"action {action.id}: {problem}"
+    return None
+
+
+async def submit(
+    session: AsyncSession,
+    *,
+    interaction_id: int,
+    sa_id: int,
+    actor_id: str,
+    comment: str | None,
+) -> SupplementaryAgreement:
+    from quoll.auth.audit import record
+    from quoll.auth.audit_models import TargetType
+    from quoll.interactions.notify import notify
+    from quoll.notifications import kinds
+    from quoll.notifications.kinds import Subject
+
+    scope = await lock_interaction_scope(session, interaction_id, actor_id)
+    require_owner(scope)
+    interaction = scope.interaction
+    sa = await load(session, interaction, sa_id)
+    require_draft(sa)
+    problems = []
+    if await current_scan(session, sa.id) is None:
+        problems.append("scan is missing")
+    actions = await actions_of(session, sa.id)
+    for action in actions:
+        others = [a for a in actions if a.id != action.id]
+        if problem := await action_problem(session, interaction, action, others):
+            problems.append(f"action {action.id}: {problem}")
+    # номер и дата не нужны (Д20)
+    if problems:
+        raise DomainRuleException(409, "Agreement is not ready: " + "; ".join(problems))
+    reason = comment or "на одобрение"
+    request = InteractionRequest(
+        interaction_id=interaction.id,
+        kind="SA_APPROVAL",
+        supplementary_agreement_id=sa.id,
+        requested_by=actor_id,
+        from_owner_id=interaction.owner_id,
+        reason=reason,
+    )
+    session.add(request)
+    sa.status = AgreementStatus.PENDING
+    await session.flush()
+    record(
+        session,
+        actor_id=actor_id,
+        event_type=AuditEventType.SA_SUBMITTED,
+        target_type=TargetType.REQUEST,
+        target_id=request.id,
+        new_value={"sa_id": sa.id},
+    )
+    await notify(
+        session,
+        kinds.REQUEST_CREATED,
+        scope,
+        context={"request": "допсоглашение", "reason": reason},
+        subject=Subject.REQUEST,
+        subject_id=request.id,
+        payload={"request_id": request.id, "sa_id": sa.id},
+    )
+    await session.refresh(sa)
+    return sa
+
+
+async def recall(
+    session: AsyncSession, *, interaction_id: int, sa_id: int, actor_id: str
+) -> SupplementaryAgreement:
+    from quoll.auth.audit import record
+    from quoll.auth.audit_models import TargetType
+    from quoll.core.locking import lock_row
+
+    scope = await lock_interaction_scope(session, interaction_id, actor_id)
+    require_owner(scope)
+    sa = await load(session, scope.interaction, sa_id)
+    if sa.status != AgreementStatus.PENDING:
+        raise DomainRuleException(409, f"Supplementary agreement is {sa.status}")
+    request_id = await session.scalar(
+        select(InteractionRequest.id).where(
+            InteractionRequest.supplementary_agreement_id == sa.id,
+            InteractionRequest.status == RequestStatus.PENDING,
+        )
+    )
+    if request_id is not None:
+        request = await lock_row(session, InteractionRequest, request_id)
+        request.status = RequestStatus.CANCELLED
+        request.decided_by = actor_id
+        request.decided_at = func.now()
+        request.decision_comment = "recalled by author"
+        record(
+            session,
+            actor_id=actor_id,
+            event_type=AuditEventType.REQUEST_CANCELLED,
+            target_type=TargetType.REQUEST,
+            target_id=request_id,
+            new_value={"reason": "recalled by author"},
+        )
+    # просьбы нет - нарушение I4, чиним: ДС всё равно в черновик
+    sa_lifecycle.return_to_draft(
+        session, scope.interaction, sa, "recalled by author", actor_id
+    )
+    await session.flush()
+    await session.refresh(sa)
+    return sa
+
+
+_ORDER = {
+    ActionType.NEW_BRANCH: 0,
+    ActionType.RESUME: 1,
+    ActionType.EXTEND_LICENSE: 2,
+    ActionType.EXTEND_CONTRACT: 3,
+    # последним: если закроет последнюю ветку, ALL_BRANCHES_CLOSED не будет ложным
+    ActionType.EXCLUDE: 4,
+}
+
+
+async def apply(
+    session: AsyncSession,
+    scope: InteractionScope,
+    sa_id: int,
+    actor_id: str,
+    comment: str | None,
+    shared: set[int],
+) -> None:
+    """одобрение: все действия одной транзакцией (I5). shared - стадии, на
+    которые approve взял FOR SHARE до области; под областью их не блокируем"""
+    from quoll.auth.audit import record
+    from quoll.auth.audit_models import TargetType
+    from quoll.interactions.branch_service import close_locked
+    from quoll.interactions.close_reasons import id_by_code
+
+    interaction = scope.interaction
+    sa = await session.get(SupplementaryAgreement, sa_id, populate_existing=True)
+    actions = sorted(
+        await actions_of(session, sa.id),
+        key=lambda a: (_ORDER[ActionType(a.type)], a.id),
+    )
+    label = sa_lifecycle.label(sa)
+    moved = "Agreement targets changed, approve again"
+    start = None
+    if any(a.type in (ActionType.NEW_BRANCH, ActionType.RESUME) for a in actions):
+        start = await branch_start(session, interaction.workflow_id)
+    for action in actions:
+        if action.type == ActionType.NEW_BRANCH:
+            if start is None or start.id not in shared:
+                raise DomainRuleException(409, moved)
+            branch = await session.scalar(
+                select(Branch).where(
+                    Branch.interaction_id == interaction.id,
+                    Branch.program_id.is_not_distinct_from(action.program_id),
+                    Branch.product_id.is_not_distinct_from(action.product_id),
+                    Branch.closed_at.is_(None),
+                    Branch.state_id.is_(None),
+                )
+            )
+            if branch is None:
+                latest = await session.scalar(
+                    select(func.max(Branch.iteration)).where(
+                        Branch.interaction_id == interaction.id,
+                        Branch.program_id.is_not_distinct_from(action.program_id),
+                        Branch.product_id.is_not_distinct_from(action.product_id),
+                    )
+                )
+                branch = Branch(
+                    interaction_id=interaction.id,
+                    program_id=action.program_id,
+                    product_id=action.product_id,
+                    added_by=actor_id,
+                    iteration=(latest or 0) + 1,
+                )
+                session.add(branch)
+            branch.contract_status = "APPROVED"
+            branch.origin = "SUPPLEMENTARY_AGREEMENT"
+            branch.supplementary_agreement_id = sa.id
+            branch.state_id = start.id
+            branch.opened_at = func.now()
+            branch.stall_since = func.now()
+            await session.flush()
+            action.result_branch_id = branch.id
+            sa_lifecycle.history(
+                session,
+                interaction,
+                StageChangeKind.BRANCH_ADDED,
+                actor_id,
+                branch_id=branch.id,
+                to_stage_id=start.id,
+                comment=label,
+                payload={"sa_id": sa.id},
+            )
+            continue
+        branch = await session.get(Branch, action.branch_id, populate_existing=True)
+        if action.type == ActionType.RESUME:
+            stage = await session.get(Stage, branch.state_id, populate_existing=True)
+            if stage.id not in shared or (
+                stage.archived_at is not None and not stage.is_terminal
+            ):
+                raise DomainRuleException(409, moved)
+            if stage.is_terminal:
+                if start is None or start.id not in shared:
+                    raise DomainRuleException(409, moved)
+                license = {
+                    "signed_at": _plain(branch.license_signed_at),
+                    "term_years": branch.license_term_years,
+                    "until": _plain(branch.license_until),
+                }
+                branch.state_id = start.id
+                sa_lifecycle.history(
+                    session,
+                    interaction,
+                    StageChangeKind.RESTART,
+                    actor_id,
+                    branch_id=branch.id,
+                    from_stage_id=stage.id,
+                    to_stage_id=start.id,
+                    comment=label,
+                    payload={"sa_id": sa.id, "license": license},
+                )
+            else:
+                sa_lifecycle.history(
+                    session,
+                    interaction,
+                    StageChangeKind.REOPEN,
+                    actor_id,
+                    branch_id=branch.id,
+                    from_stage_id=stage.id,
+                    to_stage_id=stage.id,
+                    comment=label,
+                    payload={"sa_id": sa.id},
+                )
+            branch.closed_at = None
+            branch.close_reason_id = None
+            branch.closed_with_interaction = False
+            branch.stall_since = func.now()
+            await session.flush()
+        elif action.type == ActionType.EXTEND_LICENSE:
+            old = branch.license_until
+            branch.license_until = action.license_until
+            payload = {
+                "sa_id": sa.id,
+                "old": _plain(old),
+                "new": _plain(action.license_until),
+            }
+            sa_lifecycle.history(
+                session,
+                interaction,
+                StageChangeKind.LICENSE_EXTENDED,
+                actor_id,
+                branch_id=branch.id,
+                from_stage_id=branch.state_id,
+                to_stage_id=branch.state_id,
+                comment=f"{payload['old']} → {payload['new']}, {label}",
+                payload=payload,
+            )
+            record(
+                session,
+                actor_id=actor_id,
+                event_type=AuditEventType.LICENSE_EXTENDED,
+                target_type=TargetType.INTERACTION,
+                target_id=interaction.id,
+                old_value={"branch_id": branch.id, "license_until": payload["old"]},
+                new_value={"license_until": payload["new"], "sa_id": sa.id},
+            )
+        elif action.type == ActionType.EXTEND_CONTRACT:
+            contract = await current_contract(session, interaction.id)
+            old = contract.contract_valid_until
+            contract.contract_valid_until = action.contract_valid_until
+            payload = {
+                "sa_id": sa.id,
+                "old": _plain(old),
+                "new": _plain(action.contract_valid_until),
+                "document_id": contract.id,
+            }
+            sa_lifecycle.history(
+                session,
+                interaction,
+                StageChangeKind.CONTRACT_EXTENDED,
+                actor_id,
+                comment=f"{payload['old']} → {payload['new']}, {label}",
+                payload=payload,
+            )
+            record(
+                session,
+                actor_id=actor_id,
+                event_type=AuditEventType.CONTRACT_EXTENDED,
+                target_type=TargetType.INTERACTION,
+                target_id=interaction.id,
+                old_value={"contract_valid_until": payload["old"]},
+                new_value={"contract_valid_until": payload["new"], "sa_id": sa.id},
+            )
+        elif action.type == ActionType.EXCLUDE:
+            await close_locked(
+                session,
+                scope,
+                branch,
+                close_reason_id=await id_by_code(session, "EXCLUDED_BY_AGREEMENT"),
+                comment=label,
+                allow_system_reason=True,
+            )
+    sa.status = AgreementStatus.APPROVED
+    sa.decided_by = actor_id
+    sa.decided_at = func.now()
+    sa.decision_comment = comment
+    sa.stall_since = None
+    sa_lifecycle.history(
+        session,
+        interaction,
+        StageChangeKind.SA_APPROVED,
+        actor_id,
+        payload={"sa_id": sa.id, "actions": [a.id for a in actions]},
+    )
+    await session.flush()
+
+
+def reject(
+    session: AsyncSession,
+    interaction: Interaction,
+    sa: SupplementaryAgreement,
+    actor_id: str,
+    comment: str | None,
+) -> None:
+    sa.status = AgreementStatus.REJECTED
+    sa.decided_by = actor_id
+    sa.decided_at = func.now()
+    sa.decision_comment = comment
+    sa.stall_since = None
+    sa_lifecycle.history(
+        session,
+        interaction,
+        StageChangeKind.SA_REJECTED,
+        actor_id,
+        payload={"sa_id": sa.id},
+        comment=comment,
     )

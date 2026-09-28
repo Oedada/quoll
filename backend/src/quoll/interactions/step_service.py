@@ -17,7 +17,7 @@ from quoll.auth.models import UserRole
 from quoll.core.exceptions import DomainRuleException, OperationForbiddenException
 from quoll.interactions import contract_service, step_contacts
 from quoll.interactions.access_policy import can_change, can_close
-from quoll.interactions.bindings import read_bound, write_bound
+from quoll.interactions.bindings import extension_locks, read_bound, write_bound
 from quoll.interactions.models import (
     Branch,
     InteractionStageHistory,
@@ -87,6 +87,14 @@ async def set_values(
     changed = {k for k in old.keys() | values.keys() if old.get(k) != values.get(k)}
     passed = contract_service.step_passed(interaction, stage_id, current, branch_id)
     if scope.actor.role == UserRole.MANAGER and passed and changed & gated:
+        # правку, которую всё равно не одобрить (продлено допсоглашением), не заводим
+        await extension_locks(
+            session,
+            stage,
+            interaction_id,
+            branch_id,
+            {k: values.get(k) for k in changed & gated},
+        )
         # правку пройденного шага с такими полями одобряет руководитель
         row = await _upsert(session, interaction_id, stage_id, branch_id, old, actor_id)
         # ждут только поля с аппрувом; остальное применяется сразу

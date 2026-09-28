@@ -583,14 +583,13 @@ async def archive_stage(
         )
 
     # ветки своих блокировок не имеют - берём их взаимодействия
-    on_branch = (
-        select(Branch.interaction_id)
-        .where(
-            Branch.state_id == stage.id,
-            Branch.closed_at.is_(None),
-        )
-        .scalar_subquery()
-    )
+    # закрытые досрочно ветки тоже переезжают - иначе RESUME не вернул бы
+    # их на архивный шаг (П6). С терминального шага переносим только открытые:
+    # итог завершённых не подменяем
+    movable = [Branch.state_id == stage.id]
+    if stage.is_terminal:
+        movable.append(Branch.closed_at.is_(None))
+    on_branch = select(Branch.interaction_id).where(*movable).scalar_subquery()
     locked = list(
         await session.scalars(
             select(Interaction.id)
@@ -605,12 +604,7 @@ async def archive_stage(
         )
     )
     branches = list(
-        await session.execute(
-            select(Branch.id, Branch.interaction_id).where(
-                Branch.state_id == stage.id,
-                Branch.closed_at.is_(None),
-            )
-        )
+        await session.execute(select(Branch.id, Branch.interaction_id).where(*movable))
     )
     target = None
     if locked:

@@ -21,7 +21,7 @@ from quoll.core.exceptions import (
     OperationForbiddenException,
 )
 from quoll.core.locking import lock_row
-from quoll.interactions import branch_service
+from quoll.interactions import branch_service, sa_lifecycle, sa_service
 from quoll.interactions.access_policy import can_close
 from quoll.interactions.close_reasons import check_reason, interaction_level
 from quoll.interactions.models import (
@@ -31,6 +31,7 @@ from quoll.interactions.models import (
     RequestKind,
     RequestStatus,
     StageChangeKind,
+    SupplementaryAgreement,
 )
 from quoll.interactions.notify import notify
 from quoll.interactions.project_service import assign_locked
@@ -295,6 +296,10 @@ async def _stale_reason(
         return "interaction owner changed"
     if interaction.closed_at is not None:
         return "interaction closed"
+    if request.kind == RequestKind.SA_APPROVAL:
+        return await sa_service.stale_actions(
+            session, interaction, request.supplementary_agreement_id
+        )
     if request.kind == RequestKind.CLOSE and request.branch_id is not None:
         branch = await session.get(Branch, request.branch_id)
         return "branch closed" if branch.closed_at is not None else None
@@ -354,6 +359,16 @@ async def approve(
             raise DomainRuleException(422, "Transfer approval needs target_manager_id")
         # до блокировок: поход в сеть под блокировкой держал бы строки
         await verify_target(target_manager_id, UserRole.MANAGER)
+    shared: set[int] = set()
+    if found.kind == RequestKind.SA_APPROVAL:
+        if target_manager_id is not None:
+            raise DomainRuleException(422, "target_manager_id is not used here")
+        # стадии, куда встанут ветки, - раньше заявки (§4 дизайна блока 3)
+        shared = await sa_service.stages_to_share(
+            session, found.supplementary_agreement_id
+        )
+        for stage_id in sorted(shared):
+            await share_stage(session, stage_id)
     scope, request = await _lock_for_decision(
         session, request_id, actor_id, [target_manager_id] if target_manager_id else []
     )
@@ -361,6 +376,13 @@ async def approve(
     stale = await _stale_reason(session, scope, request)
     if stale is not None:
         _decide(request, RequestStatus.CANCELLED, actor_id, stale)
+        if request.kind == RequestKind.SA_APPROVAL:
+            sa = await session.get(
+                SupplementaryAgreement, request.supplementary_agreement_id
+            )
+            sa_lifecycle.return_to_draft(
+                session, scope.interaction, sa, stale, actor_id
+            )
         record(
             session,
             actor_id=actor_id,
@@ -409,6 +431,16 @@ async def approve(
             approved=True,
         )
         outcome = {"target_stage_id": request.target_stage_id}
+    elif request.kind == RequestKind.SA_APPROVAL:
+        await sa_service.apply(
+            session,
+            scope,
+            request.supplementary_agreement_id,
+            actor_id,
+            comment,
+            shared,
+        )
+        outcome = {"sa_id": request.supplementary_agreement_id}
     elif request.branch_id is not None:
         branch = await branch_service.open_branch(session, scope, request.branch_id)
         await branch_service.close_locked(
@@ -451,6 +483,11 @@ async def reject(
     _decide(request, RequestStatus.REJECTED, actor_id, comment)
     if request.kind == RequestKind.TRANSITION:
         await _send_back(session, scope, request, comment)
+    if request.kind == RequestKind.SA_APPROVAL:
+        sa = await session.get(
+            SupplementaryAgreement, request.supplementary_agreement_id
+        )
+        sa_service.reject(session, scope.interaction, sa, actor_id, comment)
     record(
         session,
         actor_id=actor_id,
@@ -511,6 +548,8 @@ async def withdraw(session: AsyncSession, *, request_id: int, actor_id: str) -> 
             InteractionRequest.id == request_id,
             InteractionRequest.requested_by == actor_id,
             InteractionRequest.status == RequestStatus.PENDING,
+            # его отзывают через допсоглашение - иначе ДС застрянет в PENDING
+            InteractionRequest.kind != RequestKind.SA_APPROVAL,
         )
         .values(
             status=RequestStatus.CANCELLED,
@@ -526,6 +565,8 @@ async def withdraw(session: AsyncSession, *, request_id: int, actor_id: str) -> 
             raise IdNotExistsException(InteractionRequest.__name__)
         if request.requested_by != actor_id:
             raise OperationForbiddenException("withdraw someone else's request")
+        if request.kind == RequestKind.SA_APPROVAL:
+            raise DomainRuleException(409, "Recall the supplementary agreement instead")
         raise DomainRuleException(409, f"Request is already {request.status}")
     record(
         session,

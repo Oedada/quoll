@@ -143,6 +143,8 @@ async def upload(
                 scope.interaction, stage_id, current, branch_id
             )
         )
+        if not pending and values.kind == "CONTRACT":
+            values = await _keep_extended_term(session, interaction_id, values)
         document = InteractionDocument(
             status=DocumentStatus.PENDING if pending else DocumentStatus.ACTIVE,
             interaction_id=interaction_id,
@@ -227,6 +229,35 @@ async def _check_agreement_scan(
     stage = await session.get(Stage, stage_id)
     if stage.is_parallel and interaction.no_return_at is None:
         raise DomainRuleException(409, "Step 4.1 is not active before signing")
+
+
+async def _keep_extended_term(session: AsyncSession, interaction_id: int, doc):
+    """П10: версия договора, становясь текущей, не откатывает срок, продлённый
+    допсоглашением. doc - DocumentFields или сам документ"""
+    from dataclasses import replace
+
+    from quoll.interactions.bindings import current_contract
+    from quoll.interactions.models import InteractionStageHistory, StageChangeKind
+
+    extended = await session.scalar(
+        select(InteractionStageHistory.id)
+        .where(
+            InteractionStageHistory.interaction_id == interaction_id,
+            InteractionStageHistory.kind == StageChangeKind.CONTRACT_EXTENDED,
+        )
+        .limit(1)
+    )
+    current = await current_contract(session, interaction_id) if extended else None
+    if current is None or current.contract_valid_until is None:
+        return doc
+    if doc.contract_valid_until is not None and (
+        doc.contract_valid_until >= current.contract_valid_until
+    ):
+        return doc
+    if isinstance(doc, DocumentFields):
+        return replace(doc, contract_valid_until=current.contract_valid_until)
+    doc.contract_valid_until = current.contract_valid_until
+    return doc
 
 
 async def current_scan(session: AsyncSession, sa_id: int) -> InteractionDocument | None:
@@ -428,6 +459,8 @@ async def decide(
     if document.status != DocumentStatus.PENDING:
         raise DomainRuleException(409, f"Document is already {document.status}")
     if approve:
+        if document.kind == "CONTRACT":
+            await _keep_extended_term(session, document.interaction_id, document)
         document.status = DocumentStatus.ACTIVE
     else:
         document.status = DocumentStatus.REJECTED
