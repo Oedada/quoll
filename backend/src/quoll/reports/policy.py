@@ -300,17 +300,27 @@ def held_in(assignments, manager_id: str, a_start: datetime, b_end: datetime) ->
 
 
 def responsible(assignments, a_start, b_end) -> tuple[str | None, str | None]:
-    """КАМ на конец B и, если на начало A был другой, прежний"""
+    """КАМ на конец B и, если в периоде менялся, прежний: тот, кто вёл на
+    начало A, а если его не было или он же и сейчас - последний другой КАМ,
+    который вёл заявку внутри периода"""
     current = holder_at(assignments, b_end)
     if current is None:
         # закрытая без владельца: последний, кто её вёл
         before = [a for a in assignments if a.assigned_at < b_end]
         current = max(before, key=lambda a: (a.assigned_at, a.id), default=None)
-    earlier = holder_at(assignments, a_start)
     current_id = current.manager_id if current else None
-    if earlier is None or earlier.manager_id == current_id:
-        return current_id, None
-    return current_id, earlier.manager_id
+    earlier = holder_at(assignments, a_start)
+    if earlier is not None and earlier.manager_id != current_id:
+        return current_id, earlier.manager_id
+    others = [
+        a
+        for a in assignments
+        if a.manager_id != current_id
+        and a.assigned_at < b_end
+        and (a.released_at is None or a.released_at >= a_start)
+    ]
+    last = max(others, key=lambda a: (a.assigned_at, a.id), default=None)
+    return current_id, last.manager_id if last else None
 
 
 # --- попадание и строки
