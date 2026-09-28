@@ -30,3 +30,8 @@ uv run python -m quoll.seed workflow
 | `admin` | администратор (`APP_ADMIN_PASSWORD`) |
 | `supervisor` | руководитель |
 | `manager1`, `manager2` | менеджеры (КАМ) |
+
+Отчёты (`/api/v1/reports`, дизайн — `docs/reports-design.md`). Предпросмотр строится сразу, файл (xlsx, xls, pdf) — в фоне:
+`POST /exports` ставит задание в очередь, `GET /exports/{id}` отдаёт статус и место в очереди, `GET /exports/{id}/file` — готовый файл.
+Очередь — таблица `report_exports`, её разбирают фоновые процессы, поэтому нужны `WORKERS_ENABLED=true` и S3: файл хранится там сутки, потом удаляется.
+Одновременно строится не больше 10 отчётов на все экземпляры приложения; рендер идёт в пуле процессов, его размер — `REPORT_RENDER_PROCESSES`.
