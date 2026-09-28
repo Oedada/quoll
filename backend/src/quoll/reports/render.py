@@ -417,7 +417,7 @@ class _NumberedCanvas(canvas.Canvas):
         self._footer = footer
         self._pages = []
 
-    def showPage(self):  # noqa: N802 - имя из reportlab
+    def showPage(self):
         self._pages.append(dict(self.__dict__))
         self._startPage()
 

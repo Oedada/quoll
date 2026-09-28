@@ -5,5 +5,5 @@ SUPPLEMENTARY_AGREEMENT = "SUPPLEMENTARY_AGREEMENT"
 
 HANDLERS: dict[str, str] = {SUPPLEMENTARY_AGREEMENT: "Допсоглашение"}
 
-for _code, _label in HANDLERS.items():
+for _code in HANDLERS:
     assert _code and len(_code) <= 40, _code

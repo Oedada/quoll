@@ -122,10 +122,13 @@ async def move_locked(
     if workflow is None or not workflow.is_published:
         raise WorkflowNotPublishedException(workflow_id)
 
-    if target.is_side and not (current is not None and current.is_side):
-        # вход в сегмент доп. шагов извне - основной сам их уже не проходит (Д46)
-        if await side_pointer_service.passed_segment(session, interaction, target):
-            raise DomainRuleException(409, "Steps are passed, use a side pointer")
+    # вход в сегмент доп. шагов извне - основной сам их уже не проходит (Д46)
+    if (
+        target.is_side
+        and not (current is not None and current.is_side)
+        and await side_pointer_service.passed_segment(session, interaction, target)
+    ):
+        raise DomainRuleException(409, "Steps are passed, use a side pointer")
 
     edge = await active_edge(session, workflow_id, current, target)
     if edge is None:

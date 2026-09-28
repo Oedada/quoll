@@ -10,7 +10,6 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
-
 from quoll.auth.models import Manager, User, UserRole
 from quoll.catalog.models import CloseReason, ItDirection, ItProgram, Product
 from quoll.core.system_defaults import SystemDefaults
