@@ -383,7 +383,7 @@ def own_state(own, sa_events, sealed_at, a_start, facts, terminal) -> OwnState:
         for e in own
         if e.created_at >= a_start
         and (
-            e.created_at < sealed_at
+            e.created_at <= sealed_at
             or e.kind in _PAUSE_KINDS
             or e.kind in _REOPEN_KINDS
             or _closing(e, terminal)
@@ -485,7 +485,10 @@ def build_rows(facts: Facts, params, a_start: datetime, b_end: datetime) -> list
                 by_branch.setdefault(e.branch_id, []).append(e)
         sa_events = [e for e in events if e.kind.startswith("SA_")]
         who, earlier = responsible(i.assignments, a_start, b_end)
-        sealed_at = i.no_return_at or datetime.max.replace(tzinfo=BUSINESS_TZ)
+        # без веток ход после подписания делает сама заявка
+        sealed_at = (i.branches and i.no_return_at) or datetime.max.replace(
+            tzinfo=BUSINESS_TZ
+        )
         state = own_state(own, sa_events, sealed_at, a_start, facts, terminal)
         for branch, kind in row_kinds(i, by_branch, a_start, b_end, terminal):
             branch_events = by_branch.get(branch.id, []) if branch else []

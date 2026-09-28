@@ -500,7 +500,8 @@ REOPENING(e) = e.kind ∈ {REOPEN, RESTART}
 ```
 В период входят события с a_start <= created_at < b_end:
   - события ветки (только у строки ON_STEPS): движения (to_stage_id != from_stage_id или from_stage_id NULL), PAUSE, UNPAUSE, CLOSING, REOPENING;
-  - события заявки: движения до подписания (created_at < sealed_at, где sealed_at = no_return_at или ∞);
+  - события заявки: движения до подписания включительно (created_at <= sealed_at, где sealed_at = no_return_at,
+    если у заявки есть ветки, иначе ∞ - без веток после подписания движется сама заявка);
   - события заявки PAUSE, UNPAUSE, CLOSING, REOPENING — в любое время (О4).
 Без событий доп. указателя, ДС, слотов, лицензий и комментариев.
 Каждое событие даёт ровно один элемент, вид — по первому совпадению: CLOSING → CLOSE, REOPENING → REOPEN

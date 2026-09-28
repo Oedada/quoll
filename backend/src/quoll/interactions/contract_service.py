@@ -171,7 +171,9 @@ async def open_branches(
 ) -> None:
     """точка невозврата: одобренные ветки состава встают на начало шагов
     веток. Воркфлоу без веток - только отметка"""
-    interaction.no_return_at = func.now()
+    # отметка ставится один раз - без веток невозвратных рёбер может быть несколько
+    if interaction.no_return_at is None:
+        interaction.no_return_at = func.now()
     start = await session.scalar(
         select(Stage).where(
             Stage.workflow_id == interaction.workflow_id,
