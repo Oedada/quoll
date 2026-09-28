@@ -245,3 +245,44 @@ async def check_contact_owner(
         if own is not None:
             return
     raise OperationForbiddenException("change contacts of this organisation")
+
+
+async def suggest_programs(session: AsyncSession, university_id: int) -> list[dict]:
+    """активные программы по числу специальностей вуза, связанных с их
+    направлением; при равенстве - по приоритету и названию (М 3.21)"""
+    from quoll.catalog.models import (
+        ItProgram,
+        Specialty,
+        specialty_directions,
+        university_specialties,
+    )
+
+    rows = await session.execute(
+        select(specialty_directions.c.direction_id, Specialty.code, Specialty.name)
+        .join(Specialty, Specialty.id == specialty_directions.c.specialty_id)
+        .join(
+            university_specialties,
+            university_specialties.c.specialty_id == Specialty.id,
+        )
+        .where(university_specialties.c.university_id == university_id)
+        .order_by(Specialty.code)
+    )
+    by_direction: dict[int, list[dict]] = {}
+    for direction_id, code, name in rows:
+        by_direction.setdefault(direction_id, []).append({"code": code, "name": name})
+    programs = await session.scalars(
+        select(ItProgram).where(ItProgram.is_active.is_(True))
+    )
+    suggestions = [
+        {"program": p, "matched": by_direction.get(p.direction_id, [])}
+        for p in programs
+    ]
+    suggestions.sort(
+        key=lambda s: (
+            -len(s["matched"]),
+            s["program"].priority is None,
+            s["program"].priority or 0,
+            s["program"].name,
+        )
+    )
+    return suggestions

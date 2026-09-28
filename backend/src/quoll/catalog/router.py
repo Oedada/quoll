@@ -43,6 +43,7 @@ from quoll.catalog.schemas import (
     ProductWrite,
     ProgramPatch,
     ProgramRead,
+    ProgramSuggestion,
     ProgramWrite,
     SpecialtyPatch,
     SpecialtyRead,
@@ -178,6 +179,13 @@ async def list_programs(
     # 1 - самая востребованная, без приоритета - в конце (К 2.4)
     order = [ItProgram.priority.asc().nulls_last(), ItProgram.name, ItProgram.id]
     return await service.listing(session, ItProgram, filters, order, limit, offset)
+
+
+@catalog_router.get("/programs/suggest", response_model=list[ProgramSuggestion])
+async def suggest_programs(university_id: int, session: SessionDep):
+    """подсказка на шаге 0: программы, близкие специальностям вуза"""
+    await BaseRepository(session, University).get(university_id)
+    return await service.suggest_programs(session, university_id)
 
 
 @catalog_router.patch("/programs/{item_id}/priority", response_model=ProgramRead)

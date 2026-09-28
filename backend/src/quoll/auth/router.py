@@ -3,6 +3,7 @@ import secrets
 from fastapi import (
     APIRouter,
     Depends,
+    HTTPException,
     Query,
     Request,
     Response,
@@ -11,6 +12,7 @@ from fastapi import (
 from fastapi.responses import JSONResponse, RedirectResponse
 
 from quoll.auth import identity_service, login_service, oidc, role_transition
+from quoll.auth.bootstrap import DEMO_ACCOUNTS
 from quoll.auth.dependencies import (
     SESSION_COOKIE,
     AdminUser,
@@ -41,6 +43,17 @@ users_router = APIRouter(
     tags=["Users"],
     dependencies=[Depends(get_current_user)],
 )
+
+
+@router.get("/demo-accounts")
+def demo_accounts() -> list[dict[str, str]]:
+    """для кнопок «войти как» на странице входа (О 30); вне демо - 404"""
+    if not settings.demo_mode:
+        raise HTTPException(status_code=404, detail="Not Found")
+    return [
+        {"username": username, "password": settings.demo_password, "role": role.value}
+        for username, role, _ in DEMO_ACCOUNTS
+    ]
 
 
 @router.get("/")

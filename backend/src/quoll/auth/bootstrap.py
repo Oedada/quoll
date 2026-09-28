@@ -5,7 +5,7 @@ import logging
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quoll.auth.models import Admin, User, UserRole
+from quoll.auth.models import Admin, Manager, Superviser, User, UserRole
 from quoll.auth.repositories import UserRepository
 from quoll.config import settings
 from quoll.core import UnknowAuthError, UserAlreadyExistsAuthError
@@ -46,3 +46,65 @@ async def ensure_admin_account(
             session.add(_admin(admin_id))
     except (httpx.HTTPError, UnknowAuthError) as err:
         logger.error(f"Admin bootstrap skipped, Keycloak unavailable: {err}")
+
+
+# демо-учётки ролей для жюри (О 30): логины и пароль публичны, в README
+DEMO_ACCOUNTS = (
+    ("supervisor", UserRole.SUPERVISER, "Руководитель"),
+    ("manager1", UserRole.MANAGER, "Менеджер Первый"),
+    ("manager2", UserRole.MANAGER, "Менеджер Второй"),
+)
+
+
+def _demo(username: str, role: UserRole, name: str, user_id: str) -> User:
+    model = Superviser if role == UserRole.SUPERVISER else Manager
+    first, *last = name.split()
+    return model(
+        id=user_id,
+        role=role,
+        username=username,
+        email=f"{username}@demo.quoll",
+        first_name=first,
+        last_name=" ".join(last) or "Демо",
+        patronymic="",
+        is_active=True,
+    )
+
+
+async def _ensure(
+    session: AsyncSession, repo: UserRepository, user: User
+) -> str | None:
+    """как у админа: в Keycloak и в проекции, повторный запуск ничего не делает"""
+    try:
+        return await repo.create(user, password=settings.demo_password)
+    except UserAlreadyExistsAuthError:
+        user_id = await repo.find_id_by_username(user.username)
+        if user_id is not None and await session.get(User, user_id) is None:
+            user.id = user_id
+            session.add(user)
+            await session.flush()
+        return user_id
+
+
+async def ensure_demo_accounts(session: AsyncSession, repo: UserRepository) -> None:
+    """руководитель и два КАМа в его команде - сразу можно работать"""
+    from quoll.org import service as org_service
+
+    try:
+        ids = {
+            username: await _ensure(session, repo, _demo(username, role, name, ""))
+            for username, role, name in DEMO_ACCOUNTS
+        }
+    except (httpx.HTTPError, UnknowAuthError) as err:
+        logger.error(f"Demo accounts skipped, Keycloak unavailable: {err}")
+        return
+    lead = ids["supervisor"]
+    for username in ("manager1", "manager2"):
+        manager = await session.get(Manager, ids[username])
+        if lead and manager is not None and manager.superviser_id is None:
+            await org_service.recruit(
+                session,
+                actor_id=lead,
+                manager_id=manager.id,
+                expected_superviser_id=None,
+            )

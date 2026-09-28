@@ -322,3 +322,15 @@ class ContactRead(AppBaseModel):
     is_actual: bool
     created_at: datetime
     updated_at: datetime
+
+
+class SpecialtyRef(AppBaseModel):
+    code: str
+    name: str
+
+
+class ProgramSuggestion(AppBaseModel):
+    """подсказка шага 0 (М 3.21): ни на что не влияет и не сохраняется"""
+
+    program: "ProgramRead"
+    matched: list[SpecialtyRef]

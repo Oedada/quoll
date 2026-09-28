@@ -11,7 +11,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from quoll.admin import admin_router
 from quoll.attachments import S3StorageService, attachments_router
 from quoll.auth import auth_router, users_router
-from quoll.auth.bootstrap import ensure_admin_account
+from quoll.auth.bootstrap import ensure_admin_account, ensure_demo_accounts
 from quoll.auth.repositories import UserRepository
 from quoll.catalog import catalog_router
 from quoll.config import settings
@@ -49,6 +49,7 @@ async def _seed_demo(session_maker) -> None:
         try:
             if await ensure_reference_workflow(session):
                 logger.info("Reference workflow created")
+            await ensure_demo_accounts(session, UserRepository(session))
             await session.commit()
         except IntegrityError:
             # другой процесс успел раньше
