@@ -62,6 +62,17 @@ class Stage(Base, IdMixin, TimestampMixin):
             "stall_days IS NULL OR stall_days > 0", name="chk_stage_stall_days"
         ),
         CheckConstraint(
+            "NOT is_parallel OR (NOT is_branch_stage AND NOT is_terminal "
+            "AND NOT is_branch_start)",
+            name="chk_stage_parallel",
+        ),
+        Index(
+            "uq_stages_one_parallel",
+            "workflow_id",
+            unique=True,
+            postgresql_where=text("is_parallel AND archived_at IS NULL"),
+        ),
+        CheckConstraint(
             "passive_after_days IS NULL OR (passive_after_days > 0 AND is_branch_stage)",
             name="chk_stage_passive_after_days",
         ),
@@ -97,6 +108,10 @@ class Stage(Base, IdMixin, TimestampMixin):
         Boolean, default=False, server_default="false"
     )
     is_branch_start: Mapped[bool] = mapped_column(
+        Boolean, default=False, server_default="false"
+    )
+    # шаг вне цепочки (4.1 «Допсоглашение»): рёбер нет, на нём никто не стоит
+    is_parallel: Mapped[bool] = mapped_column(
         Boolean, default=False, server_default="false"
     )
     # поля шага: [{key, label, type, required}] - заполняет менеджер,

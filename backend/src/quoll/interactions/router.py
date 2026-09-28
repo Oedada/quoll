@@ -344,6 +344,7 @@ def _document(view) -> DocumentRead:
         contract_number=doc.contract_number,
         contract_signed_at=doc.contract_signed_at,
         contract_valid_until=doc.contract_valid_until,
+        supplementary_agreement_id=doc.supplementary_agreement_id,
         metadata=doc.meta,
         is_current=view.is_current,
         replaced_by_id=view.replaced_by.id if view.replaced_by else None,

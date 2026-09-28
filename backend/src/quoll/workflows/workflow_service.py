@@ -83,6 +83,7 @@ async def check_graph(
                 s.archived_at is not None,
                 s.is_branch_stage,
                 s.is_branch_start,
+                s.is_parallel,
             )
             for s in stages
         ],
@@ -165,6 +166,14 @@ async def create_stage(
                 400, "Parent is a main stage of the same workflow and level"
             )
     data = schema.model_dump()
+    if schema.is_parallel and await session.scalar(
+        select(Stage.id).where(
+            Stage.workflow_id == schema.workflow_id,
+            Stage.is_parallel.is_(True),
+            Stage.archived_at.is_(None),
+        )
+    ):
+        raise DomainRuleException(409, "Workflow already has a parallel stage")
     if schema.passive_after_days is not None and not schema.is_branch_stage:
         raise DomainRuleException(400, "Only branch stages are long-term")
     await _check_binds(
@@ -292,6 +301,8 @@ async def _check_reject_to(session: AsyncSession, edge: WorkflowTransition) -> N
         source = (
             await _stage(session, edge.from_stage_id) if edge.from_stage_id else None
         )
+        if stage.is_parallel:
+            raise DomainRuleException(400, "Rejection cannot lead to a parallel stage")
         if stage.is_terminal or (
             source is not None and source.is_branch_stage != stage.is_branch_stage
         ):
@@ -482,7 +493,30 @@ def _fits(target: Stage, archived: Stage) -> bool:
         and target.archived_at is None
         and target.is_terminal == archived.is_terminal
         and target.is_branch_stage == archived.is_branch_stage
+        and target.is_parallel == archived.is_parallel
         and (archived.consumes_capacity or not target.consumes_capacity)
+    )
+
+
+async def _open_agreements(session: AsyncSession, workflow_id: int) -> bool:
+    from quoll.interactions.models import (
+        AgreementStatus,
+        Interaction,
+        SupplementaryAgreement,
+    )
+
+    return bool(
+        await session.scalar(
+            select(SupplementaryAgreement.id)
+            .join(Interaction, Interaction.id == SupplementaryAgreement.interaction_id)
+            .where(
+                Interaction.workflow_id == workflow_id,
+                SupplementaryAgreement.status.in_(
+                    [AgreementStatus.DRAFT, AgreementStatus.PENDING]
+                ),
+            )
+            .limit(1)
+        )
     )
 
 
@@ -543,6 +577,10 @@ async def archive_stage(
     if archived is None:
         raise DomainRuleException(409, "Stage is already archived")
     await session.refresh(stage)
+    if stage.is_parallel and await _open_agreements(session, workflow.id):
+        raise DomainRuleException(
+            409, "Finish or cancel open supplementary agreements first"
+        )
 
     # ветки своих блокировок не имеют - берём их взаимодействия
     on_branch = (

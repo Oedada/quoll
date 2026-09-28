@@ -183,6 +183,7 @@ class StageHistoryRead(AppBaseModel):
     comment: str | None
     # ход ветки продукта; null - ход самого взаимодействия
     branch_id: int | None
+    payload: dict[str, Any]
     created_at: datetime
 
 
@@ -270,6 +271,7 @@ class RequestRead(AppBaseModel):
     branch_id: int | None
     close_reason_id: int | None
     branch_close_reason_id: int | None
+    supplementary_agreement_id: int | None
     reason: str
     decided_by: str | None
     decided_at: datetime | None
@@ -290,6 +292,7 @@ class DocumentRead(AppBaseModel):
     contract_number: str | None
     contract_signed_at: date | None
     contract_valid_until: date | None
+    supplementary_agreement_id: int | None
     metadata: dict[str, Any]
     # прежние версии не пропадают, а перестают быть актуальными
     is_current: bool
@@ -388,6 +391,9 @@ class BranchRead(AppBaseModel):
     product_id: int | None
     contract_status: str
     origin: str
+    supplementary_agreement_id: int | None
+    # итерация пары программа+продукт (Д21)
+    iteration: int
     # null - черновик состава, до подписания
     state_id: int | None
     opened_at: datetime | None

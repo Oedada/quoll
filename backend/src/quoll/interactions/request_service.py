@@ -51,16 +51,19 @@ _REQUESTED = {
     RequestKind.TRANSFER: AuditEventType.PROJECT_TRANSFER_REQUESTED,
     RequestKind.CLOSE: AuditEventType.PROJECT_CLOSE_REQUESTED,
     RequestKind.TRANSITION: AuditEventType.TRANSITION_APPROVAL_REQUESTED,
+    RequestKind.SA_APPROVAL: AuditEventType.SA_SUBMITTED,
 }
 _APPROVED = {
     RequestKind.TRANSFER: AuditEventType.PROJECT_TRANSFER_APPROVED,
     RequestKind.CLOSE: AuditEventType.PROJECT_CLOSE_APPROVED,
     RequestKind.TRANSITION: AuditEventType.TRANSITION_APPROVED,
+    RequestKind.SA_APPROVAL: AuditEventType.SA_APPROVED,
 }
 _REJECTED = {
     RequestKind.TRANSFER: AuditEventType.PROJECT_TRANSFER_REJECTED,
     RequestKind.CLOSE: AuditEventType.PROJECT_CLOSE_REJECTED,
     RequestKind.TRANSITION: AuditEventType.TRANSITION_REJECTED,
+    RequestKind.SA_APPROVAL: AuditEventType.SA_REJECTED,
 }
 
 
@@ -205,6 +208,7 @@ _LABELS = {
     RequestKind.TRANSITION: "переход на следующий шаг",
     RequestKind.CLOSE: "закрытие",
     RequestKind.TRANSFER: "передача заявки",
+    RequestKind.SA_APPROVAL: "допсоглашение",
 }
 
 

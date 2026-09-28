@@ -20,6 +20,8 @@ class StageFacts:
     archived: bool
     branch: bool = False
     branch_start: bool = False
+    # вне цепочки (4.1): без рёбер, без достижимости
+    parallel: bool = False
 
 
 @dataclass(frozen=True)
@@ -63,8 +65,17 @@ def graph_problems(
     full: bool,
 ) -> list[str]:
     """что не так с графом; пусто - граф проходим. edges - только активные"""
-    live = {s.id: s for s in stages if not s.archived}
+    everything = {s.id: s for s in stages if not s.archived}
     problems = []
+    parallel = {i for i, s in everything.items() if s.parallel}
+    if len(parallel) > 1:
+        problems.append("expected at most one parallel stage")
+    if any(e.from_stage_id in parallel or e.to_stage_id in parallel for e in edges):
+        problems.append("parallel stage has no transitions")
+    if occupied & parallel:
+        problems.append("interactions stand on a parallel stage")
+    # дальше маршрут - без параллельного шага
+    live = {i: s for i, s in everything.items() if i not in parallel}
 
     dangling = [
         e

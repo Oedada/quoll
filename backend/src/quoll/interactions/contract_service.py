@@ -63,12 +63,14 @@ async def draft_branch(
 ) -> Branch:
     """ветка-черновик состава; вызывающий уже держит заявку"""
     await check_pair(session, program_id, product_id)
+    # живая ветка пары одна (Д21): закрытые итерации не мешают
     taken = await session.scalar(
         select(
             exists().where(
                 Branch.interaction_id == interaction_id,
                 Branch.program_id == program_id,
                 Branch.product_id.is_not_distinct_from(product_id),
+                Branch.closed_at.is_(None),
             )
         )
     )

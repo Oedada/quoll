@@ -57,6 +57,8 @@ class StageBase(AppBaseModel):
     # флаги веток, как и остальные, после создания не меняются
     is_branch_stage: bool = False
     is_branch_start: bool = False
+    # шаг вне цепочки (4.1 «Допсоглашение»); после создания не меняется
+    is_parallel: bool = False
     # подшаг x.1 шага x; как и флаги, после создания не меняется
     parent_stage_id: int | None = None
     # порог застоя по умолчанию; пусто - на шаге застоя нет
@@ -66,6 +68,14 @@ class StageBase(AppBaseModel):
     fields: Annotated[list[StageField], AfterValidator(_unique_keys)] = Field(
         default_factory=list
     )
+
+    @model_validator(mode="after")
+    def check_parallel(self):
+        if self.is_parallel and (
+            self.is_branch_stage or self.is_branch_start or self.is_terminal
+        ):
+            raise ValueError("Parallel stage is a working stage of the interaction")
+        return self
 
     @model_validator(mode="after")
     def check_branch_start(self):

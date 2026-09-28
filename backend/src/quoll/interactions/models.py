@@ -267,6 +267,9 @@ class StageChangeKind(StrEnum):
     CONTRACT_EXTENDED = "CONTRACT_EXTENDED"
     IMPORT = "IMPORT"
     COMMENT = "COMMENT"
+    SA_CANCELLED = "SA_CANCELLED"
+    SA_RETURNED = "SA_RETURNED"  # допсоглашение вернулось в черновик
+    RESTART = "RESTART"  # завершённая ветка вернулась на начало веток (Д21)
     SLOT_PASSIVE = "SLOT_PASSIVE"  # увели в пассивные слоты (Д19)
     SLOT_ACTIVE = "SLOT_ACTIVE"
 
@@ -314,6 +317,10 @@ class InteractionStageHistory(Base):
         nullable=True,
         index=True,
     )
+    # структура события для отчётов: {sa_id, old, new, ...}
+    payload: Mapped[dict[str, Any]] = mapped_column(
+        JSONB, default=dict, server_default=text("'{}'::jsonb")
+    )
     created_at: Mapped[created_at_dt]
 
 
@@ -350,6 +357,7 @@ class RequestKind(StrEnum):
     CLOSE = "CLOSE"
     # аппрув перехода по ребру с requires_approval
     TRANSITION = "TRANSITION"
+    SA_APPROVAL = "SA_APPROVAL"  # одобрение допсоглашения
 
 
 class RequestStatus(StrEnum):
@@ -365,7 +373,17 @@ class InteractionRequest(Base):
 
     __table_args__ = (
         CheckConstraint(
-            "kind IN ('TRANSFER', 'CLOSE', 'TRANSITION')", name="chk_request_kind"
+            "kind IN ('TRANSFER', 'CLOSE', 'TRANSITION', 'SA_APPROVAL')",
+            name="chk_request_kind",
+        ),
+        # у одобрения допсоглашения - только ссылка на него
+        CheckConstraint(
+            "(kind = 'SA_APPROVAL') = (supplementary_agreement_id IS NOT NULL) "
+            "AND (kind <> 'SA_APPROVAL' OR (target_stage_id IS NULL "
+            "AND target_manager_id IS NULL AND transition_id IS NULL "
+            "AND branch_id IS NULL AND close_reason_id IS NULL "
+            "AND branch_close_reason_id IS NULL))",
+            name="chk_request_sa",
         ),
         # у перехода - ребро и его цель; у остальных ребра нет
         CheckConstraint(
@@ -459,6 +477,9 @@ class InteractionRequest(Base):
         DateTime(timezone=True), nullable=True
     )
     decision_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    supplementary_agreement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplementary_agreements.id"), nullable=True
+    )
     created_at: Mapped[created_at_dt]
 
 
@@ -482,6 +503,11 @@ class InteractionDocument(Base):
         CheckConstraint(
             "kind <> 'OTHER' OR description IS NOT NULL",
             name="chk_document_other_described",
+        ),
+        CheckConstraint(
+            "(supplementary_agreement_id IS NOT NULL) = "
+            "(kind = 'SUPPLEMENTARY_AGREEMENT')",
+            name="chk_document_sa_scan",
         ),
         CheckConstraint(
             "kind = 'CONTRACT' OR (contract_number IS NULL AND "
@@ -534,6 +560,10 @@ class InteractionDocument(Base):
     )
     branch_id: Mapped[int | None] = mapped_column(
         ForeignKey("branches.id", ondelete="CASCADE"), nullable=True
+    )
+    # скан допсоглашения
+    supplementary_agreement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplementary_agreements.id"), nullable=True, index=True
     )
     created_at: Mapped[created_at_dt]
 
@@ -612,13 +642,30 @@ class Branch(Base):
 
     __tablename__ = "branches"
     __table_args__ = (
+        # пара программа+продукт повторяется итерациями (Д21)
         Index(
             "uq_branches_interaction_program_product",
             "interaction_id",
             "program_id",
             "product_id",
+            "iteration",
             unique=True,
             postgresql_nulls_not_distinct=True,
+        ),
+        # но живая ветка у пары одна: черновик состава или открытая
+        Index(
+            "uq_branches_live_pair",
+            "interaction_id",
+            "program_id",
+            "product_id",
+            unique=True,
+            postgresql_nulls_not_distinct=True,
+            postgresql_where=text("closed_at IS NULL"),
+        ),
+        CheckConstraint(
+            "(origin = 'SUPPLEMENTARY_AGREEMENT') = "
+            "(supplementary_agreement_id IS NOT NULL)",
+            name="chk_branch_origin_sa",
         ),
         CheckConstraint(
             "contract_status IN ('PROPOSED', 'APPROVED', 'REJECTED')",
@@ -663,6 +710,10 @@ class Branch(Base):
     origin: Mapped[str] = mapped_column(
         String(30), default=BranchOrigin.CONTRACT, server_default=BranchOrigin.CONTRACT
     )
+    supplementary_agreement_id: Mapped[int | None] = mapped_column(
+        ForeignKey("supplementary_agreements.id"), nullable=True
+    )
+    iteration: Mapped[int] = mapped_column(Integer, default=1, server_default="1")
     state_id: Mapped[int | None] = mapped_column(
         ForeignKey("stages.id", ondelete="RESTRICT"), nullable=True, index=True
     )
@@ -703,5 +754,140 @@ class Branch(Base):
     teachers_trained: Mapped[int | None] = mapped_column(Integer, nullable=True)
     added_by: Mapped[str | None] = mapped_column(
         ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    created_at: Mapped[created_at_dt]
+
+
+class AgreementStatus(StrEnum):
+    DRAFT = "DRAFT"
+    PENDING = "PENDING"
+    APPROVED = "APPROVED"
+    REJECTED = "REJECTED"
+    CANCELLED = "CANCELLED"
+
+
+class SupplementaryAgreement(Base):
+    """допсоглашение (М 3.13, 6.1): единственный способ менять договор после
+    подписания. Своих блокировок нет - прикрывает взаимодействие"""
+
+    __tablename__ = "supplementary_agreements"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('DRAFT', 'PENDING', 'APPROVED', 'REJECTED', 'CANCELLED')",
+            name="chk_sa_status",
+        ),
+        CheckConstraint(
+            "(status IN ('APPROVED', 'REJECTED', 'CANCELLED')) = "
+            "(decided_at IS NOT NULL)",
+            name="chk_sa_decided",
+        ),
+        # незавершённое у заявки одно - «второй указатель» (М 3.11)
+        Index(
+            "uq_sa_open_per_interaction",
+            "interaction_id",
+            unique=True,
+            postgresql_where=text("status IN ('DRAFT', 'PENDING')"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    interaction_id: Mapped[int] = mapped_column(
+        ForeignKey("interactions.id", ondelete="CASCADE"), index=True
+    )
+    number: Mapped[str | None] = mapped_column(String(100), nullable=True)
+    signed_at: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(
+        String(20), default=AgreementStatus.DRAFT, server_default=AgreementStatus.DRAFT
+    )
+    created_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_by: Mapped[str | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True
+    )
+    decided_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    decision_comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    stall_since: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
+    created_at: Mapped[created_at_dt]
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=text("now()"), onupdate=text("now()")
+    )
+
+
+class ActionType(StrEnum):
+    NEW_BRANCH = "NEW_BRANCH"
+    EXTEND_LICENSE = "EXTEND_LICENSE"
+    RESUME = "RESUME"
+    EXCLUDE = "EXCLUDE"
+    EXTEND_CONTRACT = "EXTEND_CONTRACT"
+
+
+class AgreementAction(Base):
+    """что сделать при одобрении допсоглашения"""
+
+    __tablename__ = "sa_actions"
+    __table_args__ = (
+        CheckConstraint(
+            "(type = 'NEW_BRANCH' AND program_id IS NOT NULL AND branch_id IS NULL "
+            "AND license_until IS NULL AND contract_valid_until IS NULL) OR "
+            "(type = 'EXTEND_LICENSE' AND branch_id IS NOT NULL "
+            "AND license_until IS NOT NULL AND program_id IS NULL "
+            "AND product_id IS NULL AND contract_valid_until IS NULL) OR "
+            "(type IN ('RESUME', 'EXCLUDE') AND branch_id IS NOT NULL "
+            "AND program_id IS NULL AND product_id IS NULL "
+            "AND license_until IS NULL AND contract_valid_until IS NULL) OR "
+            "(type = 'EXTEND_CONTRACT' AND contract_valid_until IS NOT NULL "
+            "AND branch_id IS NULL AND program_id IS NULL AND product_id IS NULL "
+            "AND license_until IS NULL)",
+            name="chk_sa_action_shape",
+        ),
+        Index(
+            "uq_sa_action_branch",
+            "sa_id",
+            "branch_id",
+            "type",
+            unique=True,
+            postgresql_where=text("branch_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_sa_action_new_pair",
+            "sa_id",
+            "program_id",
+            "product_id",
+            unique=True,
+            postgresql_nulls_not_distinct=True,
+            postgresql_where=text("type = 'NEW_BRANCH'"),
+        ),
+        Index(
+            "uq_sa_action_contract",
+            "sa_id",
+            unique=True,
+            postgresql_where=text("type = 'EXTEND_CONTRACT'"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    sa_id: Mapped[int] = mapped_column(
+        ForeignKey("supplementary_agreements.id", ondelete="CASCADE"), index=True
+    )
+    type: Mapped[str] = mapped_column(String(20))
+    branch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branches.id", ondelete="CASCADE"), nullable=True
+    )
+    program_id: Mapped[int | None] = mapped_column(
+        ForeignKey("it_programs.id", ondelete="RESTRICT"), nullable=True
+    )
+    product_id: Mapped[int | None] = mapped_column(
+        ForeignKey("products.id", ondelete="RESTRICT"), nullable=True
+    )
+    license_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    contract_valid_until: Mapped[date | None] = mapped_column(Date, nullable=True)
+    # ветка, заведённая NEW_BRANCH при одобрении
+    result_branch_id: Mapped[int | None] = mapped_column(
+        ForeignKey("branches.id", ondelete="SET NULL"), nullable=True
     )
     created_at: Mapped[created_at_dt]
