@@ -6,10 +6,21 @@ logger = logging.getLogger(__name__)
 class AppException(Exception):
     message: str
     status_code: int
+    # код для фронта по errors-ru.md и его параметры; у старых ошибок пусто
+    code: str | None
+    params: dict | None
 
-    def __init__(self, status_code: int, message: str):
+    def __init__(
+        self,
+        status_code: int,
+        message: str,
+        code: str | None = None,
+        params: dict | None = None,
+    ):
         self.message = message
         self.status_code = status_code
+        self.code = code
+        self.params = params
         super().__init__(message)
 
 

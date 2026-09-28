@@ -132,10 +132,12 @@ async def app_exception_handler(request: Request, exc: AppException):
     logger.warning(
         f"Domain exception on {request.method} {request.url.path}: {exc.message} (HTTP {exc.status_code})"
     )
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.message},
-    )
+    content = {"detail": exc.message}
+    if exc.code is not None:
+        content["code"] = exc.code
+    if exc.params is not None:
+        content["params"] = exc.params
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 # ограничений в схеме много
