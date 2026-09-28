@@ -29,6 +29,8 @@ from quoll.auth.dependencies import (
 from quoll.auth.models import UserRole
 from quoll.core import SystemDefaults
 from quoll.core.exceptions import DomainRuleException
+from quoll.integrations import service as integrations_service
+from quoll.integrations.schemas import LmsStatsBrief
 from quoll.interactions import (
     branch_service,
     contract_service,
@@ -973,7 +975,16 @@ async def close_branch(
     summary="Branches: drafts before signing, then each on its own steps",
 )
 async def list_branches(interaction: ReadableInteraction, session: SessionDep):
-    return await contract_service.branches(session, interaction.id)
+    rows = await contract_service.branches(session, interaction.id)
+    stats = await integrations_service.by_program(session, interaction.university_id)
+    return [
+        BranchRead.model_validate(b).model_copy(
+            update={"lms_stats": LmsStatsBrief.model_validate(stats[b.program_id])}
+        )
+        if b.program_id in stats
+        else b
+        for b in rows
+    ]
 
 
 @interactions_router.post(

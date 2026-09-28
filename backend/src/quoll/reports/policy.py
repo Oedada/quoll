@@ -121,6 +121,8 @@ class Facts:
     people: dict[str, Person]
     # продления лицензии после B - для "Лицензия до" на B
     extensions: dict[int, tuple[Event, ...]]
+    # LMS по паре "вуз x программа" (план §6): (uni_id, program_id) -> (students, streams, teachers_lms)
+    lms_stats: dict[tuple[int, int], tuple[int, int, int | None]]
 
 
 # --- строки
@@ -184,6 +186,10 @@ class Row:
     license_until: date | None
     contract_number: str | None
     moves: tuple[Move, ...]
+    # LMS по паре "вуз x программа" ветки (план §6); у строки без ветки - None
+    students: int | None
+    streams: int | None
+    teachers_lms: int | None
 
 
 # --- период
@@ -513,6 +519,7 @@ def _assemble(facts, i, branch, kind, row_status, people, row_moves) -> Row:
     program, direction_id = facts.programs.get(program_id, (None, None))
     product_id = branch.product_id if branch else None
     who, earlier = people
+    stats = facts.lms_stats.get((i.university_id, program_id)) if program_id else None
     return Row(
         interaction_id=i.id,
         branch_id=branch.id if branch else None,
@@ -538,6 +545,9 @@ def _assemble(facts, i, branch, kind, row_status, people, row_moves) -> Row:
         ),
         contract_number=i.contract_number,
         moves=row_moves,
+        students=stats[0] if stats else None,
+        streams=stats[1] if stats else None,
+        teachers_lms=stats[2] if stats else None,
     )
 
 

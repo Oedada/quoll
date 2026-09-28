@@ -120,10 +120,10 @@ def cells(row: Row, columns: list[str]) -> list:
         "product": row.product or labels.NOT_SET["product"],
         "status": row.status.label,
         "responsible": labels.responsible(row.responsible_name, row.earlier_name),
-        "students": None,
-        "streams": None,
+        "students": row.students,
+        "streams": row.streams,
         "teachers_kam": row.teachers_kam,
-        "teachers_lms": None,
+        "teachers_lms": row.teachers_lms,
         "transitions": labels.moves(row.moves, "\n"),
         "contract_number": row.contract_number,
         "license_until": row.license_until,
@@ -134,11 +134,23 @@ def cells(row: Row, columns: list[str]) -> list:
 
 
 def _total(rows: list[Row], columns: list[str]) -> list | None:
-    """итог по числу обученных КАМом; LMS не суммируются - данных нет (В1)"""
-    if "teachers_kam" not in columns:
+    """итог по числу обученных КАМом и по LMS - сумма по уникальным парам
+    "вуз x программа" среди строк, чтобы не считать пару дважды (план §6)"""
+    lms_cols = {"students", "streams", "teachers_lms"} & set(columns)
+    if "teachers_kam" not in columns and not lms_cols:
         return None
-    total = sum(r.teachers_kam or 0 for r in rows)
-    return ["Итого", *(total if c == "teachers_kam" else "" for c in columns[1:])]
+    totals = {"teachers_kam": sum(r.teachers_kam or 0 for r in rows)}
+    if lms_cols:
+        seen: dict[tuple[int, int], Row] = {}
+        for r in rows:
+            if r.program_id is not None:
+                seen.setdefault((r.university_id, r.program_id), r)
+        for col in lms_cols:
+            totals[col] = sum(getattr(r, col) or 0 for r in seen.values())
+    return [
+        "Итого",
+        *(totals.get(c, "") for c in columns[1:]),
+    ]
 
 
 def _row_height(values: list, widths: list[int], line: float) -> float:

@@ -6,6 +6,7 @@ from pydantic import ConfigDict, Field, ValidationError, model_validator
 from quoll.attachments.schemas import AttachmentRead
 from quoll.catalog.schemas import UniversityRead
 from quoll.core.schemas import AppBaseModel
+from quoll.integrations.schemas import LmsStatsBrief
 from quoll.workflows.schemas import StageRead, WorkflowRead
 
 
@@ -422,6 +423,8 @@ class BranchRead(AppBaseModel):
     teachers_trained: int | None
     added_by: str | None
     created_at: datetime
+    # статистика LMS пары вуз x программа, общая у веток программы; null - LMS не присылала
+    lms_stats: LmsStatsBrief | None = None
 
 
 # допсоглашение (шаг 4.1)

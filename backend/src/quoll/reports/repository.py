@@ -13,6 +13,7 @@ from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import Manager, User, UserRole
 from quoll.catalog.models import CloseReason, ItDirection, ItProgram, Product
 from quoll.core.system_defaults import SystemDefaults
+from quoll.integrations.models import LmsStats
 from quoll.interactions.access_policy import readable_filter
 from quoll.interactions.document_service import replaced_expression
 from quoll.interactions.models import (
@@ -79,7 +80,7 @@ async def load_facts(
     heads = (await session.execute(stmt)).all()
     ids = [h.id for h in heads]
     if not ids:
-        return Facts((), {}, {}, {}, {}, {}, {}, {}, {})
+        return Facts((), {}, {}, {}, {}, {}, {}, {}, {}, {})
 
     universities = {
         u.id: (u.short_name, u.region)
@@ -167,6 +168,11 @@ async def load_facts(
         if "license_until" in params.columns
         else {}
     )
+    lms_stats = (
+        await _lms_stats(session, {h.university_id for h in heads})
+        if {"students", "streams", "teachers_lms"} & set(params.columns)
+        else {}
+    )
 
     events_of: dict[int, list[Event]] = {}
     for h in history:
@@ -224,6 +230,7 @@ async def load_facts(
         reasons,
         people,
         extensions,
+        lms_stats,
     )
 
 
@@ -287,6 +294,25 @@ async def _contract_numbers(session: AsyncSession, ids: list[int]) -> dict[int, 
         .distinct(InteractionDocument.interaction_id)
     )
     return {r.interaction_id: r.contract_number for r in rows}
+
+
+async def _lms_stats(
+    session: AsyncSession, university_ids: set[int]
+) -> dict[tuple[int, int], tuple[int, int, int | None]]:
+    """последняя статистика LMS по парам "вуз x программа" (план §6)"""
+    rows = await session.execute(
+        select(
+            LmsStats.university_id,
+            LmsStats.program_id,
+            LmsStats.students,
+            LmsStats.streams,
+            LmsStats.teachers_trained,
+        ).where(LmsStats.university_id.in_(university_ids))
+    )
+    return {
+        (r.university_id, r.program_id): (r.students, r.streams, r.teachers_trained)
+        for r in rows
+    }
 
 
 async def _extensions(

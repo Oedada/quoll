@@ -15,6 +15,7 @@ from quoll.auth.session_store import SessionStore
 from quoll.auth.task_queue import run_queue
 from quoll.config import settings
 from quoll.core.worker import Periodic
+from quoll.integrations.flows import run_nightly
 from quoll.interactions.pause_worker import expire_branch_pauses, expire_pauses
 from quoll.interactions.watcher import watch
 from quoll.reports.worker import ReportRunner
@@ -70,6 +71,11 @@ def background_jobs(
     async def reconcile_tick() -> None:
         await reconcile(session_maker)
 
+    async def integrations_tick() -> None:
+        ran = await run_nightly(session_maker)
+        if ran:
+            logger.info(f"Nightly integration exchange ran {ran} step(s)")
+
     return [
         Periodic("reconciler", settings.reconciler_interval_seconds, reconcile_tick),
         Periodic("org-queue", settings.org_queue_interval_seconds, run_org_queue),
@@ -83,5 +89,8 @@ def background_jobs(
         Periodic("report-queue", settings.report_worker_interval_seconds, report_tick),
         Periodic(
             "report-cleanup", settings.report_cleanup_interval_seconds, report_cleanup
+        ),
+        Periodic(
+            "integrations", settings.integration_interval_seconds, integrations_tick
         ),
     ]

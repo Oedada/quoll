@@ -12,6 +12,7 @@ import quoll.auth.audit_models
 import quoll.auth.models
 import quoll.auth.pending_actions
 import quoll.catalog.models
+import quoll.integrations.models
 import quoll.interactions.models
 import quoll.notifications.models
 import quoll.reports.models

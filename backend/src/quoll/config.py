@@ -54,6 +54,16 @@ class Settings(BaseSettings):
     db_pool_size: int = 20
     db_max_overflow: int = 10
 
+    # интеграции-заглушки (integrations-plan.md)
+    # ключ HMAC для отпечатка email в В1
+    integration_email_key: str = "integration-dev-key"
+    integration_enrollments_enabled: bool = True
+    # имитация недоступности заглушки (INT-503)
+    integration_stub_available: bool = True
+    # ночной час обмена по BUSINESS_TZ
+    integration_hour: int = 3
+    integration_interval_seconds: int = 3600
+
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 
 

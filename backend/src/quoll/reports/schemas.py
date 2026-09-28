@@ -115,7 +115,7 @@ class RowRead(AppBaseModel):
     product: str | None = None
     status: StatusRead | None = None
     responsible: ResponsibleRead | None = None
-    # LMS - прочерки, пока нет интеграций (В1)
+    # LMS по паре "вуз x программа" ветки; "-" у строки без ветки (план §6)
     students: int | None = None
     streams: int | None = None
     teachers_kam: int | None = None

@@ -96,11 +96,11 @@ def view(row: policy.Row, columns: list[str]) -> RowRead:
             earlier_name=row.earlier_name,
             label=labels.responsible(row.responsible_name, row.earlier_name),
         ),
-        # LMS - прочерки, пока нет интеграций (В1)
-        "students": None,
-        "streams": None,
+        # LMS по паре "вуз x программа" ветки, "-" у строки без ветки (план §6)
+        "students": row.students,
+        "streams": row.streams,
         "teachers_kam": row.teachers_kam,
-        "teachers_lms": None,
+        "teachers_lms": row.teachers_lms,
         "transitions": TransitionsRead(
             count=len(row.moves),
             items=[

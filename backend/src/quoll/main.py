@@ -17,6 +17,7 @@ from quoll.catalog import catalog_router
 from quoll.config import settings
 from quoll.core import AppException
 from quoll.core.worker import Workers
+from quoll.integrations import integration_proposals_router, integrations_router
 from quoll.interactions import (
     documents_router,
     interactions_router,
@@ -199,6 +200,8 @@ app.include_router(documents_router)
 app.include_router(org_router)
 app.include_router(catalog_router)
 app.include_router(admin_router)
+app.include_router(integrations_router)
+app.include_router(integration_proposals_router)
 app.include_router(reports_router)
 app.include_router(notifications_router)
 app.include_router(notifications_ws_router)
