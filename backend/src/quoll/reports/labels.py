@@ -26,6 +26,20 @@ COLUMNS = {
     "transfer_status": "Статус передачи",
     "region": "Регион",
 }
+# pdf: узкие колонки с короткими подписями - длинное слово рвалось бы по слогам
+PDF_COLUMNS = {
+    **COLUMNS,
+    "direction": "Направление",
+    "program": "Программа",
+    "product": "Продукт",
+    "students": "Студ.",
+    "streams": "Потоки",
+    "teachers_kam": "Обуч. преп. (КАМ)",
+    "teachers_lms": "Обуч. преп. (LMS)",
+    "transitions": "Переходы за период",
+    "contract_number": "№ договора",
+    "transfer_status": "Передача",
+}
 FILTERS = {
     "university_ids": "Вузы",
     "regions": "Регион",
@@ -89,5 +103,5 @@ def move(m) -> str:
     return f"{day} {m.from_name} → {m.to_name}"
 
 
-def moves(items) -> str:
-    return "; ".join(move(m) for m in items) if items else NO_MOVES
+def moves(items, sep: str = "; ") -> str:
+    return sep.join(move(m) for m in items) if items else NO_MOVES
