@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -138,12 +138,39 @@ class UserRepository:
         return user
 
     async def get_all(
-        self, limit: int = SystemDefaults.DEFAULT_PAGE_SIZE, offset: int = 0
-    ) -> list[User]:
-        stmt = (
-            select(User).order_by(User.created_at, User.id).limit(limit).offset(offset)
+        self,
+        limit: int = SystemDefaults.DEFAULT_PAGE_SIZE,
+        offset: int = 0,
+        *,
+        role: UserRole | None = None,
+        is_active: bool | None = None,
+        q: str | None = None,
+    ) -> tuple[list[User], int]:
+        filters = []
+        if role is not None:
+            filters.append(User.role == role)
+        if is_active is not None:
+            filters.append(User.is_active.is_(is_active))
+        if q:
+            pattern = f"%{q}%"
+            filters.append(
+                User.first_name.ilike(pattern)
+                | User.last_name.ilike(pattern)
+                | User.username.ilike(pattern)
+                | User.email.ilike(pattern)
+            )
+        total = await self.s.scalar(
+            select(func.count()).select_from(User).where(*filters)
         )
-        return list((await self.s.execute(stmt)).scalars().all())
+        stmt = (
+            select(User)
+            .where(*filters)
+            .order_by(User.created_at, User.id)
+            .limit(limit)
+            .offset(offset)
+        )
+        users = list((await self.s.execute(stmt)).scalars().all())
+        return users, total or 0
 
     async def update_profile(
         self, user_id: str, changes: UserUpdate, actor_id: str

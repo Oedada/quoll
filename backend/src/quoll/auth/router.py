@@ -24,7 +24,7 @@ from quoll.auth.dependencies import (
     token_cipher,
 )
 from quoll.auth.login_service import LoginDenied
-from quoll.auth.models import user_class_for_role
+from quoll.auth.models import UserRole, user_class_for_role
 from quoll.auth.repositories import UserRepository
 from quoll.auth.schemas import (
     RoleChange,
@@ -130,6 +130,9 @@ async def get_me(user: CurrentUser) -> UserRead:
 async def list_users(
     admin_user: AdminUser,
     user_repo: UserRepository = Depends(get_user_repo),  # noqa: B008
+    role: UserRole | None = None,
+    is_active: bool | None = None,
+    q: str | None = Query(default=None, max_length=255, description="Search by name"),
     limit: int = Query(
         default=SystemDefaults.DEFAULT_PAGE_SIZE,
         ge=1,
@@ -137,9 +140,12 @@ async def list_users(
     ),
     offset: int = Query(default=0, ge=0),
 ) -> UserListRead:
-    users = await user_repo.get_all(limit=limit, offset=offset)
+    users, total = await user_repo.get_all(
+        limit=limit, offset=offset, role=role, is_active=is_active, q=q
+    )
     return UserListRead(
         users=[UserRead.model_validate(u) for u in users],
+        total=total,
         limit=limit,
         offset=offset,
     )

@@ -40,10 +40,15 @@ class UserRead(AppBaseModel):
     is_active: bool
     # есть только у менеджера, у остальных - значение по умолчанию
     superviser_id: str | None = None
+    # лимиты по подтипу: у менеджера max_active_projects, у руководителя
+    # max_subordinates, у остальных - null (Admin/User лимитов не имеют)
+    max_active_projects: int | None = None
+    max_subordinates: int | None = None
 
 
 class UserListRead(AppBaseModel):
     users: list[UserRead]
+    total: int
     limit: int
     offset: int
 
