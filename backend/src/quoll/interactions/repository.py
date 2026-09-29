@@ -80,11 +80,14 @@ class InteractionRepository(BaseRepository[Interaction]):
         status: list[str] | None = None,
         slot: str | None = None,
         outcome: list[str] | None = None,
+        responsible_id: str | None = None,
+        stage_id: int | None = None,
+        q: str | None = None,
         limit: int,
         offset: int,
-    ) -> list[Interaction]:
-        """одним запросом - фильтры и видимость до пагинации, иначе страница
-        приходит неполной"""
+    ) -> tuple[list[Interaction], int]:
+        """фильтры и видимость до пагинации, иначе страница приходит неполной.
+        total - отдельным count по тем же условиям, без лишнего джойна"""
         stmt = select(Interaction).where(visibility)
         if university_id is not None:
             stmt = stmt.where(Interaction.university_id == university_id)
@@ -101,13 +104,46 @@ class InteractionRepository(BaseRepository[Interaction]):
             stmt = stmt.where(Interaction.slot == slot)
         if outcome:
             stmt = stmt.where(Interaction.outcome.in_(outcome))
+        if responsible_id is not None:
+            stmt = stmt.where(Interaction.owner_id == responsible_id)
+        if stage_id is not None:
+            stmt = stmt.where(Interaction.state_id == stage_id)
+        if q:
+            pattern = f"%{q}%"
+            stmt = stmt.where(
+                exists().where(
+                    University.id == Interaction.university_id,
+                    University.short_name.ilike(pattern)
+                    | University.full_name.ilike(pattern),
+                )
+            )
+        total = await self.session.scalar(
+            select(func.count()).select_from(stmt.subquery())
+        )
         # id вторым ключом - при равном времени порядок страниц не плывёт
-        stmt = (
+        page = (
             stmt.order_by(Interaction.created_at.desc(), Interaction.id.desc())
             .limit(limit)
             .offset(offset)
         )
-        return list((await self.session.execute(stmt)).scalars().all())
+        rows = list((await self.session.execute(page)).scalars().all())
+        return rows, total or 0
+
+    async def branches_by_interaction(
+        self, interaction_ids: list[int]
+    ) -> dict[int, list[Branch]]:
+        """ветки состава пачкой на несколько заявок - для обогащения списка"""
+        branches: dict[int, list[Branch]] = {i: [] for i in interaction_ids}
+        for b in await self.session.scalars(
+            select(Branch)
+            .where(
+                Branch.interaction_id.in_(interaction_ids),
+                Branch.program_id.is_not(None),
+            )
+            .order_by(Branch.id)
+        ):
+            branches[b.interaction_id].append(b)
+        return branches
 
     async def ownership(self, interaction: Interaction) -> Ownership:
         superviser_id, orphaned = None, False

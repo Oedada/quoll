@@ -14,6 +14,7 @@ from fastapi import (
     status,
 )
 from fastapi.responses import JSONResponse
+from sqlalchemy import select
 
 from quoll.attachments.dependencies import AttachmentServiceDep
 from quoll.attachments.schemas import AttachmentRead
@@ -25,9 +26,12 @@ from quoll.auth.dependencies import (
     SupervisorUser,
     get_current_user,
 )
-from quoll.auth.models import UserRole
+from quoll.auth.models import User, UserRole
+from quoll.catalog.models import ItProgram, Product
+from quoll.catalog.schemas import Ref
 from quoll.core import SystemDefaults
 from quoll.core.exceptions import DomainRuleException
+from quoll.core.people import person
 from quoll.integrations import service as integrations_service
 from quoll.integrations.schemas import LmsStatsBrief
 from quoll.interactions import (
@@ -51,11 +55,14 @@ from quoll.interactions.dependencies import (
     SessionDep,
 )
 from quoll.interactions.models import (
+    Interaction,
     InteractionOutcome,
     InteractionStatus,
     RequestKind,
     RequestStatus,
     SlotKind,
+    University,
+    Vendor,
 )
 from quoll.interactions.schemas import (
     AcceptRequest,
@@ -65,6 +72,7 @@ from quoll.interactions.schemas import (
     AgreementUpdate,
     AssignRequest,
     BranchRead,
+    BranchSummary,
     BranchWrite,
     CloseRequest,
     CommentRequest,
@@ -74,10 +82,13 @@ from quoll.interactions.schemas import (
     InteractionCreate,
     InteractionDetailRead,
     InteractionHistoryRead,
+    InteractionListPage,
+    InteractionListRead,
     InteractionRead,
     InteractionSettings,
     InteractionUpdate,
     PauseRequest,
+    PersonRef,
     ReasonedRequest,
     ReopenRequest,
     RequestApprove,
@@ -95,6 +106,7 @@ from quoll.interactions.schemas import (
 )
 from quoll.notifications import queries as notification_queries
 from quoll.notifications.schemas import NotificationHistoryRead
+from quoll.workflows.models import Stage
 
 interactions_router = APIRouter(
     prefix="/api/v1/interactions",
@@ -119,14 +131,111 @@ async def create_interaction(
     return await project_service.create_interaction(session, schema, user.id)
 
 
+async def _list_view(
+    session: SessionDep, repo: InteractionRepoDep, rows: list[Interaction]
+) -> list[InteractionListRead]:
+    """вуз, ответственный, стадия и состав веток - пачкой на всю страницу,
+    без запроса на строку (п.1-4 списка заявок)"""
+    if not rows:
+        return []
+    universities = {
+        u.id: u
+        for u in await session.scalars(
+            select(University).where(University.id.in_({r.university_id for r in rows}))
+        )
+    }
+    owner_ids = {r.owner_id for r in rows if r.owner_id is not None}
+    owners = (
+        {u.id: u for u in await session.scalars(select(User).where(User.id.in_(owner_ids)))}
+        if owner_ids
+        else {}
+    )
+    stage_ids = {r.state_id for r in rows if r.state_id is not None}
+    stages = (
+        {s.id: s for s in await session.scalars(select(Stage).where(Stage.id.in_(stage_ids)))}
+        if stage_ids
+        else {}
+    )
+    branches = await repo.branches_by_interaction([r.id for r in rows])
+    program_ids = {b.program_id for group in branches.values() for b in group}
+    programs = (
+        {
+            p.id: p
+            for p in await session.scalars(
+                select(ItProgram).where(ItProgram.id.in_(program_ids))
+            )
+        }
+        if program_ids
+        else {}
+    )
+    product_ids = {
+        b.product_id for group in branches.values() for b in group if b.product_id
+    }
+    products = (
+        {
+            p.id: p
+            for p in await session.scalars(
+                select(Product).where(Product.id.in_(product_ids))
+            )
+        }
+        if product_ids
+        else {}
+    )
+    vendor_ids = {p.vendor_id for p in products.values()}
+    vendors = (
+        {
+            v.id: v.name
+            for v in await session.scalars(select(Vendor).where(Vendor.id.in_(vendor_ids)))
+        }
+        if vendor_ids
+        else {}
+    )
+
+    def summary(b) -> BranchSummary:
+        program = programs.get(b.program_id)
+        product = products.get(b.product_id) if b.product_id else None
+        return BranchSummary(
+            id=b.id,
+            program=Ref(id=program.id, name=program.name) if program else None,
+            product=Ref(id=product.id, name=product.name) if product else None,
+            vendor_name=vendors.get(product.vendor_id) if product else None,
+            contract_status=b.contract_status,
+        )
+
+    return [
+        InteractionListRead(
+            # university/owner/state читаем по id отдельными запросами выше -
+            # relationship-атрибуты ORM без selectinload дали бы MissingGreenlet.
+            # Базовые поля берём из InteractionRead - у него только колонки
+            **InteractionRead.model_validate(r).model_dump(),
+            university=Ref(
+                id=r.university_id, name=universities[r.university_id].short_name
+            ),
+            responsible=(
+                PersonRef(id=r.owner_id, name=person(owners.get(r.owner_id)))
+                if r.owner_id is not None
+                else None
+            ),
+            stage=(
+                Ref(id=r.state_id, name=stages[r.state_id].name)
+                if r.state_id is not None
+                else None
+            ),
+            branches=[summary(b) for b in branches[r.id]],
+        )
+        for r in rows
+    ]
+
+
 @interactions_router.get(
     "/",
-    response_model=list[InteractionRead],
-    summary="List interactions visible to the current user",
+    response_model=InteractionListPage,
+    summary="List interactions visible to the current user, ready for a table",
 )
 async def list_interactions(
     user: CurrentUser,
     repo: InteractionRepoDep,
+    session: SessionDep,
     university_id: int | None = Query(
         default=None, ge=1, description="Filter by University ID"
     ),
@@ -142,6 +251,16 @@ async def list_interactions(
         list[InteractionOutcome] | None,
         Query(description="Filter closed interactions by outcome, several allowed"),
     ] = None,
+    responsible_id: str | None = Query(
+        default=None, description="Filter by the current responsible manager"
+    ),
+    stage_id: int | None = Query(default=None, ge=1, description="Filter by stage"),
+    q: str | None = Query(
+        default=None,
+        min_length=1,
+        max_length=255,
+        description="Search by university name",
+    ),
     limit: int = Query(
         default=SystemDefaults.DEFAULT_PAGE_SIZE,
         ge=1,
@@ -149,16 +268,20 @@ async def list_interactions(
     ),
     offset: int = Query(default=0, ge=0),
 ):
-    return await repo.list_visible(
+    rows, total = await repo.list_visible(
         readable_filter(user),
         university_id=university_id,
         program_id=program_id,
         status=status,
         slot=slot,
         outcome=outcome,
+        responsible_id=responsible_id,
+        stage_id=stage_id,
+        q=q,
         limit=limit,
         offset=offset,
     )
+    return InteractionListPage(total=total, items=await _list_view(session, repo, rows))
 
 
 @interactions_router.post(

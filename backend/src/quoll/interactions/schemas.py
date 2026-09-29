@@ -4,7 +4,7 @@ from typing import Annotated, Any, Literal
 from pydantic import ConfigDict, Field, model_validator
 
 from quoll.attachments.schemas import AttachmentRead
-from quoll.catalog.schemas import UniversityRead
+from quoll.catalog.schemas import Ref, UniversityRead
 from quoll.core.schemas import AppBaseModel
 from quoll.integrations.schemas import LmsStatsBrief
 from quoll.workflows.schemas import StageRead, WorkflowRead
@@ -175,6 +175,35 @@ class InteractionDetailRead(InteractionRead):
     university: UniversityRead
     workflow: WorkflowRead | None = None
     state: StageRead | None = None
+
+
+class PersonRef(AppBaseModel):
+    id: str
+    name: str
+
+
+class BranchSummary(AppBaseModel):
+    """состав ветки для таблицы заявок - без похода за /branches"""
+
+    id: int
+    program: Ref | None
+    product: Ref | None
+    vendor_name: str | None
+    contract_status: str
+
+
+class InteractionListRead(InteractionRead):
+    """заявка для таблицы: имена вместо голых id, без отдельных запросов"""
+
+    university: Ref
+    responsible: PersonRef | None
+    stage: Ref | None
+    branches: list[BranchSummary]
+
+
+class InteractionListPage(AppBaseModel):
+    total: int
+    items: list[InteractionListRead]
 
 
 class StageHistoryRead(AppBaseModel):
