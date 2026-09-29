@@ -277,7 +277,7 @@ def _label(item) -> str:
     return str(item.id)
 
 
-def _new_ref(an: Analysis, ref: str, key: str) -> dict | None:
+def new_ref(an: Analysis, ref: str, key: str) -> dict | None:
     found = an.new.get((ref, key))
     if found is None:
         return None
@@ -290,19 +290,19 @@ def resolve(an: Analysis, ctx: RowCtx, spec: FieldSpec, text: str) -> tuple[Any,
     не нашлась - NotValid с кодом"""
     snap = an.snap
     if spec.ref == "university":
-        return _university_ref(an, text)
+        return university_ref(an, text)
     if spec.ref == "specialty":
         code = text.strip()
         if code in snap.specialties:
             return {"id": snap.specialties[code].id}, code
-        new = _new_ref(an, "specialty", code)
+        new = new_ref(an, "specialty", code)
         if new:
             return new, code
         raise normalize.NotValid()
     key = normalize.text_key(text)
     if spec.ref == "product":
         found = snap.products.get(key, [])
-        new = _new_ref(an, "product", key)
+        new = new_ref(an, "product", key)
         if len(found) + (new is not None) > 1:
             raise normalize.NotValid("IMP-111")
         if found:
@@ -315,13 +315,13 @@ def resolve(an: Analysis, ctx: RowCtx, spec: FieldSpec, text: str) -> tuple[Any,
         raise normalize.NotValid("IMP-111")
     if found:
         return {"id": found[0].id}, found[0].name
-    new = _new_ref(an, spec.ref, key)
+    new = new_ref(an, spec.ref, key)
     if new:
         return new, text
     raise normalize.NotValid()
 
 
-def _university_ref(an: Analysis, text: str) -> tuple[Any, str]:
+def university_ref(an: Analysis, text: str) -> tuple[Any, str]:
     """ИНН с верной суммой, иначе краткое, затем полное название (§16.3)"""
     snap = an.snap
     digits = re.sub(r"\D", "", text)
@@ -346,7 +346,7 @@ def _university_ref(an: Analysis, text: str) -> tuple[Any, str]:
         raise normalize.NotValid("IMP-111")
     if found:
         return {"id": found[0].id}, found[0].short_name
-    new = _new_ref(an, *new_key)
+    new = new_ref(an, *new_key)
     if new:
         return new, text
     raise normalize.NotValid("IMP-006")
@@ -413,7 +413,7 @@ def _changes(defn: PartDef, part: Part) -> dict[str, Any]:
     return out
 
 
-def _check(ctx: RowCtx, defn: PartDef, part: Part, fields: dict[str, str]) -> None:
+def check_part(ctx: RowCtx, defn: PartDef, part: Part, fields: dict[str, str]) -> None:
     """NEW - схема *Write, UPDATE - *Patch (§16.4)"""
     if part.action == NEW:
         data = {a: _plain(v) for a, v in part.values.items() if v is not None}
@@ -438,7 +438,7 @@ def _settle(ctx: RowCtx, defn: PartDef, part: Part) -> None:
         part.action = UPDATE if part.changes else SAME
 
 
-def _add_part(
+def add_part(
     an: Analysis,
     ctx: RowCtx,
     name: str,
@@ -521,8 +521,8 @@ async def _contact_part(
             ctx.add("IMP-111", "full_name")
             return
         item = found[0] if found else None
-    part = _add_part(an, ctx, name, key, item, values)
-    _check(ctx, defn, part, defn.attrs)
+    part = add_part(an, ctx, name, key, item, values)
+    check_part(ctx, defn, part, defn.attrs)
 
 
 # --- виды --------------------------------------------------------------------
@@ -534,11 +534,11 @@ async def _directions(an: Analysis, ctx: RowCtx) -> None:
         return
     key = normalize.text_key(name)
     found = an.snap.directions.get(key, [])
-    part = _add_part(
+    part = add_part(
         an, ctx, "direction", key, found[0] if found else None, {"name": name},
         [("direction", key)],
     )  # fmt: skip
-    _check(ctx, PARTS["direction"], part, PARTS["direction"].attrs)
+    check_part(ctx, PARTS["direction"], part, PARTS["direction"].attrs)
 
 
 async def _vendors(an: Analysis, ctx: RowCtx) -> None:
@@ -548,12 +548,12 @@ async def _vendors(an: Analysis, ctx: RowCtx) -> None:
     key = normalize.text_key(name)
     found = an.snap.vendors.get(key, [])
     defn = PARTS["vendor"]
-    part = _add_part(
+    part = add_part(
         an, ctx, "vendor", key, found[0] if found else None,
         _v(ctx, ctx.kind, {"name": "name", "site": "site", "kind": "kind"}),
         [("vendor", key)],
     )  # fmt: skip
-    _check(ctx, defn, part, defn.attrs)
+    check_part(ctx, defn, part, defn.attrs)
     vendor = found[0] if found else None
     # продукты вендора только сверяются: создать продукт отсюда нельзя
     for product in ctx.values.get("products") or []:
@@ -590,11 +590,11 @@ async def _products(an: Analysis, ctx: RowCtx) -> None:
     found = [p for p in an.snap.products.get(key, []) if p.vendor_id == vendor_id]
     defn = PARTS["product"]
     values = _v(ctx, ctx.kind, defn.attrs)
-    part = _add_part(
+    part = add_part(
         an, ctx, "product", _key(key, vendor), found[0] if found else None, values,
         [("product", key)],
     )  # fmt: skip
-    _check(ctx, defn, part, defn.attrs)
+    check_part(ctx, defn, part, defn.attrs)
 
 
 async def _programs(an: Analysis, ctx: RowCtx) -> None:
@@ -605,10 +605,10 @@ async def _programs(an: Analysis, ctx: RowCtx) -> None:
     found = an.snap.programs.get(key, [])
     defn = PARTS["program"]
     values = _v(ctx, ctx.kind, defn.attrs)
-    part = _add_part(
+    part = add_part(
         an, ctx, "program", key, found[0] if found else None, values, [("program", key)]
     )
-    _check(ctx, defn, part, defn.attrs)
+    check_part(ctx, defn, part, defn.attrs)
 
 
 async def _specialties(an: Analysis, ctx: RowCtx) -> None:
@@ -617,11 +617,11 @@ async def _specialties(an: Analysis, ctx: RowCtx) -> None:
         return
     defn = PARTS["specialty"]
     values = _v(ctx, ctx.kind, defn.attrs)
-    part = _add_part(
+    part = add_part(
         an, ctx, "specialty", code, an.snap.specialties.get(code), values,
         [("specialty", code)],
     )  # fmt: skip
-    _check(ctx, defn, part, defn.attrs)
+    check_part(ctx, defn, part, defn.attrs)
 
 
 async def _universities(an: Analysis, ctx: RowCtx) -> None:
@@ -642,11 +642,11 @@ async def _universities(an: Analysis, ctx: RowCtx) -> None:
     for f in ("short_name", "full_name"):
         if ctx.values.get(f):
             new_keys.append(("university_name", normalize.text_key(ctx.values[f])))
-    part = _add_part(
+    part = add_part(
         an, ctx, "university", _key(inn, kpp or (found[0].kpp if found else None)),
         found[0] if found else None, values, new_keys,
     )  # fmt: skip
-    _check(ctx, defn, part, defn.attrs)
+    check_part(ctx, defn, part, defn.attrs)
 
 
 async def _university_specialties(an: Analysis, ctx: RowCtx) -> None:
@@ -690,7 +690,7 @@ _KINDS = {
 # --- ход ---------------------------------------------------------------------
 
 
-def _status(ctx: RowCtx) -> str:
+def status_for(ctx: RowCtx) -> str:
     if ctx.row.excluded or ctx.kind is None:
         return RowStatus.EXCLUDED
     levels = {i["level"] for i in ctx.issues}
@@ -733,7 +733,7 @@ def _finish(an: Analysis, ctx: RowCtx) -> None:
             ]
     ctx.targets = [p.target(ctx.kind.key) for p in ctx.parts] if ctx.kind else []
     if ctx.kind is None or ctx.kind.key != REGISTRY:
-        ctx.status = _status(ctx)
+        ctx.status = status_for(ctx)
     # у реестра статус уже поставлен registry.run - целиком по группе (§16.6)
 
 

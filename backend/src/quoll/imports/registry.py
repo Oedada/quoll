@@ -142,7 +142,7 @@ def _resolve_vendor(an, ctx):
         return None
     key = normalize.text_key(text)
     found = an.snap.vendors.get(key, [])
-    new = analysis._new_ref(an, "vendor", key)
+    new = analysis.new_ref(an, "vendor", key)
     if len(found) + (new is not None) > 1:
         ctx.add("IMP-111", "vendor")
         return None
@@ -150,10 +150,12 @@ def _resolve_vendor(an, ctx):
         return {"id": found[0].id}
     if new:
         return new
-    part = analysis._add_part(
+    part = analysis.add_part(
         an, ctx, "vendor", key, None, {"name": text}, [("vendor", key)]
     )
-    analysis._check(ctx, analysis.PARTS["vendor"], part, analysis.PARTS["vendor"].attrs)
+    analysis.check_part(
+        ctx, analysis.PARTS["vendor"], part, analysis.PARTS["vendor"].attrs
+    )
     ctx.add("IMP-153", "vendor")
     return {"new_of_row": ctx.row.id, "part": "vendor"}
 
@@ -182,7 +184,7 @@ def _resolve_program(an, ctx, product_id: int | None):
     if text:
         key = normalize.text_key(text)
         found = an.snap.programs.get(key, [])
-        new = analysis._new_ref(an, "program", key)
+        new = analysis.new_ref(an, "program", key)
         if len(found) + (new is not None) > 1:
             ctx.add("IMP-111", "program")
             return None
@@ -229,7 +231,7 @@ def _resolve_branch_refs(an, ctx) -> tuple[Any, Any, Any] | None:
     vendor_ref = _resolve_vendor(an, ctx)
     key = normalize.text_key(text)
     found = _existing_product(an, key, vendor_ref)
-    new = analysis._new_ref(an, "product", key)
+    new = analysis.new_ref(an, "product", key)
     if len(found) + (new is not None) > 1:
         ctx.add("IMP-111", "product")
         return None
@@ -249,8 +251,8 @@ def _resolve_branch_refs(an, ctx) -> tuple[Any, Any, Any] | None:
             return None
         part_key = analysis._key(key, vendor_ref)
         values = {"name": text, "vendor": vendor_ref, "directions": directions}
-        part = analysis._add_part(an, ctx, "product", part_key, None, values)
-        analysis._check(
+        part = analysis.add_part(an, ctx, "product", part_key, None, values)
+        analysis.check_part(
             ctx, analysis.PARTS["product"], part, analysis.PARTS["product"].attrs
         )
         ctx.add("IMP-153", "product")
@@ -386,19 +388,26 @@ def _leads(an, source: int | None, dest: int | None) -> bool:
 
 
 async def run(session: AsyncSession, an, rows: list) -> None:
+    """P1-7: строки без группы (исключённые, без вуза, вуз не найден/
+    неоднозначен) получают собственный статус, а не остаются на дефолтном
+    SAME из RowCtx - его для реестра иначе ставит только _finalize_status"""
     if not rows:
         return
     groups: dict[str, list] = {}
     for ctx in rows:
         if ctx.row.excluded:
+            ctx.status = RowStatus.EXCLUDED
             continue
         text = ctx.values.get("university")
         if not text:
+            ctx.add("IMP-110", "university")
+            ctx.status = analysis.status_for(ctx)
             continue
         try:
-            ref, label = analysis._university_ref(an, text)
+            ref, label = analysis.university_ref(an, text)
         except normalize.NotValid as err:
             ctx.add(err.code, "university")
+            ctx.status = analysis.status_for(ctx)
             continue
         ctx.labels["university"] = label
         key = f"u:{ref['id']}" if "id" in ref else f"r:{ref['new_of_row']}"
@@ -414,7 +423,7 @@ async def run(session: AsyncSession, an, rows: list) -> None:
 async def _build_group(session: AsyncSession, an, key: str, group: list) -> GroupPlan:
     plan = GroupPlan(key=key, rows=list(group))
     first = group[0]
-    ref, _ = analysis._university_ref(an, first.values.get("university"))
+    ref, _ = analysis.university_ref(an, first.values.get("university"))
     plan.university_ref = ref
     plan.university_id = ref.get("id")
 
