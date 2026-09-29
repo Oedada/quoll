@@ -731,7 +731,13 @@ async def _compare_with_db(session: AsyncSession, an, plan: GroupPlan) -> None:
         return
     interaction = state.interaction
     same_owner = interaction.owner_id == plan.manager_id
-    same_stage = interaction.state_id == plan.stage_id
+    # P1-3: заявка, закрытая предыдущим В8, стоит на терминальном шаге, а
+    # _step_table для того же файла снова считает plan.stage_id = SEAL -
+    # сравнивать текущий шаг бессмысленно, сравниваем намерение закрытия
+    if interaction.closed_at is not None:
+        same_stage = plan.close_by_all_branches
+    else:
+        same_stage = interaction.state_id == plan.stage_id
     existing_pairs = {(br.program_id, br.product_id) for br in state.branches}
     new_pairs = {
         (
