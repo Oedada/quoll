@@ -148,9 +148,9 @@ async def delete_attachment(
     background: BackgroundTasks,
     id: int = Path(..., ge=1, description="Attachment ID"),
 ):
-    # иначе каскад удалил бы документ заявки мимо журнала
-    if await _documents().is_interaction_document(session, id):
-        raise DomainRuleException(409, "Interaction document is deleted via /documents")
+    # иначе каскад удалил бы документ заявки или файл комментария мимо журнала
+    if await _documents().is_interaction_file(session, id):
+        raise DomainRuleException(409, "Interaction file is not deleted directly")
     attachment = await service.repo.get(id)
     _journal(session, admin.id, AuditEventType.ATTACHMENT_DELETED, attachment)
     storage_key = await service.delete_attachment(id)

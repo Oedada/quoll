@@ -22,6 +22,7 @@ from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import User, UserRole
 from quoll.catalog.models import DocumentKind
+from quoll.comments.models import Comment, CommentAttachment
 from quoll.core.exceptions import (
     DomainRuleException,
     IdNotExistsException,
@@ -47,6 +48,8 @@ from quoll.workflows.models import Stage, TransitionAttachment
 
 # вид ставится сам на своих кнопках и не живёт на шагах веток (Д5)
 CONTRACT_KINDS = frozenset({"CONTRACT", "SUPPLEMENTARY_AGREEMENT"})
+# доп. прохождение не меняет реквизиты договора напрямую (Д48)
+CONTRACT_DOCUMENT_KINDS = frozenset({"CONTRACT", "CONTRACT_DRAFT"})
 
 
 @dataclass(frozen=True)
@@ -66,7 +69,8 @@ class DocumentFields:
 @dataclass(frozen=True)
 class DocumentView:
     document: InteractionDocument
-    attachment: Attachment
+    # None - договор без скана (В1)
+    attachment: Attachment | None
     is_current: bool
     # действующая преемница: где обновлён файл (Д7)
     replaced_by: InteractionDocument | None = None
@@ -84,6 +88,7 @@ async def upload(
     fields: DocumentFields,
     branch_id: int | None = None,
     supplementary_agreement_id: int | None = None,
+    side_pointer_id: int | None = None,
 ) -> DocumentView:
     """право - дважды: без блокировок до загрузки, чтобы не держать строки на
     время сети, и под блокировкой перед вставкой"""
@@ -98,11 +103,21 @@ async def upload(
         scope = await lock_interaction_scope(session, interaction_id, actor.id)
         if not can_change(scope.actor, scope.ownership):
             raise OperationForbiddenException("attach documents to this interaction")
+        pointer = None
+        if side_pointer_id is not None:
+            pointer = await contract_service.active_pass(
+                session, interaction_id, side_pointer_id
+            )
+            contract_service.check_side_target(
+                await session.get(Stage, stage_id), branch_id
+            )
         previous = None
         if replaces_document_id is not None:
             previous = await _check_replaceable(
                 session, interaction_id, replaces_document_id
             )
+            if previous.side_pointer_id != side_pointer_id:
+                raise DomainRuleException(400, "New version stays in its pass")
             # версия живёт на стадии прежней или на её подшаге (Д6) - иначе
             # замена из текущего шага обошла бы аппрув правки пройденного
             stage = await session.get(Stage, stage_id)
@@ -124,6 +139,11 @@ async def upload(
             branch_id,
             for_agreement=supplementary_agreement_id is not None,
         )
+        # вид мог прийти и от заменяемой версии
+        if pointer is not None and values.kind in CONTRACT_DOCUMENT_KINDS:
+            raise DomainRuleException(
+                400, "Contract changes only through agreement actions"
+            )
         current = scope.interaction.state_id
         if branch_id is not None:
             branch = await session.get(Branch, branch_id)
@@ -135,13 +155,18 @@ async def upload(
                 )
             current = branch.state_id
         # правка файла пройденного шага - с аппрувом руководителя (AS IS);
-        # скан допсоглашения одобряют вместе с ним
+        # скан допсоглашения одобряют вместе с ним. У доп. прохождения
+        # пройден любой его шаг, кроме текущего
+        if pointer is not None:
+            passed = stage_id != pointer.stage_id
+        else:
+            passed = contract_service.step_passed(
+                scope.interaction, stage_id, current, branch_id
+            )
         pending = (
             supplementary_agreement_id is None
             and actor.role == UserRole.MANAGER
-            and contract_service.step_passed(
-                scope.interaction, stage_id, current, branch_id
-            )
+            and passed
         )
         if not pending and values.kind == "CONTRACT":
             values = await _keep_extended_term(session, interaction_id, values)
@@ -160,6 +185,7 @@ async def upload(
             contract_signed_at=values.contract_signed_at,
             contract_valid_until=values.contract_valid_until,
             supplementary_agreement_id=supplementary_agreement_id,
+            side_pointer_id=side_pointer_id,
             meta=values.meta,
         )
         session.add(document)
@@ -226,9 +252,6 @@ async def _check_agreement_scan(
         raise DomainRuleException(
             400, "Supplementary agreement scan is replaced through the agreement"
         )
-    stage = await session.get(Stage, stage_id)
-    if stage.is_parallel and interaction.no_return_at is None:
-        raise DomainRuleException(409, "Step 4.1 is not active before signing")
 
 
 async def _keep_extended_term(session: AsyncSession, interaction_id: int, doc):
@@ -369,7 +392,7 @@ async def documents(session: AsyncSession, interaction_id: int) -> list[Document
     successor = aliased(InteractionDocument)
     rows = await session.execute(
         select(InteractionDocument, Attachment, successor)
-        .join(Attachment, Attachment.id == InteractionDocument.attachment_id)
+        .outerjoin(Attachment, Attachment.id == InteractionDocument.attachment_id)
         .outerjoin(
             successor,
             (successor.replaces_document_id == InteractionDocument.id)
@@ -391,10 +414,11 @@ async def documents(session: AsyncSession, interaction_id: int) -> list[Document
 
 async def delete_document(
     session: AsyncSession, *, document_id: int, actor_id: str
-) -> str:
+) -> str | None:
     """удаляется вложение, документ уходит каскадом. Возвращает ключ файла:
     из хранилища его убирают после коммита - строка без файла хуже, чем файл
-    без строки"""
+    без строки. без вложения (договор без скана, §19.8) - удаляет саму
+    строку и возвращает None, в S3 обращаться не за чем"""
     found = await session.get(InteractionDocument, document_id)
     if found is None:
         raise IdNotExistsException(InteractionDocument.__name__)
@@ -406,17 +430,28 @@ async def delete_document(
     if document is None:
         # удалили параллельно, пока ждали блокировку
         raise IdNotExistsException(InteractionDocument.__name__)
-    attachment = await session.get(Attachment, document.attachment_id)
+    attachment = (
+        await session.get(Attachment, document.attachment_id)
+        if document.attachment_id is not None
+        else None
+    )
     successor = await session.scalar(
         select(InteractionDocument).where(
             InteractionDocument.replaces_document_id == document_id
         )
     )
     predecessor_id = document.replaces_document_id
+    interaction_id = document.interaction_id
+    title = document.title
 
     # сначала удалить, потом перевесить: иначе преемник и удаляемый на миг
     # заменяли бы одного предшественника, а индекс это запрещает
-    await session.execute(delete(Attachment).where(Attachment.id == attachment.id))
+    if attachment is not None:
+        await session.execute(delete(Attachment).where(Attachment.id == attachment.id))
+    else:
+        await session.execute(
+            delete(InteractionDocument).where(InteractionDocument.id == document_id)
+        )
     session.expunge(document)
     if successor is not None:
         await session.refresh(successor)
@@ -430,12 +465,12 @@ async def delete_document(
         target_type=TargetType.DOCUMENT,
         target_id=document_id,
         old_value={
-            "interaction_id": document.interaction_id,
-            "filename": attachment.filename,
+            "interaction_id": interaction_id,
+            "filename": attachment.filename if attachment else title,
             "replaces_document_id": predecessor_id,
         },
     )
-    return attachment.storage_key
+    return attachment.storage_key if attachment else None
 
 
 async def decide(
@@ -458,6 +493,10 @@ async def decide(
     )
     if document.status != DocumentStatus.PENDING:
         raise DomainRuleException(409, f"Document is already {document.status}")
+    if document.side_pointer_id is not None:
+        await contract_service.active_pass(
+            session, document.interaction_id, document.side_pointer_id
+        )
     if approve:
         if document.kind == "CONTRACT":
             await _keep_extended_term(session, document.interaction_id, document)
@@ -491,7 +530,11 @@ async def decide(
         payload={"document_id": document.id},
         editor_id=document.uploaded_by,
     )
-    attachment = await session.get(Attachment, document.attachment_id)
+    attachment = (
+        await session.get(Attachment, document.attachment_id)
+        if document.attachment_id is not None
+        else None
+    )
     await session.refresh(document)
     return DocumentView(document, attachment, is_current=approve)
 
@@ -499,9 +542,10 @@ async def decide(
 async def check_attachment_readable(
     session: AsyncSession, user: User, attachment_id: int
 ) -> None:
-    """файл заявки - по её политике чтения, шаблон ребра - любому вошедшему,
-    ни к чему не привязанный - только админу: иначе он стал бы «шаблоном» для
-    всех, как только от него отвязали документ"""
+    """файл заявки - по её политике чтения, файл удалённого комментария -
+    только админу, шаблон ребра - любому вошедшему, ни к чему не привязанный -
+    только админу: иначе он стал бы «шаблоном» для всех, как только от него
+    отвязали документ"""
     if await session.get(Attachment, attachment_id) is None:
         raise IdNotExistsException(Attachment.__name__)
     document = await session.scalar(
@@ -515,6 +559,19 @@ async def check_attachment_readable(
         if not can_read(user, await repo.ownership(interaction)):
             raise OperationForbiddenException("read this file")
         return
+    comment = await session.scalar(
+        select(Comment)
+        .join(CommentAttachment, CommentAttachment.comment_id == Comment.id)
+        .where(CommentAttachment.attachment_id == attachment_id)
+    )
+    if comment is not None:
+        repo = InteractionRepository(session)
+        interaction = await repo.get(comment.interaction_id)
+        if not can_read(user, await repo.ownership(interaction)):
+            raise OperationForbiddenException("read this file")
+        if comment.deleted_at is not None and user.role != UserRole.ADMIN:
+            raise OperationForbiddenException("read this file")
+        return
     template = await session.scalar(
         select(exists().where(TransitionAttachment.attachment_id == attachment_id))
     )
@@ -522,9 +579,16 @@ async def check_attachment_readable(
         raise OperationForbiddenException("read this file")
 
 
-async def is_interaction_document(session: AsyncSession, attachment_id: int) -> bool:
+async def is_interaction_file(session: AsyncSession, attachment_id: int) -> bool:
+    """документ заявки или файл комментария - не тронуть общим удалением
+    вложений и не сделать шаблоном ребра"""
+    is_document = await session.scalar(
+        select(exists().where(InteractionDocument.attachment_id == attachment_id))
+    )
+    if is_document:
+        return True
     return bool(
         await session.scalar(
-            select(exists().where(InteractionDocument.attachment_id == attachment_id))
+            select(exists().where(CommentAttachment.attachment_id == attachment_id))
         )
     )

@@ -45,6 +45,35 @@ class Settings(BaseSettings):
     demo_password: str = "quoll-demo"
     org_queue_interval_seconds: int = 30
     reconciler_interval_seconds: int = 60
+    # очередь выгрузок отчётов и чистка их файлов
+    report_worker_interval_seconds: int = 2
+    report_cleanup_interval_seconds: int = 3600
+    # процессов рендера отчётов в одном процессе приложения - под число CPU
+    report_render_processes: int = 4
+    # пул соединений БД: base + overflow = max на один воркер Uvicorn
+    # формула: pool_size × uvicorn_workers + воркеры + listener < pg max_connections
+    db_pool_size: int = 40
+    db_max_overflow: int = 20
+    # разрешённые CORS-источники, через запятую в .env
+    cors_origins: list[str] = ["http://localhost:8000"]
+    # импорт: пределы только для него, у вложений свои
+    import_max_size_mb: int = 10
+    import_max_rows: int = 10000
+    import_max_registry_rows: int = 2000
+    import_draft_ttl_hours: int = 24
+    import_applied_ttl_days: int = 7
+    import_worker_interval_seconds: int = 2
+    import_cleanup_interval_seconds: int = 3600
+
+    # интеграции-заглушки (integrations-plan.md)
+    # ключ HMAC для отпечатка email в В1
+    integration_email_key: str = "integration-dev-key"
+    integration_enrollments_enabled: bool = True
+    # имитация недоступности заглушки (INT-503)
+    integration_stub_available: bool = True
+    # ночной час обмена по BUSINESS_TZ
+    integration_hour: int = 3
+    integration_interval_seconds: int = 3600
 
     model_config = SettingsConfigDict(env_file=".env", env_file_encoding="utf-8")
 

@@ -7,7 +7,7 @@
 
 from typing import Any
 
-from sqlalchemy import exists, func, or_, select
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,14 +15,10 @@ from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import UserRole
 from quoll.core.exceptions import DomainRuleException, OperationForbiddenException
-from quoll.interactions import contract_service, step_contacts
+from quoll.interactions import contract_service, step_contacts, step_place
 from quoll.interactions.access_policy import can_change, can_close
 from quoll.interactions.bindings import extension_locks, read_bound, write_bound
-from quoll.interactions.models import (
-    Branch,
-    InteractionStageHistory,
-    InteractionStageValues,
-)
+from quoll.interactions.models import InteractionStageValues
 from quoll.interactions.notify import notify
 from quoll.interactions.scope import lock_interaction_scope
 from quoll.interactions.step_policy import value_problems
@@ -39,42 +35,22 @@ async def set_values(
     values: dict[str, Any],
     actor_id: str,
     branch_id: int | None = None,
+    side_pointer_id: int | None = None,
 ) -> InteractionStageValues:
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     interaction = scope.interaction
     if not can_change(scope.actor, scope.ownership):
         raise OperationForbiddenException("fill steps of this interaction")
-    stage = await session.get(Stage, stage_id)
-    if stage is None or stage.workflow_id != interaction.workflow_id:
-        raise DomainRuleException(400, "Stage belongs to another workflow")
-    # у шага ветки - значения своей ветки, у шага договора - общие
-    current = interaction.state_id
-    if branch_id is not None:
-        branch = await session.get(Branch, branch_id)
-        if branch is None or branch.interaction_id != interaction_id:
-            raise DomainRuleException(404, "Branch is not in this interaction")
-        if branch.state_id is None:
-            raise DomainRuleException(
-                409, "Branch is a draft until the contract is signed"
-            )
-        current = branch.state_id
-    if stage.is_branch_stage != (branch_id is not None):
-        raise DomainRuleException(400, "Branch stages are filled per branch")
-    visited = await session.scalar(
-        select(
-            exists().where(
-                InteractionStageHistory.interaction_id == interaction_id,
-                InteractionStageHistory.branch_id.is_not_distinct_from(branch_id),
-                # пройдена - и та, куда пришли, и та, с которой ушли
-                or_(
-                    InteractionStageHistory.to_stage_id == stage_id,
-                    InteractionStageHistory.from_stage_id == stage_id,
-                ),
-            )
-        )
+    # у шага ветки - значения своей ветки, у шага договора - общие, у доп.
+    # прохождения - свои
+    place = await step_place.resolve(
+        session,
+        interaction,
+        stage_id=stage_id,
+        branch_id=branch_id,
+        side_pointer_id=side_pointer_id,
     )
-    if stage_id != current and not visited:
-        raise DomainRuleException(409, "Stage is not reached yet")
+    stage, current = place.stage, place.current
     if problems := value_problems(stage.fields, values):
         raise DomainRuleException(422, "; ".join(problems))
     # контакты - сразу в справочник, в шаге остаётся ссылка
@@ -82,10 +58,20 @@ async def set_values(
         session, stage, interaction.university_id, values, actor_id
     )
 
-    old = await stage_values(session, interaction_id, stage_id, branch_id, expand=False)
+    old = await stage_values(
+        session,
+        interaction_id,
+        stage_id,
+        branch_id,
+        side_pointer_id=side_pointer_id,
+        expand=False,
+    )
     gated = {f["key"] for f in stage.fields if f.get("approval_after_pass")}
     changed = {k for k in old.keys() | values.keys() if old.get(k) != values.get(k)}
-    passed = contract_service.step_passed(interaction, stage_id, current, branch_id)
+    if side_pointer_id is not None:
+        passed = stage_id != current
+    else:
+        passed = contract_service.step_passed(interaction, stage_id, current, branch_id)
     if scope.actor.role == UserRole.MANAGER and passed and changed & gated:
         # правку, которую всё равно не одобрить (продлено допсоглашением), не заводим
         await extension_locks(
@@ -96,7 +82,9 @@ async def set_values(
             {k: values.get(k) for k in changed & gated},
         )
         # правку пройденного шага с такими полями одобряет руководитель
-        row = await _upsert(session, interaction_id, stage_id, branch_id, old, actor_id)
+        row = await _upsert(
+            session, interaction_id, stage_id, branch_id, side_pointer_id, old, actor_id
+        )
         # ждут только поля с аппрувом; остальное применяется сразу
         free = {k: v for k, v in values.items() if k not in gated}
         kept = {k: v for k, v in old.items() if k in gated}
@@ -119,7 +107,9 @@ async def set_values(
         return row
 
     await write_bound(session, stage, interaction_id, branch_id, values)
-    row = await _upsert(session, interaction_id, stage_id, branch_id, values, actor_id)
+    row = await _upsert(
+        session, interaction_id, stage_id, branch_id, side_pointer_id, values, actor_id
+    )
     _journal(session, actor_id, interaction_id, stage_id, old, values)
     return row
 
@@ -132,17 +122,23 @@ async def decide(
     actor_id: str,
     approve: bool,
     branch_id: int | None = None,
+    side_pointer_id: int | None = None,
 ) -> InteractionStageValues:
     """руководитель владельца решает по ждущей правке пройденного шага"""
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_close(scope.actor, scope.ownership):
         raise OperationForbiddenException("decide on step values")
+    if side_pointer_id is not None:
+        await contract_service.active_pass(session, interaction_id, side_pointer_id)
     row = await session.scalar(
         select(InteractionStageValues)
         .where(
             InteractionStageValues.interaction_id == interaction_id,
             InteractionStageValues.stage_id == stage_id,
             InteractionStageValues.branch_id.is_not_distinct_from(branch_id),
+            InteractionStageValues.side_pointer_id.is_not_distinct_from(
+                side_pointer_id
+            ),
         )
         .execution_options(populate_existing=True)
     )
@@ -181,6 +177,7 @@ async def _upsert(
     interaction_id: int,
     stage_id: int,
     branch_id: int | None,
+    side_pointer_id: int | None,
     values: dict[str, Any],
     actor_id: str,
 ) -> InteractionStageValues:
@@ -191,11 +188,17 @@ async def _upsert(
             interaction_id=interaction_id,
             stage_id=stage_id,
             branch_id=branch_id,
+            side_pointer_id=side_pointer_id,
             values=values,
             updated_by=actor_id,
         )
         .on_conflict_do_update(
-            index_elements=["interaction_id", "stage_id", "branch_id"],
+            index_elements=[
+                "interaction_id",
+                "stage_id",
+                "branch_id",
+                "side_pointer_id",
+            ],
             set_={"values": values, "updated_by": actor_id, "updated_at": func.now()},
         )
         .returning(table.c.id)
@@ -235,6 +238,7 @@ async def view(session: AsyncSession, row: InteractionStageValues) -> dict:
     return {
         "stage_id": row.stage_id,
         "branch_id": row.branch_id,
+        "side_pointer_id": row.side_pointer_id,
         "values": values,
         "updated_by": row.updated_by,
         "updated_at": row.updated_at,

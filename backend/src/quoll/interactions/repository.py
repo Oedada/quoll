@@ -77,7 +77,9 @@ class InteractionRepository(BaseRepository[Interaction]):
         *,
         university_id: int | None,
         program_id: int | None,
-        status: str | None = None,
+        status: list[str] | None = None,
+        slot: str | None = None,
+        outcome: list[str] | None = None,
         limit: int,
         offset: int,
     ) -> list[Interaction]:
@@ -93,8 +95,12 @@ class InteractionRepository(BaseRepository[Interaction]):
                     Branch.program_id == program_id,
                 )
             )
-        if status is not None:
-            stmt = stmt.where(Interaction.status == status)
+        if status:
+            stmt = stmt.where(Interaction.status.in_(status))
+        if slot is not None:
+            stmt = stmt.where(Interaction.slot == slot)
+        if outcome:
+            stmt = stmt.where(Interaction.outcome.in_(outcome))
         # id вторым ключом - при равном времени порядок страниц не плывёт
         stmt = (
             stmt.order_by(Interaction.created_at.desc(), Interaction.id.desc())

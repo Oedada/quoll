@@ -12,7 +12,7 @@ from quoll.auth.dependencies import (
 from quoll.auth.models import User, UserRole
 from quoll.core import SystemDefaults
 from quoll.core.exceptions import DomainRuleException
-from quoll.workflows import change_requests, workflow_service
+from quoll.workflows import change_requests, step_handlers, workflow_service
 from quoll.workflows.dependencies import (
     SessionDep,
     StageRepoDep,
@@ -22,6 +22,7 @@ from quoll.workflows.dependencies import (
 from quoll.workflows.schemas import (
     StageArchiveRequest,
     StageCreate,
+    StageHandlerRead,
     StageRead,
     StageUpdate,
     StartStageRequest,
@@ -184,6 +185,18 @@ async def get_stages_by_workflow(
 
 
 @stages_router.get(
+    "/handlers",
+    response_model=list[StageHandlerRead],
+    summary="Special behaviours a side stage can have",
+)
+async def list_stage_handlers():
+    return [
+        StageHandlerRead(code=code, label=label)
+        for code, label in step_handlers.HANDLERS.items()
+    ]
+
+
+@stages_router.get(
     "/{id}",
     response_model=StageRead,
     summary="Get stage by ID",
@@ -315,14 +328,18 @@ async def link_attachment(
     attachment_id: int = Path(..., ge=1, description="Attachment ID"),
 ):
     await repo.get(id)
-    # файл проекта шаблоном не делается: шаблон читает любой вошедший
-    # здесь, а не наверху: модуль заявок сам импортирует модели воркфлоу
+    # файл заявки (документ или комментарий) и файл партии импорта шаблоном
+    # не делаются: шаблон читает любой вошедший; здесь, а не наверху -
+    # модуль заявок и импорт сами импортируют модели воркфлоу
+    from quoll.imports.service import is_import_file
     from quoll.interactions.document_service import (
-        is_interaction_document,
+        is_interaction_file,
     )
 
-    if await is_interaction_document(repo.session, attachment_id):
-        raise DomainRuleException(409, "Interaction document cannot become a template")
+    if await is_interaction_file(repo.session, attachment_id):
+        raise DomainRuleException(409, "Interaction file cannot become a template")
+    if await is_import_file(repo.session, attachment_id):
+        raise DomainRuleException(409, "Import file cannot become a template")
     await repo.link_attachment(id, attachment_id)
     workflow_service.journal_template(
         repo.session, admin.id, id, attachment_id, linked=True

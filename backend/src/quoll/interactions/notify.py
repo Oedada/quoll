@@ -11,6 +11,7 @@ from quoll.interactions.models import University
 from quoll.interactions.scope import InteractionScope
 from quoll.notifications.emit import Audience, emit
 from quoll.notifications.kinds import Kind, Subject
+from quoll.notifications.models import Notification
 
 
 def audience(scope: InteractionScope, **extra: Any) -> Audience:
@@ -74,9 +75,9 @@ async def notify(
     payload: dict[str, Any] | None = None,
     dedup_key: str | None = None,
     **who: Any,
-) -> None:
+) -> Notification | None:
     interaction = scope.interaction
-    await emit(
+    return await emit(
         session,
         kind,
         subject=subject,

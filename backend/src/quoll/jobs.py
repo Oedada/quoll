@@ -7,6 +7,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from quoll.attachments.s3 import S3StorageService
 from quoll.auth import role_transition
 from quoll.auth.offboarding import offboard_manager, offboard_superviser
 from quoll.auth.pending_actions import PendingActionType
@@ -15,13 +16,21 @@ from quoll.auth.session_store import SessionStore
 from quoll.auth.task_queue import run_queue
 from quoll.config import settings
 from quoll.core.worker import Periodic
+from quoll.imports import service as import_service
+from quoll.imports import worker as import_worker
+from quoll.integrations.flows import run_nightly
 from quoll.interactions.pause_worker import expire_branch_pauses, expire_pauses
 from quoll.interactions.watcher import watch
+from quoll.reports.worker import ReportRunner
 
 logger = logging.getLogger(__name__)
 
 
-def background_jobs(session_maker: async_sessionmaker) -> list[Periodic]:
+def background_jobs(
+    session_maker: async_sessionmaker,
+    reports: ReportRunner,
+    s3: S3StorageService | None = None,
+) -> list[Periodic]:
     sessions = SessionStore(session_maker)
 
     async def clean_sessions() -> None:
@@ -54,8 +63,32 @@ def background_jobs(session_maker: async_sessionmaker) -> list[Periodic]:
         if handled:
             logger.info(f"Watcher handled {handled} stalls and expiring terms")
 
+    async def report_tick() -> None:
+        claimed = await reports.tick()
+        if claimed:
+            logger.info(f"Started {claimed} report exports")
+
+    async def report_cleanup() -> None:
+        expired = await reports.cleanup()
+        if expired:
+            logger.info(f"Expired {expired} report files")
+
+    async def import_tick() -> None:
+        if await import_worker.tick(session_maker):
+            logger.info("Import batch processed")
+
+    async def import_cleanup() -> None:
+        removed = await import_service.cleanup(session_maker, s3)
+        if removed:
+            logger.info(f"Removed {removed} expired import batches")
+
     async def reconcile_tick() -> None:
         await reconcile(session_maker)
+
+    async def integrations_tick() -> None:
+        ran = await run_nightly(session_maker)
+        if ran:
+            logger.info(f"Nightly integration exchange ran {ran} step(s)")
 
     return [
         Periodic("reconciler", settings.reconciler_interval_seconds, reconcile_tick),
@@ -67,4 +100,15 @@ def background_jobs(session_maker: async_sessionmaker) -> list[Periodic]:
             "pause-expiry", settings.pause_expiry_interval_seconds, expire_pauses_tick
         ),
         Periodic("watcher", settings.watcher_interval_seconds, watch_tick),
+        Periodic("report-queue", settings.report_worker_interval_seconds, report_tick),
+        Periodic(
+            "report-cleanup", settings.report_cleanup_interval_seconds, report_cleanup
+        ),
+        Periodic(
+            "integrations", settings.integration_interval_seconds, integrations_tick
+        ),
+        Periodic("import-apply", settings.import_worker_interval_seconds, import_tick),
+        Periodic(
+            "import-cleanup", settings.import_cleanup_interval_seconds, import_cleanup
+        ),
     ]

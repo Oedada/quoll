@@ -12,8 +12,12 @@ import quoll.auth.audit_models
 import quoll.auth.models
 import quoll.auth.pending_actions
 import quoll.catalog.models
+import quoll.comments.models
+import quoll.integrations.models
 import quoll.interactions.models
 import quoll.notifications.models
+import quoll.reports.models
+import quoll.imports.models
 import quoll.workflows.models  # noqa: F401
 from alembic import context
 from quoll.config import settings

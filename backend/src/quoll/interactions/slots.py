@@ -11,6 +11,7 @@ from datetime import datetime
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from quoll.comments.models import Comment
 from quoll.core.exceptions import DomainRuleException, OperationForbiddenException
 from quoll.interactions.capacity_policy import (
     assert_can_keep_working,
@@ -28,6 +29,8 @@ from quoll.interactions.models import (
     InteractionStageValues,
     PauseState,
     RequestStatus,
+    SidePointer,
+    SidePointerStatus,
     SlotKind,
     SupplementaryAgreement,
 )
@@ -56,6 +59,11 @@ async def last_activity(session: AsyncSession, interaction: Interaction) -> date
         ).where(InteractionRequest.interaction_id == iid),
         select(func.max(InteractionAssignment.assigned_at)).where(
             InteractionAssignment.interaction_id == iid
+        ),
+        # комментарий пользователя - тоже работа по заявке; импорт (author_id
+        # NULL) в активность не считаем
+        select(func.max(Comment.created_at)).where(
+            Comment.interaction_id == iid, Comment.author_id.is_not(None)
         ),
     ]
     found = [await session.scalar(m) for m in moments]
@@ -116,6 +124,10 @@ async def _waiting(session: AsyncSession, interaction_id: int) -> bool:
         select(InteractionDocument.id).where(
             InteractionDocument.interaction_id == interaction_id,
             InteractionDocument.status == DocumentStatus.PENDING,
+        ),
+        select(SidePointer.id).where(
+            SidePointer.interaction_id == interaction_id,
+            SidePointer.status == SidePointerStatus.ACTIVE,
         ),
     ]
     for check in checks:

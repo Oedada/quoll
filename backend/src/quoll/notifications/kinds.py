@@ -36,6 +36,7 @@ class Subject(StrEnum):
     DOCUMENT = "DOCUMENT"
     WORKFLOW_CHANGE = "WORKFLOW_CHANGE"
     SYSTEM = "SYSTEM"
+    INTEGRATION_PROPOSAL = "INTEGRATION_PROPOSAL"
 
 
 @dataclass(frozen=True)
@@ -123,6 +124,20 @@ WORKFLOW_CHANGE_DECIDED = _kind(
     "{comment}",
 )
 MANUAL = _kind("MANUAL", Severity.INFO, [Role.USER], "{title}", "{body}")
+IMPORT_ASSIGNED = _kind(
+    "IMPORT_ASSIGNED",
+    Severity.INFO,
+    [Role.USER],
+    "Импортом назначены заявки",
+    "Вам назначено заявок: {count}",
+)
+IMPORT_ASSIGNED_TEAM = _kind(
+    "IMPORT_ASSIGNED_TEAM",
+    Severity.INFO,
+    [Role.USER],
+    "Импортом назначены заявки",
+    "{manager}: назначено заявок {count}",
+)
 STALL = _kind(
     "STALL",
     Severity.CRITICAL,
@@ -196,4 +211,49 @@ PAUSE_WAITING_CAPACITY = _kind(
     [Role.OWNER, Role.OWNER_SUPERVISOR],
     "Пауза закончилась, но нет места",
     "{interaction}: срок паузы вышел, у менеджера заняты все активные слоты",
+)
+# LMS прислала статистику по вузу без заявки - предлагаем завести (К §4)
+INTEGRATION_PROPOSAL_CREATE = _kind(
+    "INTEGRATION_PROPOSAL_CREATE",
+    Severity.INFO,
+    [Role.ALL_SUPERVISORS],
+    "LMS: новый вуз ждёт заявку",
+    "{university}, программа «{program}»: {reason}",
+)
+# LMS прислала статистику по программе, которой нет в открытой заявке
+INTEGRATION_PROPOSAL_ADD = _kind(
+    "INTEGRATION_PROPOSAL_ADD",
+    Severity.INFO,
+    [Role.USER],
+    "LMS: добавить программу в заявку",
+    "{university}, программа «{program}»: {reason}",
+)
+COMMENT_REPLY = _kind(
+    "COMMENT_REPLY",
+    Severity.INFO,
+    [Role.USER],
+    "Ответ на комментарий",
+    "{interaction}, шаг «{stage}»: {text}",
+)
+COMMENT_TO_OWNER = _kind(
+    "COMMENT_TO_OWNER",
+    Severity.INFO,
+    [Role.OWNER],
+    "Новый комментарий от руководителя",
+    "{interaction}, шаг «{stage}»: {text}",
+)
+COMMENT_TO_SUPERVISOR = _kind(
+    "COMMENT_TO_SUPERVISOR",
+    Severity.INFO,
+    [Role.OWNER_SUPERVISOR],
+    "Новый комментарий от менеджера",
+    "{interaction}, шаг «{stage}»: {text}",
+)
+# ADD_PROGRAM одобрен после подписания (Р5): ветку заводит КАМ через ДС 4.1
+INTEGRATION_PROPOSAL_SIGN_NEEDED = _kind(
+    "INTEGRATION_PROPOSAL_SIGN_NEEDED",
+    Severity.INFO,
+    [Role.USER],
+    "LMS: программу нужно оформить допсоглашением",
+    "{university}, программа «{program}»: одобрено, оформите ДС на шаге 4.1",
 )

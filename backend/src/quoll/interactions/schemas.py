@@ -1,11 +1,12 @@
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import ConfigDict, Field, ValidationError, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from quoll.attachments.schemas import AttachmentRead
 from quoll.catalog.schemas import UniversityRead
 from quoll.core.schemas import AppBaseModel
+from quoll.integrations.schemas import LmsStatsBrief
 from quoll.workflows.schemas import StageRead, WorkflowRead
 
 
@@ -154,6 +155,8 @@ class InteractionRead(AppBaseModel):
     close_reason_id: int | None
     # вычисляемое: черновик / ждёт принятия / в работе / на паузе / подписан / закрыта
     status: str
+    # исход закрытой: завершено / отказ / отменена; у незакрытой - null
+    outcome: str | None
     no_return_at: datetime | None
     # активный слот входит в предел КАМа, пассивный - нет (Д19)
     slot: str
@@ -183,6 +186,8 @@ class StageHistoryRead(AppBaseModel):
     comment: str | None
     # ход ветки продукта; null - ход самого взаимодействия
     branch_id: int | None
+    # прохождение: null - основной указатель, иначе доп.
+    side_pointer_id: int | None
     payload: dict[str, Any]
     created_at: datetime
 
@@ -214,6 +219,8 @@ class RequestCreate(AppBaseModel):
     close_reason_id: int | None = None
     # закрытие подписанной заявки закрывает и открытые ветки - с этой причиной
     branch_close_reason_id: int | None = None
+    # аппрув перехода доп. указателя
+    side_pointer_id: int | None = None
     reason: str = Field(min_length=1)
 
     @model_validator(mode="after")
@@ -241,6 +248,10 @@ class RequestCreate(AppBaseModel):
             raise ValueError(
                 "TRANSITION needs target_stage_id and no target_manager_id"
             )
+        if self.side_pointer_id is not None and (
+            self.kind != "TRANSITION" or self.branch_id is not None
+        ):
+            raise ValueError("Side pass asks only for a transition")
         return self
 
 
@@ -271,7 +282,7 @@ class RequestRead(AppBaseModel):
     branch_id: int | None
     close_reason_id: int | None
     branch_close_reason_id: int | None
-    supplementary_agreement_id: int | None
+    side_pointer_id: int | None
     reason: str
     decided_by: str | None
     decided_at: datetime | None
@@ -293,6 +304,7 @@ class DocumentRead(AppBaseModel):
     contract_signed_at: date | None
     contract_valid_until: date | None
     supplementary_agreement_id: int | None
+    side_pointer_id: int | None
     metadata: dict[str, Any]
     # прежние версии не пропадают, а перестают быть актуальными
     is_current: bool
@@ -302,62 +314,8 @@ class DocumentRead(AppBaseModel):
     # ACTIVE, PENDING - ждёт руководителя, REJECTED
     status: str
     created_at: datetime
-    attachment: AttachmentRead
-
-
-class InteractionImport(AppBaseModel):
-    university_name: str
-    vendor_name: str
-    it_program: str
-    it_product: str | None = None
-    contract_number: str
-    license_singed: bool
-    license_expired_at: int
-    manager_full_name: str
-    comment: str
-
-
-class InteractionImportError(AppBaseModel):
-    """одна ошибка валидации строки импорта: колонка + понятный текст"""
-
-    column: str
-    message: str
-
-
-class InteractionImportValidationError(AppBaseModel):
-    """человекочитаемый результат pydantic ValidationError"""
-
-    errors: list[InteractionImportError]
-
-    @classmethod
-    def from_validation_error(
-        cls, exc: ValidationError
-    ) -> "InteractionImportValidationError":
-        return cls(
-            errors=[
-                InteractionImportError(
-                    column=".".join(str(part) for part in err["loc"]),
-                    message=err["msg"],
-                )
-                for err in exc.errors()
-            ]
-        )
-
-
-class InteractionImportRow(AppBaseModel):
-    error: InteractionImportValidationError | None = None
-    interaction_import: InteractionImport | None
-
-
-class InteractionImportAction(InteractionImportRow):
-    action: str | None
-
-
-class InteractionImportResult(AppBaseModel):
-    """результат импорта: ошибки и удавшиеся операции, по номеру строки"""
-
-    errors: dict[int, InteractionImportValidationError]
-    imported: dict[int, InteractionImportAction]
+    # None - договор без скана (В1)
+    attachment: AttachmentRead | None
 
 
 class StageValuesWrite(AppBaseModel):
@@ -370,6 +328,7 @@ class StageValuesWrite(AppBaseModel):
 class StageValuesRead(AppBaseModel):
     stage_id: int
     branch_id: int | None
+    side_pointer_id: int | None
     values: dict[str, Any]
     updated_by: str | None
     updated_at: datetime
@@ -410,6 +369,8 @@ class BranchRead(AppBaseModel):
     teachers_trained: int | None
     added_by: str | None
     created_at: datetime
+    # статистика LMS пары вуз x программа, общая у веток программы; null - LMS не присылала
+    lms_stats: LmsStatsBrief | None = None
 
 
 # допсоглашение (шаг 4.1)
@@ -479,12 +440,6 @@ class AgreementUpdate(AppBaseModel):
     signed_at: date | None = None
 
 
-class AgreementComment(AppBaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    comment: str | None = None
-
-
 class AgreementRead(AppBaseModel):
     id: int
     interaction_id: int
@@ -496,7 +451,45 @@ class AgreementRead(AppBaseModel):
     decided_by: str | None
     decided_at: datetime | None
     decision_comment: str | None
-    stall_since: datetime | None
+    side_pointer_id: int | None
     scan_document_id: int | None
     pending_request_id: int | None
     actions: list[AgreementActionRead]
+
+
+# доп. указатель (Д30-Д50)
+
+
+class SidePointerStart(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    stage_id: int
+    comment: str | None = None
+
+
+class SidePointerTransition(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    to_stage_id: int
+    expected_state_id: int | None
+    comment: str | None = None
+
+
+class SidePointerCancel(AppBaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    comment: str | None = None
+
+
+class SidePointerRead(AppBaseModel):
+    id: int
+    interaction_id: int
+    branch_id: int | None
+    entry_stage_id: int
+    stage_id: int
+    status: str
+    started_by: str | None
+    started_at: datetime
+    finished_by: str | None
+    finished_at: datetime | None
+    finish_comment: str | None

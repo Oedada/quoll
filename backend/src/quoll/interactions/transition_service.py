@@ -17,7 +17,7 @@ from quoll.core.exceptions import (
     StaleStateException,
     WorkflowNotPublishedException,
 )
-from quoll.interactions import contract_service, sa_lifecycle, step_contacts
+from quoll.interactions import contract_service, sa_lifecycle, step_contacts, step_hooks
 from quoll.interactions.access_policy import can_change, can_close
 from quoll.interactions.bindings import read_bound
 from quoll.interactions.capacity_policy import (
@@ -55,6 +55,9 @@ async def transition(
     comment: str | None,
     accepting: bool = False,
 ) -> Interaction:
+    pre = await step_hooks.pre_share(session, interaction_id, None, to_stage_id)
+    for stage_id in sorted(pre):
+        await share_stage(session, stage_id)
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     interaction = scope.interaction
     if interaction.state_id != expected_state_id:
@@ -76,6 +79,7 @@ async def transition(
         comment=comment,
         approved=False,
         new_work=accepting,
+        shared=pre,
     )
 
 
@@ -87,9 +91,14 @@ async def move_locked(
     comment: str | None,
     approved: bool,
     new_work: bool = False,
+    shared: set[int] | frozenset[int] = frozenset(),
 ) -> Interaction:
     """переход по ребру под уже захваченной областью - его зовёт и одобрение
-    просьбы об аппруве. approved - ребро с аппрувом разрешено"""
+    просьбы об аппруве. approved - ребро с аппрувом разрешено. shared - стадии,
+    взятые FOR SHARE до области (выход с шага ДС)"""
+    # ленивый: side_pointer_service сам импортирует этот модуль
+    from quoll.interactions import side_pointer_service
+
     interaction = scope.interaction
     actor_id = scope.actor.id
     current = (
@@ -113,6 +122,14 @@ async def move_locked(
     if workflow is None or not workflow.is_published:
         raise WorkflowNotPublishedException(workflow_id)
 
+    # вход в сегмент доп. шагов извне - основной сам их уже не проходит (Д46)
+    if (
+        target.is_side
+        and not (current is not None and current.is_side)
+        and await side_pointer_service.passed_segment(session, interaction, target)
+    ):
+        raise DomainRuleException(409, "Steps are passed, use a side pointer")
+
     edge = await active_edge(session, workflow_id, current, target)
     if edge is None:
         raise DomainRuleException(409, "No active transition between these stages")
@@ -122,12 +139,28 @@ async def move_locked(
     if edge.is_backward and not comment:
         raise DomainRuleException(422, "Backward transition needs a comment")
     await check_step(session, interaction, current, edge, approved=approved)
-    await _check_contract_rules(session, interaction, edge, target, workflow_id)
+    await _check_contract_rules(
+        session, interaction, current, edge, target, workflow_id
+    )
+    if current is not None and current.handler:
+        if edge.is_backward:
+            await step_hooks.abandon(
+                session, scope, current, None, comment or "", actor_id
+            )
+        else:
+            await step_hooks.leave(
+                session, scope, current, edge, None, shared, actor_id, comment
+            )
     if edge.is_irreversible:
         await contract_service.open_branches(session, interaction, actor_id)
         if target.is_branch_stage:
-            # 4 -> 5: ветки встают на 5, а заявка остаётся на шаге 4 (М 3.11)
-            target = current
+            # 4 -> 5: заявка остаётся на шаге 4 (М 3.11).
+            # 4.1 -> 5: доп. шаг ушёл в невозврат, основной - к родителю (Д39)
+            target = (
+                await lock_target_stage(session, current.parent_stage_id)
+                if current is not None and current.is_side
+                else current
+            )
 
     if scope.owner is not None:
         # закрытие сбрасывает паузу, поэтому вклад цели считаем без неё
@@ -143,6 +176,7 @@ async def move_locked(
 
     interaction.workflow_id = workflow_id
     if target.is_terminal:
+        await side_pointer_service.cancel_active(session, scope, "interaction closed")
         await sa_lifecycle.cancel_open(
             session, interaction, actor_id, "interaction closed"
         )
@@ -156,6 +190,8 @@ async def move_locked(
         actor_id=actor_id,
         comment=comment,
     )
+    if not target.is_terminal:
+        await step_hooks.enter(session, scope, target, None, actor_id=actor_id)
     if target.is_terminal:
         await cancel_pending_requests(
             session, interaction.id, actor_id, "interaction closed"
@@ -190,6 +226,7 @@ async def move_locked(
 async def _check_contract_rules(
     session: AsyncSession,
     interaction: Interaction,
+    current: Stage | None,
     edge: WorkflowTransition,
     target: Stage,
     workflow_id: int,
@@ -205,7 +242,13 @@ async def _check_contract_rules(
     signed_not_sealed = (
         interaction.signed_at is not None and interaction.no_return_at is None
     )
-    if signed_not_sealed and edge.is_backward:
+    # уйти с доп. шага назад к родителю - не отмена подписания (Д44)
+    leaves_side_to_parent = (
+        current is not None
+        and current.is_side
+        and edge.to_stage_id == current.parent_stage_id
+    )
+    if signed_not_sealed and edge.is_backward and not leaves_side_to_parent:
         raise DomainRuleException(409, "Contract is marked signed, unmark it first")
     if target.is_terminal and not target.is_branch_stage:
         # «Завершено» - только после подписания и когда закрыты все ветки
@@ -225,14 +268,25 @@ async def check_step(
     *,
     approved: bool,
     branch_id: int | None = None,
+    side_pointer_id: int | None = None,
 ) -> None:
     """правила шага по фактам; нарушено - 409 со всеми причинами сразу.
     У ветки продукта поля и файлы - свои"""
     values, kinds = {}, set()
     if current is not None:
-        values = await stage_values(session, interaction.id, current.id, branch_id)
+        values = await stage_values(
+            session,
+            interaction.id,
+            current.id,
+            branch_id,
+            side_pointer_id=side_pointer_id,
+        )
         kinds = await current_document_kinds(
-            session, interaction.id, current.id, branch_id
+            session,
+            interaction.id,
+            current.id,
+            branch_id,
+            side_pointer_id=side_pointer_id,
         )
     problems = transition_problems(
         requires_approval=edge.requires_approval,
@@ -253,6 +307,7 @@ async def stage_values(
     stage_id: int,
     branch_id: int | None = None,
     *,
+    side_pointer_id: int | None = None,
     expand: bool = True,
 ) -> dict[str, Any]:
     """значения шага для правил: привязанные - из колонок, контакты - раскрыты
@@ -262,6 +317,9 @@ async def stage_values(
             InteractionStageValues.interaction_id == interaction_id,
             InteractionStageValues.stage_id == stage_id,
             InteractionStageValues.branch_id.is_not_distinct_from(branch_id),
+            InteractionStageValues.side_pointer_id.is_not_distinct_from(
+                side_pointer_id
+            ),
         )
     )
     # привязанные поля - из колонок, см. bindings.py
@@ -280,6 +338,8 @@ async def current_document_kinds(
     interaction_id: int,
     stage_id: int,
     branch_id: int | None = None,
+    *,
+    side_pointer_id: int | None = None,
 ) -> set[str]:
     """виды актуальных документов стадии и её подшагов - заменённая версия
     не считается, а новая с подшага 3.1 засчитывается шагу 3 (Д4)"""
@@ -292,6 +352,7 @@ async def current_document_kinds(
                 InteractionDocument.stage_id.in_(sub_steps),
             ),
             InteractionDocument.branch_id.is_not_distinct_from(branch_id),
+            InteractionDocument.side_pointer_id.is_not_distinct_from(side_pointer_id),
             InteractionDocument.status == DocumentStatus.ACTIVE,
             ~replaced_expression(),
         )
@@ -376,19 +437,33 @@ async def rollback(
 async def reached_since_no_return(
     session: AsyncSession, interaction_id: int, stage_id: int
 ) -> bool:
+    """точка невозврата: переход по необратимому ребру или импортированное
+    подписание (payload.sealed - В27); берётся последнее из двух"""
     history = InteractionStageHistory
-    sealed_at = await session.scalar(
+    by_edge = await session.scalar(
         select(func.max(history.id))
         .join(WorkflowTransition, WorkflowTransition.id == history.transition_id)
         .where(
             history.interaction_id == interaction_id,
             history.branch_id.is_(None),
+            history.side_pointer_id.is_(None),
             WorkflowTransition.is_irreversible.is_(True),
         )
     )
+    by_import = await session.scalar(
+        select(func.max(history.id)).where(
+            history.interaction_id == interaction_id,
+            history.branch_id.is_(None),
+            history.side_pointer_id.is_(None),
+            history.kind == StageChangeKind.IMPORT,
+            history.payload["sealed"].as_boolean().is_(True),
+        )
+    )
+    sealed_at = max((v for v in (by_edge, by_import) if v is not None), default=None)
     reached = select(history.id).where(
         history.interaction_id == interaction_id,
         history.branch_id.is_(None),
+        history.side_pointer_id.is_(None),
         history.to_stage_id == stage_id,
     )
     if sealed_at is not None:
@@ -407,6 +482,8 @@ async def return_locked(
 ) -> Interaction:
     """вернуть на стадию без ребра: отказ в аппруве, откат руководителем.
     Данные шагов не стираются - таймер застоя обнулит новая запись истории"""
+    from quoll.interactions import side_pointer_service
+
     interaction = scope.interaction
     current = await session.get(Stage, interaction.state_id)
     target = await lock_target_stage(session, to_stage_id)
@@ -416,6 +493,10 @@ async def return_locked(
         or target.is_branch_stage
     ):
         raise DomainRuleException(400, "Return goes to a working stage of the workflow")
+    if target.is_side and await side_pointer_service.passed_segment(
+        session, interaction, target
+    ):
+        raise DomainRuleException(409, "Steps are passed, use a side pointer")
     if scope.owner is not None:
         delta = int(
             counts_toward_capacity(target, interaction.is_paused, interaction.slot)
@@ -423,6 +504,10 @@ async def return_locked(
             counts_toward_capacity(current, interaction.is_paused, interaction.slot)
         )
         await assert_can_keep_working(session, scope.owner, delta)
+    if current is not None and current.handler:
+        await step_hooks.abandon(
+            session, scope, current, None, comment or "", scope.actor.id
+        )
     place(
         session,
         interaction,
@@ -433,6 +518,7 @@ async def return_locked(
         actor_id=scope.actor.id,
         comment=comment,
     )
+    await step_hooks.enter(session, scope, target, None, actor_id=scope.actor.id)
     record(
         session,
         actor_id=scope.actor.id,
@@ -455,11 +541,13 @@ def place(
     *,
     kind: StageChangeKind,
     transition_id: int | None,
-    actor_id: str,
+    actor_id: str | None,
     comment: str | None,
-) -> None:
+    payload: dict | None = None,
+) -> InteractionStageHistory:
     """поставить заявку на стадию и записать это в историю - общее у перехода,
-    закрытия и переоткрытия"""
+    закрытия и переоткрытия. Возвращает запись истории - импорт (§19.1)
+    выставляет ей created_at"""
     interaction.state_id = target.id
     # любой вход в шаг - переход, возврат, откат, отказ, переоткрытие - новый отсчёт
     interaction.stall_since = func.now()
@@ -472,17 +560,18 @@ def place(
         interaction.pause_state = PauseState.ACTIVE
         interaction.paused_until = None
         interaction.pause_comment = None
-    session.add(
-        InteractionStageHistory(
-            interaction_id=interaction.id,
-            from_stage_id=current.id if current else None,
-            to_stage_id=target.id,
-            transition_id=transition_id,
-            kind=kind,
-            actor_id=actor_id,
-            comment=comment,
-        )
+    history = InteractionStageHistory(
+        interaction_id=interaction.id,
+        from_stage_id=current.id if current else None,
+        to_stage_id=target.id,
+        transition_id=transition_id,
+        kind=kind,
+        actor_id=actor_id,
+        comment=comment,
+        payload=payload or {},
     )
+    session.add(history)
+    return history
 
 
 async def close(
@@ -520,11 +609,17 @@ async def close_locked(
     close_reason_id: int,
     comment: str | None,
     branch_close_reason_id: int | None = None,
+    by_import: bool = False,
 ) -> Interaction:
-    """закрытие под уже захваченной областью - его зовёт и одобрение просьбы"""
+    """закрытие под уже захваченной областью - его зовёт и одобрение просьбы.
+
+    by_import - реестр закрывает по В8 или заменяет заявку (В7): без can_close,
+    причины - системные"""
+    from quoll.interactions import side_pointer_service
+
     interaction = scope.interaction
-    actor_id = scope.actor.id
-    if not can_close(scope.actor, scope.ownership):
+    actor_id = scope.actor.id if scope.actor else None
+    if not by_import and not can_close(scope.actor, scope.ownership):
         raise OperationForbiddenException("close this interaction")
 
     current = (
@@ -533,7 +628,11 @@ async def close_locked(
     if current is None:
         raise DomainRuleException(409, "Draft is cancelled, not closed")
     reason = await check_reason(
-        session, close_reason_id, interaction_level(interaction), comment
+        session,
+        close_reason_id,
+        interaction_level(interaction),
+        comment,
+        allow_system=by_import,
     )
     target = await lock_target_stage(session, to_stage_id)
     if target.workflow_id != interaction.workflow_id:
@@ -549,7 +648,11 @@ async def close_locked(
                 422, "Open branches close too, give branch_close_reason_id"
             )
         branch_reason = await check_reason(
-            session, branch_close_reason_id, CloseLevel.BRANCH, comment
+            session,
+            branch_close_reason_id,
+            CloseLevel.BRANCH,
+            comment,
+            allow_system=by_import,
         )
     await contract_service.close_all_branches(
         session,
@@ -561,6 +664,7 @@ async def close_locked(
     interaction.close_reason_id = reason.id
     # до place: в SA_CANCELLED попадёт шаг, с которого закрыли; до отмены
     # просьб: ДС не успеет побывать в черновике
+    await side_pointer_service.cancel_active(session, scope, "interaction closed")
     await sa_lifecycle.cancel_open(session, interaction, actor_id, "interaction closed")
     place(
         session,
@@ -571,6 +675,8 @@ async def close_locked(
         transition_id=None,
         actor_id=actor_id,
         comment=comment,
+        # причина в событии - итог отчёта за прошлый период не зависит от поздних закрытий
+        payload={"close_reason_id": reason.id},
     )
     await cancel_pending_requests(
         session, interaction.id, actor_id, "interaction closed"
@@ -587,6 +693,120 @@ async def close_locked(
     await session.flush()
     await session.refresh(interaction)
     return interaction
+
+
+async def _initial_stage_id(session: AsyncSession, workflow_id: int) -> int | None:
+    return await session.scalar(
+        select(WorkflowTransition.to_stage_id).where(
+            WorkflowTransition.workflow_id == workflow_id,
+            WorkflowTransition.from_stage_id.is_(None),
+            WorkflowTransition.is_active.is_(True),
+        )
+    )
+
+
+async def _stages_between(
+    session: AsyncSession,
+    workflow_id: int,
+    start_id: int | None,
+    target_id: int,
+    *,
+    branch: bool = False,
+) -> list[Stage]:
+    """основные нетерминальные не-доп. стадии от начала до цели по прямым
+    рёбрам, без самой цели - для отметок «пройден» (В27, §19.1).
+
+    branch=True - те же отметки для ленты ветки (§19.4): стадии её own маршрута"""
+    if start_id is None or start_id == target_id:
+        return []
+    edges = list(
+        await session.scalars(
+            select(WorkflowTransition).where(
+                WorkflowTransition.workflow_id == workflow_id,
+                WorkflowTransition.is_active.is_(True),
+                WorkflowTransition.is_backward.is_(False),
+            )
+        )
+    )
+    facts = [EdgeFacts(e.from_stage_id, e.to_stage_id) for e in edges]
+    stages = list(
+        await session.scalars(
+            select(Stage).where(
+                Stage.workflow_id == workflow_id,
+                Stage.archived_at.is_(None),
+                Stage.is_terminal.is_(False),
+                Stage.is_side.is_(False),
+                Stage.is_branch_stage.is_(branch),
+            )
+        )
+    )
+    passed = [
+        s
+        for s in stages
+        if s.id != target_id
+        and leads_to(facts, start_id, s.id)
+        and leads_to(facts, s.id, target_id)
+    ]
+    return sorted(passed, key=lambda s: s.position)
+
+
+async def place_imported(
+    session: AsyncSession,
+    scope: InteractionScope,
+    stage_id: int,
+    since,
+    *,
+    batch_id: int,
+    sealed: bool = False,
+) -> InteractionStageHistory:
+    """импорт ставит заявку на рабочий шаг без ребра (§19.1, §19.3).
+
+    stage - основная нетерминальная не-доп. стадия маршрута заявки; отметки
+    «пройден» - от начальной стадии до неё (В27). Вызывающий держит область
+    и стадию уже под FOR SHARE (§17.4)
+    """
+    interaction = scope.interaction
+    target = await lock_target_stage(session, stage_id)
+    if (
+        target.workflow_id != interaction.workflow_id
+        or target.is_terminal
+        or target.is_side
+        or target.is_branch_stage
+    ):
+        raise DomainRuleException(
+            400, "Import places the interaction on a working stage"
+        )
+    start_id = await _initial_stage_id(session, interaction.workflow_id)
+    at = since or func.now()
+    for stage in await _stages_between(
+        session, interaction.workflow_id, start_id, target.id
+    ):
+        session.add(
+            InteractionStageHistory(
+                interaction_id=interaction.id,
+                from_stage_id=stage.id,
+                to_stage_id=stage.id,
+                kind=StageChangeKind.IMPORT,
+                actor_id=None,
+                payload={"batch_id": batch_id, "passed": True},
+                created_at=at,
+            )
+        )
+    history = place(
+        session,
+        interaction,
+        None,
+        target,
+        kind=StageChangeKind.IMPORT,
+        transition_id=None,
+        actor_id=None,
+        comment=None,
+        payload={"batch_id": batch_id, "sealed": sealed},
+    )
+    history.created_at = at
+    interaction.stall_since = at
+    await step_hooks.enter(session, scope, target, None, actor_id=None)
+    return history
 
 
 async def active_edge(

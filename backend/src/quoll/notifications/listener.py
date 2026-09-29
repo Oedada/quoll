@@ -109,9 +109,10 @@ class NotificationListener:
                 )
             )
             items = [(row.user_id, flat(row)) for row in rows]
-        sent = 0
-        for user_id, item in items:
-            sent += await self._connections.send_to_user(
+        if not items:
+            return 0
+        coros = [
+            self._connections.send_to_user(
                 user_id,
                 {
                     "type": "notification",
@@ -120,4 +121,7 @@ class NotificationListener:
                     ),
                 },
             )
-        return sent
+            for user_id, item in items
+        ]
+        results = await asyncio.gather(*coros, return_exceptions=True)
+        return sum(r for r in results if isinstance(r, int))

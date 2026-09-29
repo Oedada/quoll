@@ -14,9 +14,12 @@ from quoll.auth import auth_router, users_router
 from quoll.auth.bootstrap import ensure_admin_account, ensure_demo_accounts
 from quoll.auth.repositories import UserRepository
 from quoll.catalog import catalog_router
+from quoll.comments.router import comments_router
 from quoll.config import settings
 from quoll.core import AppException
 from quoll.core.worker import Workers
+from quoll.imports import imports_router
+from quoll.integrations import integration_proposals_router, integrations_router
 from quoll.interactions import (
     documents_router,
     interactions_router,
@@ -28,6 +31,8 @@ from quoll.notifications import ws_router as notifications_ws_router
 from quoll.notifications.connection_storage import ConnectionStorage
 from quoll.notifications.listener import NotificationListener
 from quoll.org import org_router
+from quoll.reports import reports_router
+from quoll.reports.worker import ReportRunner
 from quoll.seed.workflow import ensure_reference_workflow
 from quoll.workflows import (
     change_requests_router,
@@ -60,7 +65,9 @@ async def _seed_demo(session_maker) -> None:
 async def lifespan(app: FastAPI):
     logger.debug("Creating database engine")
     app.state.db_engine = create_async_engine(
-        f"postgresql+asyncpg://{settings.postgres_user}:{settings.postgres_password}@{settings.postgres_host}:{settings.postgres_port}/{settings.postgres_path}"
+        f"postgresql+asyncpg://{settings.postgres_user}:{settings.postgres_password}@{settings.postgres_host}:{settings.postgres_port}/{settings.postgres_path}",
+        pool_size=settings.db_pool_size,
+        max_overflow=settings.db_max_overflow,
     )
     logger.debug("Creating async session maker")
     app.state.db_session_maker = async_sessionmaker(
@@ -97,7 +104,12 @@ async def lifespan(app: FastAPI):
         app.state.connection_storage,
     )
     listener.start()
-    workers = Workers(background_jobs(app.state.db_session_maker))
+    reports = ReportRunner(
+        app.state.db_session_maker, app.state.s3, settings.report_render_processes
+    )
+    workers = Workers(
+        background_jobs(app.state.db_session_maker, reports, app.state.s3)
+    )
     if settings.workers_enabled:
         workers.start()
     logger.info("Application started")
@@ -107,6 +119,7 @@ async def lifespan(app: FastAPI):
     await listener.stop()
     if settings.workers_enabled:
         await workers.stop()
+    await reports.close()
     logger.debug("Disposing database engine")
     await app.state.db_engine.dispose()
     logger.info("Application stopped")
@@ -120,7 +133,7 @@ app = FastAPI(
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:8000"],
+    allow_origins=settings.cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -132,10 +145,12 @@ async def app_exception_handler(request: Request, exc: AppException):
     logger.warning(
         f"Domain exception on {request.method} {request.url.path}: {exc.message} (HTTP {exc.status_code})"
     )
-    return JSONResponse(
-        status_code=exc.status_code,
-        content={"detail": exc.message},
-    )
+    content = {"detail": exc.message}
+    if exc.code is not None:
+        content["code"] = exc.code
+    if exc.params is not None:
+        content["params"] = exc.params
+    return JSONResponse(status_code=exc.status_code, content=content)
 
 
 # ограничений в схеме много
@@ -183,12 +198,17 @@ app.include_router(stages_router)
 app.include_router(transitions_router)
 app.include_router(change_requests_router)
 app.include_router(attachments_router)
+app.include_router(comments_router)
 app.include_router(interactions_router)
 app.include_router(requests_router)
 app.include_router(documents_router)
 app.include_router(org_router)
 app.include_router(catalog_router)
 app.include_router(admin_router)
+app.include_router(integrations_router)
+app.include_router(integration_proposals_router)
+app.include_router(reports_router)
+app.include_router(imports_router)
 app.include_router(notifications_router)
 app.include_router(notifications_ws_router)
 

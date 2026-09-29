@@ -6,6 +6,9 @@ from fastapi import WebSocket
 
 logger = getLogger(__name__)
 
+# таймаут отправки в один сокет: мёртвое TCP не должно блокировать остальных
+_SEND_TIMEOUT = 5.0
+
 
 class ConnectionStorage:
     def __init__(self) -> None:
@@ -27,33 +30,71 @@ class ConnectionStorage:
                 if not self._connections[user_id]:
                     del self._connections[user_id]
 
+    async def _purge(self, dead: list[tuple[str, WebSocket]]) -> None:
+        """Удалить мёртвые сокеты из реестра."""
+        if not dead:
+            return
+        async with self._lock:
+            for user_id, ws in dead:
+                conns = self._connections.get(user_id)
+                if conns is None:
+                    continue
+                try:
+                    conns.remove(ws)
+                except ValueError:
+                    pass
+                if not conns:
+                    del self._connections[user_id]
+
     async def send_to_user(self, user_id: str, data: dict[str, Any]) -> int:
-        sent = 0
         async with self._lock:
             connections = self._connections.get(user_id, []).copy()
-        for ws in connections:
+        if not connections:
+            return 0
+
+        async def _send(ws: WebSocket) -> bool:
             try:
-                await ws.send_json(data)
-                sent += 1
-            except Exception as e:  # noqa: BLE001
-                logger.error(e)
-                logger.error(f"Data: {data}")
-        return sent
+                await asyncio.wait_for(ws.send_json(data), timeout=_SEND_TIMEOUT)
+                return True
+            except Exception:  # noqa: BLE001
+                return False
+
+        results = await asyncio.gather(*(_send(ws) for ws in connections))
+        dead = [
+            (user_id, ws)
+            for ws, ok in zip(connections, results, strict=True)
+            if not ok
+        ]
+        if dead:
+            logger.warning(
+                f"Removing {len(dead)} dead WebSocket(s) for user {user_id}"
+            )
+            await self._purge(dead)
+        return sum(results)
 
     async def broadcast(self, data: dict[str, Any]) -> int:
-        sent = 0
         async with self._lock:
-            all_connections = {
-                uid: conns.copy() for uid, conns in self._connections.items()
-            }
-        for connections in all_connections.values():
-            for ws in connections:
-                try:
-                    await ws.send_json(data)
-                    sent += 1
-                except Exception as e:  # noqa: BLE001
-                    logger.warning(e)
-        return sent
+            all_pairs: list[tuple[str, WebSocket]] = [
+                (uid, ws)
+                for uid, conns in self._connections.items()
+                for ws in conns
+            ]
+        if not all_pairs:
+            return 0
+
+        async def _send(uid: str, ws: WebSocket) -> tuple[str, WebSocket, bool]:
+            try:
+                await asyncio.wait_for(ws.send_json(data), timeout=_SEND_TIMEOUT)
+                return uid, ws, True
+            except Exception:  # noqa: BLE001
+                return uid, ws, False
+
+        results = await asyncio.gather(*(_send(uid, ws) for uid, ws in all_pairs))
+        dead = [(uid, ws) for uid, ws, ok in results if not ok]
+        if dead:
+            logger.warning(f"Broadcast: removing {len(dead)} dead WebSocket(s)")
+            await self._purge(dead)
+        return sum(1 for _, _, ok in results if ok)
 
     async def online_users(self) -> set[str]:
         async with self._lock:
