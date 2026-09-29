@@ -395,6 +395,15 @@ async def run(session: AsyncSession, an, rows: list) -> None:
     SAME из RowCtx - его для реестра иначе ставит только _finalize_status"""
     if not rows:
         return
+    # P1-9: без однозначного опубликованного маршрута строкам реестра
+    # некуда вставать - раньше группа тихо получала stage_id=None и
+    # «подписывалась» без единого шага
+    if an.batch.workflow_id is None:
+        for ctx in rows:
+            if not ctx.row.excluded:
+                ctx.add("IMP-017", None)
+                ctx.status = RowStatus.ERROR
+        return
     groups: dict[str, list] = {}
     for ctx in rows:
         if ctx.row.excluded:
