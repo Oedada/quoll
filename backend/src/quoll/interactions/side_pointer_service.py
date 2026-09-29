@@ -159,6 +159,15 @@ async def start(
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_change(scope.actor, scope.ownership):
         raise OperationForbiddenException("start a side pointer of this interaction")
+    entry = await _entry_stage(session, scope, stage_id)
+    return await start_locked(session, scope, entry, comment)
+
+
+async def _entry_stage(
+    session: AsyncSession, scope: InteractionScope, stage_id: int
+) -> Stage:
+    """стадия входа доп. прохождения: структурные проверки, общие у ручного
+    старта и импорта"""
     interaction = scope.interaction
     if interaction.state_id is None or interaction.closed_at is not None:
         raise DomainRuleException(409, "Only an interaction in work has side pointers")
@@ -225,7 +234,20 @@ async def start(
             409,
             "Main route has not passed these steps yet, move the interaction itself",
         )
+    return entry
 
+
+async def start_locked(
+    session: AsyncSession,
+    scope: InteractionScope,
+    entry: Stage,
+    comment: str | None,
+) -> SidePointer:
+    """создание указателя под уже захваченной областью и проверенным входом
+    (`_entry_stage`) - его зовёт и импорт (§19.5). Право не проверяется - оно
+    у обёртки (у импорта - право ручек /imports, В6)"""
+    interaction = scope.interaction
+    actor_id = scope.actor.id if scope.actor else None
     pointer = SidePointer(
         interaction_id=interaction.id,
         entry_stage_id=entry.id,

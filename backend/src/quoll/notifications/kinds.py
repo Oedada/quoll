@@ -124,6 +124,20 @@ WORKFLOW_CHANGE_DECIDED = _kind(
     "{comment}",
 )
 MANUAL = _kind("MANUAL", Severity.INFO, [Role.USER], "{title}", "{body}")
+IMPORT_ASSIGNED = _kind(
+    "IMPORT_ASSIGNED",
+    Severity.INFO,
+    [Role.USER],
+    "Импортом назначены заявки",
+    "Вам назначено заявок: {count}",
+)
+IMPORT_ASSIGNED_TEAM = _kind(
+    "IMPORT_ASSIGNED_TEAM",
+    Severity.INFO,
+    [Role.USER],
+    "Импортом назначены заявки",
+    "{manager}: назначено заявок {count}",
+)
 STALL = _kind(
     "STALL",
     Severity.CRITICAL,

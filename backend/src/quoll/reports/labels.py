@@ -89,6 +89,8 @@ def move(m) -> str:
         return (
             f"{day} возобновлена → {m.to_name}" if m.restart else f"{day} переоткрыта"
         )
+    if m.kind == "IMPORT":
+        return f"{day} импорт → {m.to_name}"
     if m.from_name is None:
         return f"{day} → {m.to_name}"
     return f"{day} {m.from_name} → {m.to_name}"

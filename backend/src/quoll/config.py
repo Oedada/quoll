@@ -56,6 +56,14 @@ class Settings(BaseSettings):
     db_max_overflow: int = 20
     # разрешённые CORS-источники, через запятую в .env
     cors_origins: list[str] = ["http://localhost:8000"]
+    # импорт: пределы только для него, у вложений свои
+    import_max_size_mb: int = 10
+    import_max_rows: int = 10000
+    import_max_registry_rows: int = 2000
+    import_draft_ttl_hours: int = 24
+    import_applied_ttl_days: int = 7
+    import_worker_interval_seconds: int = 2
+    import_cleanup_interval_seconds: int = 3600
 
     # интеграции-заглушки (integrations-plan.md)
     # ключ HMAC для отпечатка email в В1

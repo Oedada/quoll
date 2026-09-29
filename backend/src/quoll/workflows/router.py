@@ -328,14 +328,18 @@ async def link_attachment(
     attachment_id: int = Path(..., ge=1, description="Attachment ID"),
 ):
     await repo.get(id)
-    # файл заявки шаблоном не делается: шаблон читает любой вошедший
-    # здесь, а не наверху: модуль заявок сам импортирует модели воркфлоу
+    # файл заявки (документ или комментарий) и файл партии импорта шаблоном
+    # не делаются: шаблон читает любой вошедший; здесь, а не наверху -
+    # модуль заявок и импорт сами импортируют модели воркфлоу
+    from quoll.imports.service import is_import_file
     from quoll.interactions.document_service import (
         is_interaction_file,
     )
 
     if await is_interaction_file(repo.session, attachment_id):
         raise DomainRuleException(409, "Interaction file cannot become a template")
+    if await is_import_file(repo.session, attachment_id):
+        raise DomainRuleException(409, "Import file cannot become a template")
     await repo.link_attachment(id, attachment_id)
     workflow_service.journal_template(
         repo.session, admin.id, id, attachment_id, linked=True

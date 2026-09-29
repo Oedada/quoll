@@ -6,6 +6,9 @@
 блокировок не имеют: всё - под блокировкой взаимодействия
 """
 
+from dataclasses import dataclass
+from datetime import date, datetime
+
 from sqlalchemy import and_, exists, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -13,6 +16,7 @@ from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.catalog.models import ItProgram
 from quoll.core.exceptions import DomainRuleException, OperationForbiddenException
+from quoll.interactions import bindings
 from quoll.interactions.access_policy import can_change
 from quoll.interactions.models import (
     Branch,
@@ -373,4 +377,138 @@ async def branches(session: AsyncSession, interaction_id: int) -> list[Branch]:
             .where(Branch.interaction_id == interaction_id)
             .order_by(Branch.id)
         )
+    )
+
+
+@dataclass(frozen=True)
+class SealRow:
+    """ветка группы реестра для подписания (import-design §19.4)"""
+
+    program_id: int
+    product_id: int | None
+    stage_id: int
+    terminal: bool
+    refused: bool
+    close_reason_id: int | None
+    since: datetime | None
+    license_signed_at: date | None
+    license_term_years: int | None
+    transfer_status: str | None
+    license_extended_until: date | None
+    license_extended_at: datetime | None
+
+
+async def seal_imported(
+    session: AsyncSession,
+    scope: InteractionScope,
+    rows: list[SealRow],
+    signed_at: datetime,
+    *,
+    batch_id: int,
+    branch_start_id: int | None = None,
+) -> None:
+    """подписание импортом: заявка встаёт на SEAL, ветки состава - на свои
+    шаги (§19.4). Черновики веток уже созданы `create_interaction`.
+
+    branch_start_id - B0 маршрута, для отметок «пройден» ленты ветки (В27)"""
+    from quoll.interactions import branch_service, transition_service
+
+    interaction = scope.interaction
+    interaction.signed_at = signed_at
+    interaction.no_return_at = signed_at
+    opened: list[int] = []
+    for row in rows:
+        branch = await session.scalar(
+            select(Branch).where(
+                Branch.interaction_id == interaction.id,
+                Branch.program_id == row.program_id,
+                Branch.product_id.is_not_distinct_from(row.product_id),
+            )
+        )
+        if branch is None:
+            raise DomainRuleException(
+                409, f"Branch for program '{row.program_id}' is missing"
+            )
+        branch.contract_status = ContractStatus.APPROVED
+        at = max(row.since, signed_at) if row.since else signed_at
+        branch.state_id = row.stage_id
+        branch.opened_at = at
+        branch.stall_since = row.since or func.now()
+        branch.license_signed_at = row.license_signed_at
+        branch.license_term_years = row.license_term_years
+        for passed_stage in await transition_service._stages_between(
+            session, interaction.workflow_id, branch_start_id, row.stage_id, branch=True
+        ):
+            session.add(
+                InteractionStageHistory(
+                    interaction_id=interaction.id,
+                    branch_id=branch.id,
+                    from_stage_id=passed_stage.id,
+                    to_stage_id=passed_stage.id,
+                    kind=StageChangeKind.IMPORT,
+                    actor_id=None,
+                    payload={"batch_id": batch_id, "passed": True},
+                    created_at=at,
+                )
+            )
+        if row.transfer_status:
+            branch.transfer_status = row.transfer_status
+        bindings._derive_license(branch)
+        session.add(
+            InteractionStageHistory(
+                interaction_id=interaction.id,
+                branch_id=branch.id,
+                from_stage_id=None,
+                to_stage_id=row.stage_id,
+                kind=StageChangeKind.IMPORT,
+                actor_id=None,
+                payload={"batch_id": batch_id},
+                created_at=at,
+            )
+        )
+        last = at
+        if row.license_extended_until:
+            ext_at = max(row.license_extended_at or at, at)
+            old_until = branch.license_until
+            branch.license_until = row.license_extended_until
+            session.add(
+                InteractionStageHistory(
+                    interaction_id=interaction.id,
+                    branch_id=branch.id,
+                    from_stage_id=row.stage_id,
+                    to_stage_id=row.stage_id,
+                    kind=StageChangeKind.LICENSE_EXTENDED,
+                    actor_id=None,
+                    payload={
+                        "old": old_until.isoformat() if old_until else None,
+                        "new": row.license_extended_until.isoformat(),
+                        "batch_id": batch_id,
+                    },
+                    created_at=ext_at,
+                )
+            )
+            last = ext_at
+        if row.terminal:
+            branch.closed_at = last
+            unpause_branch(branch)
+            branch.close_reason_id = None
+        elif row.refused:
+            await branch_service.close_locked(
+                session,
+                scope,
+                branch,
+                close_reason_id=row.close_reason_id,
+                comment=f"import #{batch_id}",
+                allow_system_reason=True,
+                offer=False,
+                closed_at=last,
+            )
+        opened.append(branch.id)
+    record(
+        session,
+        actor_id=None,
+        event_type=AuditEventType.BRANCHES_OPENED,
+        target_type=TargetType.INTERACTION,
+        target_id=interaction.id,
+        new_value={"branches": opened},
     )

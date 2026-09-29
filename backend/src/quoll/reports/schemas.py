@@ -92,7 +92,7 @@ class ResponsibleRead(AppBaseModel):
 
 class MoveRead(AppBaseModel):
     at: date
-    kind: Literal["MOVE", "PAUSE", "UNPAUSE", "CLOSE", "REOPEN"]
+    kind: Literal["MOVE", "PAUSE", "UNPAUSE", "CLOSE", "REOPEN", "IMPORT"]
     from_stage_id: int | None
     to_stage_id: int | None
     label: str

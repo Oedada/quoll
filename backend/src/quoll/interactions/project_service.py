@@ -122,14 +122,17 @@ async def assign_locked(
     expected_owner_id: str | None,
     reason: str | None,
     by_import: bool = False,
+    announce: bool = True,
+    assigned_at: datetime | None = None,
 ) -> Interaction:
     """назначение под уже захваченной областью - его зовёт и одобрение
     просьбы о передаче. Цель в Keycloak проверена до блокировок.
 
     by_import - перенос реестра админом: право руководителя не проверяется,
-    остальные правила те же"""
+    остальные правила те же. announce=False и assigned_at - тоже для
+    импорта (В25): без уведомления, с датой открываемой записи"""
     interaction = scope.interaction
-    actor_id = scope.actor.id
+    actor_id = scope.actor.id if scope.actor else None
     if interaction.owner_id != expected_owner_id:
         raise StaleStateException("Interaction owner", interaction.owner_id)
 
@@ -158,8 +161,9 @@ async def assign_locked(
     interaction.owner_id = manager_id
     if previous is not None:
         interaction.last_owner_id = previous
-    await _hand_over(session, interaction.id, manager_id, reason)
-    await _announce_owner(session, scope, previous)
+    await _hand_over(session, interaction.id, manager_id, reason, assigned_at=assigned_at)
+    if announce:
+        await _announce_owner(session, scope, previous)
     # у нового владельца свои просьбы - старые устарели
     await cancel_pending_requests(
         session, interaction.id, actor_id, "interaction owner changed"
@@ -265,16 +269,23 @@ async def _announce_owner(
 
 
 async def _hand_over(
-    session: AsyncSession, interaction_id: int, manager_id: str, reason: str | None
+    session: AsyncSession,
+    interaction_id: int,
+    manager_id: str,
+    reason: str | None,
+    *,
+    assigned_at: datetime | None = None,
 ) -> None:
     """единственное место, где пишется история назначений: закрыть открытую
-    запись и открыть новую. Открытая запись всегда совпадает с владельцем"""
+    запись и открыть новую. Открытая запись всегда совпадает с владельцем.
+
+    assigned_at - дата открываемой записи для импорта (В25); None - момент
+    транзакции, как обычно"""
     await _release(session, interaction_id)
-    session.add(
-        InteractionAssignment(
-            interaction_id=interaction_id, manager_id=manager_id, reason=reason
-        )
-    )
+    fields = {"interaction_id": interaction_id, "manager_id": manager_id, "reason": reason}
+    if assigned_at is not None:
+        fields["assigned_at"] = assigned_at
+    session.add(InteractionAssignment(**fields))
 
 
 async def decline(
@@ -324,7 +335,20 @@ async def pause(
 ) -> Interaction:
     """поставить на паузу или заменить паузу - продление и смена режима"""
     scope, _ = await _pausable(session, interaction_id, actor_id)
+    return await pause_locked(session, scope, until=until, comment=comment)
+
+
+async def pause_locked(
+    session: AsyncSession,
+    scope: InteractionScope,
+    *,
+    until: datetime | None,
+    comment: str,
+) -> Interaction:
+    """пауза под уже захваченной областью; права и стадия - у вызывающего
+    (у ручного пути это `_pausable`, у импорта - свои проверки)"""
     interaction = scope.interaction
+    actor_id = scope.actor.id if scope.actor else None
     if until is None and interaction.pause_state == PauseState.PAUSED_MANUAL:
         raise DomainRuleException(409, "Interaction is already paused without a term")
     if until is not None:
@@ -515,13 +539,34 @@ async def cancel_draft(
     """черновик не удаляется, а отменяется (Р3): закрыт без стадии.
     Проверки - под блокировкой: черновик могли успеть поставить на стадию"""
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
-    interaction = scope.interaction
     if not can_cancel(scope.actor, scope.ownership):
         raise OperationForbiddenException("cancel this interaction")
+    return await cancel_draft_locked(
+        session, scope, close_reason_id=close_reason_id, comment=comment
+    )
+
+
+async def cancel_draft_locked(
+    session: AsyncSession,
+    scope: InteractionScope,
+    *,
+    close_reason_id: int,
+    comment: str | None,
+    allow_system: bool = False,
+) -> Interaction:
+    """отмена черновика под уже захваченной областью; права - у вызывающего.
+
+    allow_system - REPLACE импорта закрывает системной причиной (В7)"""
+    interaction = scope.interaction
+    actor_id = scope.actor.id if scope.actor else None
     if interaction.state_id is not None:
         raise DomainRuleException(409, "Only a draft is cancelled, close the rest")
     reason = await check_reason(
-        session, close_reason_id, CloseLevel.INTERACTION_BEFORE_SIGNING, comment
+        session,
+        close_reason_id,
+        CloseLevel.INTERACTION_BEFORE_SIGNING,
+        comment,
+        allow_system=allow_system,
     )
     interaction.closed_at = func.now()
     interaction.close_reason_id = reason.id

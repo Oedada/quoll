@@ -7,6 +7,7 @@ import logging
 
 from sqlalchemy.ext.asyncio import async_sessionmaker
 
+from quoll.attachments.s3 import S3StorageService
 from quoll.auth import role_transition
 from quoll.auth.offboarding import offboard_manager, offboard_superviser
 from quoll.auth.pending_actions import PendingActionType
@@ -15,6 +16,8 @@ from quoll.auth.session_store import SessionStore
 from quoll.auth.task_queue import run_queue
 from quoll.config import settings
 from quoll.core.worker import Periodic
+from quoll.imports import service as import_service
+from quoll.imports import worker as import_worker
 from quoll.integrations.flows import run_nightly
 from quoll.interactions.pause_worker import expire_branch_pauses, expire_pauses
 from quoll.interactions.watcher import watch
@@ -24,7 +27,9 @@ logger = logging.getLogger(__name__)
 
 
 def background_jobs(
-    session_maker: async_sessionmaker, reports: ReportRunner
+    session_maker: async_sessionmaker,
+    reports: ReportRunner,
+    s3: S3StorageService | None = None,
 ) -> list[Periodic]:
     sessions = SessionStore(session_maker)
 
@@ -68,6 +73,15 @@ def background_jobs(
         if expired:
             logger.info(f"Expired {expired} report files")
 
+    async def import_tick() -> None:
+        if await import_worker.tick(session_maker):
+            logger.info("Import batch processed")
+
+    async def import_cleanup() -> None:
+        removed = await import_service.cleanup(session_maker, s3)
+        if removed:
+            logger.info(f"Removed {removed} expired import batches")
+
     async def reconcile_tick() -> None:
         await reconcile(session_maker)
 
@@ -92,5 +106,9 @@ def background_jobs(
         ),
         Periodic(
             "integrations", settings.integration_interval_seconds, integrations_tick
+        ),
+        Periodic("import-apply", settings.import_worker_interval_seconds, import_tick),
+        Periodic(
+            "import-cleanup", settings.import_cleanup_interval_seconds, import_cleanup
         ),
     ]

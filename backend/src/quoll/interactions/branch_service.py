@@ -237,8 +237,13 @@ async def close_locked(
     close_reason_id: int,
     comment: str | None,
     allow_system_reason: bool = False,
+    offer: bool = True,
+    closed_at: datetime | None = None,
 ) -> Branch:
-    """досрочно: ветка остаётся на своём шаге, закрыта причиной (П6)"""
+    """досрочно: ветка остаётся на своём шаге, закрыта причиной (П6).
+
+    closed_at - момент закрытия и записи истории для импорта (§19.4);
+    offer=False - импорт не предлагает руководителю закрыть заявку"""
     reason = await check_reason(
         session,
         close_reason_id,
@@ -246,31 +251,34 @@ async def close_locked(
         comment,
         allow_system=allow_system_reason,
     )
-    branch.closed_at = func.now()
+    actor_id = scope.actor.id if scope.actor else None
+    branch.closed_at = closed_at or func.now()
     unpause_branch(branch)
     branch.close_reason_id = reason.id
-    session.add(
-        InteractionStageHistory(
-            interaction_id=branch.interaction_id,
-            branch_id=branch.id,
-            from_stage_id=branch.state_id,
-            to_stage_id=branch.state_id,
-            kind=StageChangeKind.CLOSE,
-            actor_id=scope.actor.id,
-            comment=comment,
-            payload={"close_reason_id": reason.id},
-        )
+    history = InteractionStageHistory(
+        interaction_id=branch.interaction_id,
+        branch_id=branch.id,
+        from_stage_id=branch.state_id,
+        to_stage_id=branch.state_id,
+        kind=StageChangeKind.CLOSE,
+        actor_id=actor_id,
+        comment=comment,
+        payload={"close_reason_id": reason.id},
     )
+    if closed_at is not None:
+        history.created_at = closed_at
+    session.add(history)
     record(
         session,
-        actor_id=scope.actor.id,
+        actor_id=actor_id,
         event_type=AuditEventType.BRANCH_CLOSED,
         target_type=TargetType.INTERACTION,
         target_id=scope.interaction.id,
         new_value={"branch_id": branch.id, "reason": reason.code, "comment": comment},
     )
     await session.flush()
-    await _offer_to_close(session, scope)
+    if offer:
+        await _offer_to_close(session, scope)
     await session.refresh(branch)
     return branch
 
@@ -342,6 +350,20 @@ async def pause(
     if not can_pause(scope.actor, scope.ownership):
         raise OperationForbiddenException("pause this branch")
     branch = await open_branch(session, scope, branch_id)
+    return await pause_locked(session, scope, branch, until=until, comment=comment)
+
+
+async def pause_locked(
+    session: AsyncSession,
+    scope: InteractionScope,
+    branch: Branch,
+    *,
+    until: datetime | None,
+    comment: str,
+) -> Branch:
+    """пауза под уже захваченной областью; права и открытость ветки - у
+    вызывающего (у импорта - свои проверки, §19.2)"""
+    actor_id = scope.actor.id if scope.actor else None
     if until is None and branch.pause_state == PauseState.PAUSED_MANUAL:
         raise DomainRuleException(409, "Branch is already paused without a term")
     if until is not None:
@@ -358,7 +380,7 @@ async def pause(
         actor_id=actor_id,
         event_type=AuditEventType.BRANCH_PAUSED,
         target_type=TargetType.INTERACTION,
-        target_id=interaction_id,
+        target_id=scope.interaction.id,
         old_value={"branch_id": branch.id, "pause_state": old},
         new_value={
             "pause_state": branch.pause_state,

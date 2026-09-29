@@ -17,6 +17,7 @@ import quoll.integrations.models
 import quoll.interactions.models
 import quoll.notifications.models
 import quoll.reports.models
+import quoll.imports.models
 import quoll.workflows.models  # noqa: F401
 from alembic import context
 from quoll.config import settings

@@ -8,7 +8,6 @@ from fastapi import (
     Depends,
     File,
     Form,
-    HTTPException,
     Query,
     Response,
     UploadFile,
@@ -35,7 +34,6 @@ from quoll.interactions import (
     branch_service,
     contract_service,
     document_service,
-    import_service,
     project_service,
     request_service,
     sa_service,
@@ -76,7 +74,6 @@ from quoll.interactions.schemas import (
     InteractionCreate,
     InteractionDetailRead,
     InteractionHistoryRead,
-    InteractionImportResult,
     InteractionRead,
     InteractionSettings,
     InteractionUpdate,
@@ -107,27 +104,7 @@ interactions_router = APIRouter(
 
 
 # Interactions Endpoints
-
-
-@interactions_router.post(
-    "/import",
-    response_model=InteractionImportResult,
-    summary="Import interactions from an xls/xlsx registry, each offered to its manager",
-)
-async def import_interactions(
-    admin: AdminUser,
-    session: SessionDep,
-    file: Annotated[UploadFile, File()],
-    workflow_id: Annotated[int, Form()],
-    dry_run: bool = False,
-):
-    try:
-        rows = import_service.read_rows(await file.read(), file.filename)
-    except Exception as e:
-        raise HTTPException(400, detail=f"Invalid excel file: {e}") from e
-    return await import_service.import_rows(
-        session, rows, workflow_id=workflow_id, actor_id=admin.id, dry_run=dry_run
-    )
+# импорт реестра - /api/v1/imports (imports_router), этот путь снят (В19)
 
 
 @interactions_router.post(
@@ -381,7 +358,9 @@ def _document(view) -> DocumentRead:
         replaced_on_stage_id=view.replaced_by.stage_id if view.replaced_by else None,
         status=doc.status,
         created_at=doc.created_at,
-        attachment=AttachmentRead.model_validate(view.attachment),
+        attachment=AttachmentRead.model_validate(view.attachment)
+        if view.attachment
+        else None,
     )
 
 
@@ -1106,6 +1085,8 @@ async def delete_document(
     storage_key = await document_service.delete_document(
         session, document_id=id, actor_id=admin.id
     )
-    # после коммита: фоновые задачи идут уже после ответа
-    background.add_task(attachments.s3.delete, storage_key)
+    # договор без скана - нет ключа, S3 звать не за чем
+    if storage_key is not None:
+        # после коммита: фоновые задачи идут уже после ответа
+        background.add_task(attachments.s3.delete, storage_key)
     return Response(status_code=status.HTTP_204_NO_CONTENT)

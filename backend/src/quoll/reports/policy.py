@@ -151,7 +151,7 @@ class Status:
 @dataclass(frozen=True)
 class Move:
     at: date
-    kind: str  # MOVE | PAUSE | UNPAUSE | CLOSE | REOPEN
+    kind: str  # MOVE | PAUSE | UNPAUSE | CLOSE | REOPEN | IMPORT
     from_stage_id: int | None
     to_stage_id: int | None
     from_name: str | None
@@ -224,7 +224,7 @@ def period(date_from: date, date_to: date, today: date) -> tuple[datetime, datet
 
 def _closing(e: Event, terminal: frozenset[int]) -> bool:
     return e.kind in _CLOSE_KINDS or (
-        e.kind == "TRANSITION" and e.to_stage_id in terminal
+        e.kind in ("TRANSITION", "IMPORT") and e.to_stage_id in terminal
     )
 
 
@@ -242,7 +242,7 @@ def last_closure(events: tuple[Event, ...] | list[Event], terminal) -> Event | N
 def outcome(e: Event, reasons: dict[int, str]) -> StatusKind:
     """итог закрытия: ребро в конечный шаг - завершение; иначе по причине.
     CLOSE/CANCEL без причины записаны до её хранения - считаем отказом (§4.2)"""
-    if e.kind == "TRANSITION":
+    if e.kind in ("TRANSITION", "IMPORT"):
         return StatusKind.DONE
     reason_id = e.payload.get("close_reason_id")
     if reason_id is None:
@@ -436,6 +436,9 @@ def _move(e: Event, facts: Facts, terminal) -> Move | None:
         kind = "REOPEN"
     elif e.kind in _PAUSE_KINDS:
         kind = e.kind
+    elif e.kind == "IMPORT" and e.to_stage_id != e.from_stage_id:
+        # отметки «пройден» (В27) не в счёт - у них from = to
+        kind = "IMPORT"
     elif e.kind in _MOVE_KINDS and e.to_stage_id != e.from_stage_id:
         kind = "MOVE"
     else:

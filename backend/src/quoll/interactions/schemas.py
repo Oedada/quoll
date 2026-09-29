@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Annotated, Any, Literal
 
-from pydantic import ConfigDict, Field, ValidationError, model_validator
+from pydantic import ConfigDict, Field, model_validator
 
 from quoll.attachments.schemas import AttachmentRead
 from quoll.catalog.schemas import UniversityRead
@@ -314,62 +314,8 @@ class DocumentRead(AppBaseModel):
     # ACTIVE, PENDING - ждёт руководителя, REJECTED
     status: str
     created_at: datetime
-    attachment: AttachmentRead
-
-
-class InteractionImport(AppBaseModel):
-    university_name: str
-    vendor_name: str
-    it_program: str
-    it_product: str | None = None
-    contract_number: str
-    license_singed: bool
-    license_expired_at: int
-    manager_full_name: str
-    comment: str
-
-
-class InteractionImportError(AppBaseModel):
-    """одна ошибка валидации строки импорта: колонка + понятный текст"""
-
-    column: str
-    message: str
-
-
-class InteractionImportValidationError(AppBaseModel):
-    """человекочитаемый результат pydantic ValidationError"""
-
-    errors: list[InteractionImportError]
-
-    @classmethod
-    def from_validation_error(
-        cls, exc: ValidationError
-    ) -> "InteractionImportValidationError":
-        return cls(
-            errors=[
-                InteractionImportError(
-                    column=".".join(str(part) for part in err["loc"]),
-                    message=err["msg"],
-                )
-                for err in exc.errors()
-            ]
-        )
-
-
-class InteractionImportRow(AppBaseModel):
-    error: InteractionImportValidationError | None = None
-    interaction_import: InteractionImport | None
-
-
-class InteractionImportAction(InteractionImportRow):
-    action: str | None
-
-
-class InteractionImportResult(AppBaseModel):
-    """результат импорта: ошибки и удавшиеся операции, по номеру строки"""
-
-    errors: dict[int, InteractionImportValidationError]
-    imported: dict[int, InteractionImportAction]
+    # None - договор без скана (В1)
+    attachment: AttachmentRead | None
 
 
 class StageValuesWrite(AppBaseModel):
