@@ -716,6 +716,17 @@ async def withdraw(session: AsyncSession, *, request_id: int, actor_id: str) -> 
     )
 
 
+def _scoped(stmt, viewer: User):
+    """руководитель - по заявкам своей команды, менеджер - свои, админ - все"""
+    if viewer.role == UserRole.MANAGER:
+        return stmt.where(InteractionRequest.requested_by == viewer.id)
+    if viewer.role == UserRole.SUPERVISER:
+        team = select(Manager.id).where(Manager.superviser_id == viewer.id)
+        owned = select(Interaction.id).where(Interaction.owner_id.in_(team))
+        return stmt.where(InteractionRequest.interaction_id.in_(owned))
+    return stmt
+
+
 async def visible(
     session: AsyncSession,
     viewer: User,
@@ -724,14 +735,7 @@ async def visible(
     offset: int,
     interaction_id: int | None = None,
 ) -> list[InteractionRequest]:
-    """руководитель - по заявкам своей команды, менеджер - свои, админ - все"""
-    stmt = select(InteractionRequest)
-    if viewer.role == UserRole.MANAGER:
-        stmt = stmt.where(InteractionRequest.requested_by == viewer.id)
-    elif viewer.role == UserRole.SUPERVISER:
-        team = select(Manager.id).where(Manager.superviser_id == viewer.id)
-        owned = select(Interaction.id).where(Interaction.owner_id.in_(team))
-        stmt = stmt.where(InteractionRequest.interaction_id.in_(owned))
+    stmt = _scoped(select(InteractionRequest), viewer)
     if status is not None:
         stmt = stmt.where(InteractionRequest.status == status)
     if interaction_id is not None:
@@ -744,3 +748,10 @@ async def visible(
         .offset(offset)
     )
     return list((await session.scalars(stmt)).all())
+
+
+async def count_pending(session: AsyncSession, viewer: User) -> int:
+    """просьбы на решении - для бейджа дашборда (п.5)"""
+    stmt = _scoped(select(func.count()).select_from(InteractionRequest), viewer)
+    stmt = stmt.where(InteractionRequest.status == RequestStatus.PENDING)
+    return await session.scalar(stmt) or 0

@@ -206,6 +206,22 @@ class InteractionListPage(AppBaseModel):
     items: list[InteractionListRead]
 
 
+class StageCount(AppBaseModel):
+    stage_id: int
+    name: str
+    count: int
+
+
+class InteractionStatsRead(AppBaseModel):
+    """агрегаты для дашбордов и бейджей (п.5): без похода за всеми заявками"""
+
+    by_status: dict[str, int]
+    by_stage: list[StageCount]
+    # AWAITING_ACCEPTANCE - предложена КАМу, ждёт его решения
+    incoming: int
+    pending_requests: int
+
+
 class StageHistoryRead(AppBaseModel):
     from_stage_id: int | None
     to_stage_id: int | None

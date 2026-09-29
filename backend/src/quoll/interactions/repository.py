@@ -221,3 +221,35 @@ class InteractionRepository(BaseRepository[Interaction]):
             .where(Interaction.owner_id == manager_id, blocking_filter_expression())
         )
         return await self.session.scalar(stmt) or 0
+
+    async def stats(
+        self, visibility: ColumnElement[bool]
+    ) -> tuple[dict[str, int], list[tuple[int, str, int]]]:
+        """счётчики по статусам и по стадиям для дашбордов (п.5) - две
+        группировки вместо вытягивания всех видимых заявок"""
+        # group by по самому выражению status дал бы в Postgre "column must
+        # appear in GROUP BY" - CASE считается дважды и не распознаётся как
+        # одно и то же; подзапрос считает его один раз и отдаёт как колонку
+        visible_status = (
+            select(Interaction.status.label("status")).where(visibility).subquery()
+        )
+        by_status = dict(
+            (
+                await self.session.execute(
+                    select(visible_status.c.status, func.count()).group_by(
+                        visible_status.c.status
+                    )
+                )
+            ).all()
+        )
+        by_stage = list(
+            (
+                await self.session.execute(
+                    select(Interaction.state_id, Stage.name, func.count())
+                    .join(Stage, Interaction.state_id == Stage.id)
+                    .where(visibility)
+                    .group_by(Interaction.state_id, Stage.name)
+                )
+            ).all()
+        )
+        return by_status, by_stage

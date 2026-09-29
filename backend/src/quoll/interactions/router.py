@@ -86,6 +86,7 @@ from quoll.interactions.schemas import (
     InteractionListRead,
     InteractionRead,
     InteractionSettings,
+    InteractionStatsRead,
     InteractionUpdate,
     PauseRequest,
     PersonRef,
@@ -100,6 +101,7 @@ from quoll.interactions.schemas import (
     SidePointerRead,
     SidePointerStart,
     SidePointerTransition,
+    StageCount,
     StageValuesRead,
     StageValuesWrite,
     TransitionRequest,
@@ -282,6 +284,24 @@ async def list_interactions(
         offset=offset,
     )
     return InteractionListPage(total=total, items=await _list_view(session, repo, rows))
+
+
+@interactions_router.get(
+    "/stats",
+    response_model=InteractionStatsRead,
+    summary="Counters for dashboards and badges, within the current user's visibility",
+)
+async def interaction_stats(user: CurrentUser, repo: InteractionRepoDep, session: SessionDep):
+    by_status, by_stage = await repo.stats(readable_filter(user))
+    return InteractionStatsRead(
+        by_status={s.value: by_status.get(s.value, 0) for s in InteractionStatus},
+        by_stage=[
+            StageCount(stage_id=stage_id, name=name, count=count)
+            for stage_id, name, count in by_stage
+        ],
+        incoming=by_status.get(InteractionStatus.AWAITING_ACCEPTANCE.value, 0),
+        pending_requests=await request_service.count_pending(session, user),
+    )
 
 
 @interactions_router.post(
