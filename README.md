@@ -24,14 +24,14 @@ docker compose -f backend/docker-compose.yml up -d
 ## Проверка
 
 - `GET /` — health-check
-- `GET /front` — демо-страница со входом
 - `GET /docs` — Swagger UI
 
 ## Структура
 
-backend/ FastAPI-приложение (модульный монолит, src-layout)
-frontend/ демо-страница входа, openapi.json
-docs/ требования, дизайн-документы, схема БД
+backend - FastAPI-приложение (модульный монолит, src-layout)
+
+docs - требования, дизайн-документы, схема БД
+
 
 
 Документация по модулям, ролям и решениям — в mkdocs (в процессе), полный список файлов пока в [`docs/`](docs).
