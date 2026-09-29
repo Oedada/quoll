@@ -14,12 +14,18 @@ from fastapi import (
     status,
 )
 from fastapi.responses import StreamingResponse
+from sqlalchemy import select
 
 from quoll.attachments.dependencies import (
     AttachmentRepoDep,
     AttachmentServiceDep,
 )
-from quoll.attachments.schemas import AttachmentRead, PresignedUrlResponse
+from quoll.attachments.schemas import (
+    AttachmentListRead,
+    AttachmentRead,
+    PresignedUrlResponse,
+    TransitionRef,
+)
 from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.dependencies import AdminOnly, AdminUser, CurrentUser, get_current_user
@@ -54,6 +60,14 @@ def _documents():
     return document_service
 
 
+def _workflows():
+    # локально, как _documents(): workflows.schemas импортирует
+    # attachments.schemas - импорт на уровне модуля дал бы цикл
+    from quoll.workflows.models import TransitionAttachment, WorkflowTransition
+
+    return TransitionAttachment, WorkflowTransition
+
+
 def _journal(session, actor_id: str, event: AuditEventType, attachment) -> None:
     record(
         session,
@@ -80,10 +94,69 @@ async def upload_attachment(
     preview: Annotated[
         str | None, Form(description="Optional short preview or thumbnail")
     ] = None,
+    title: Annotated[
+        str | None, Form(description="Template title, shown in the templates list")
+    ] = None,
+    category: Annotated[str | None, Form(description="Free-text template category")] = None,
 ):
-    attachment = await service.upload_attachment(file=file, preview=preview)
+    attachment = await service.upload_attachment(
+        file=file, preview=preview, title=title, category=category
+    )
     _journal(session, admin.id, AuditEventType.ATTACHMENT_UPLOADED, attachment)
     return attachment
+
+
+@attachments_router.get(
+    "/",
+    response_model=list[AttachmentListRead],
+    summary="List template attachments, with the transitions each is linked to",
+    dependencies=[AdminOnly],
+)
+async def list_attachments(
+    session: SessionDep,
+    category: str | None = None,
+    q: Annotated[
+        str | None, Query(max_length=255, description="Search by title or filename")
+    ] = None,
+    limit: int = Query(default=50, ge=1, le=200),
+    offset: int = Query(default=0, ge=0),
+):
+    from quoll.attachments.models import Attachment
+
+    TransitionAttachment, WorkflowTransition = _workflows()
+    filters = []
+    if category is not None:
+        filters.append(Attachment.category == category)
+    if q:
+        pattern = f"%{q}%"
+        filters.append(Attachment.title.ilike(pattern) | Attachment.filename.ilike(pattern))
+    rows = list(
+        await session.scalars(
+            select(Attachment)
+            .where(*filters)
+            .order_by(Attachment.created_at.desc(), Attachment.id.desc())
+            .limit(limit)
+            .offset(offset)
+        )
+    )
+    if not rows:
+        return []
+    links: dict[int, list[TransitionRef]] = {r.id: [] for r in rows}
+    for attachment_id, transition_id, name in await session.execute(
+        select(
+            TransitionAttachment.attachment_id, WorkflowTransition.id, WorkflowTransition.name
+        )
+        .join(
+            WorkflowTransition,
+            WorkflowTransition.id == TransitionAttachment.transition_id,
+        )
+        .where(TransitionAttachment.attachment_id.in_(links))
+    ):
+        links[attachment_id].append(TransitionRef(id=transition_id, name=name))
+    return [
+        AttachmentListRead(**AttachmentRead.model_validate(r).model_dump(), used_by=links[r.id])
+        for r in rows
+    ]
 
 
 @attachments_router.get(

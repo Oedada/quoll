@@ -55,6 +55,8 @@ class AttachmentService:
         self,
         file: UploadFile,
         preview: str | None = None,
+        title: str | None = None,
+        category: str | None = None,
     ) -> Attachment:
         """Потоковая загрузка файла в S3 и сохранение метаданных в БД."""
         # Санитизировать имя файла, извлекая только базовое имя (защита от path traversal)
@@ -106,6 +108,8 @@ class AttachmentService:
             mime_type=mime_type,
             size_bytes=size_bytes,
             preview=preview,
+            title=title,
+            category=category,
         )
 
         try:

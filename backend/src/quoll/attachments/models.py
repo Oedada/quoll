@@ -11,3 +11,6 @@ class Attachment(Base, IdMixin, TimestampMixin):
     mime_type: Mapped[str] = mapped_column(String(100))
     size_bytes: Mapped[int] = mapped_column(BigInteger, default=0)
     preview: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # заполняются у шаблонов для переходов - у файлов заявок и комментариев пусто
+    title: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    category: Mapped[str | None] = mapped_column(String(100), nullable=True, index=True)
