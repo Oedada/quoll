@@ -9,6 +9,9 @@ class AppException(Exception):
     # код для фронта по errors-ru.md и его параметры; у старых ошибок пусто
     code: str | None
     params: dict | None
+    # составная ошибка (errors-ru.md §3): список пунктов {code, params},
+    # у каждого свой код - APP-026, STEP-001, WF-001
+    items: list[dict] | None
 
     def __init__(
         self,
@@ -16,11 +19,13 @@ class AppException(Exception):
         message: str,
         code: str | None = None,
         params: dict | None = None,
+        items: list[dict] | None = None,
     ):
         self.message = message
         self.status_code = status_code
         self.code = code
         self.params = params
+        self.items = items
         super().__init__(message)
 
 
@@ -191,6 +196,13 @@ class DomainRuleException(AppException):
     """операция нарушает доменное правило: 400 - запрос не имеет смысла,
     409 - противоречит текущему состоянию"""
 
-    def __init__(self, status_code: int, detail: str):
-        super().__init__(status_code, detail)
+    def __init__(
+        self,
+        status_code: int,
+        detail: str,
+        code: str | None = None,
+        params: dict | None = None,
+        items: list[dict] | None = None,
+    ):
+        super().__init__(status_code, detail, code, params, items)
         logger.warning(self.message)

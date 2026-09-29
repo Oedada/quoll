@@ -212,6 +212,18 @@ class StageCount(AppBaseModel):
     count: int
 
 
+class ProblemRead(AppBaseModel):
+    code: str
+    params: dict[str, Any] = Field(default_factory=dict)
+
+
+class TransitionCheckRead(AppBaseModel):
+    """можно ли пройти по ребру прямо сейчас, без похода за попыткой хода"""
+
+    ok: bool
+    items: list[ProblemRead]
+
+
 class InteractionStatsRead(AppBaseModel):
     """агрегаты для дашбордов и бейджей (п.5): без похода за всеми заявками"""
 

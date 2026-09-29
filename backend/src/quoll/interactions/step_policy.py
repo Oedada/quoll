@@ -4,6 +4,7 @@
 Здесь - только сверка фактов с этими настройками
 """
 
+from dataclasses import dataclass, field
 from datetime import date, datetime
 from typing import Any
 
@@ -52,6 +53,15 @@ def _filled(value: Any) -> bool:
     return value is not None and value != ""
 
 
+@dataclass(frozen=True)
+class Problem:
+    """пункт составной ошибки APP-026 (errors-ru.md §3): код + параметры для
+    фронта, названия полей и видов документов подставляет он сам по id"""
+
+    code: str
+    params: dict[str, Any] = field(default_factory=dict)
+
+
 def transition_problems(
     *,
     requires_approval: bool,
@@ -61,7 +71,7 @@ def transition_problems(
     values: dict[str, Any],
     required_kinds: list[str],
     present_kinds: set[str],
-) -> list[str]:
+) -> list[Problem]:
     """почему по ребру сейчас нельзя пройти; пусто - можно.
 
     обязательное проверяется только при движении вперёд: возврат - это как
@@ -69,15 +79,15 @@ def transition_problems(
     """
     problems = []
     if requires_approval and not approved:
-        problems.append("transition needs supervisor approval, request it")
+        problems.append(Problem("APP-027"))
     if forward:
         problems += [
-            f"required field '{f['key']}' is empty"
+            Problem("STEP-002", {"field": f["key"]})
             for f in fields
             if f.get("required") and not _filled(values.get(f["key"]))
         ]
         problems += [
-            f"no current document of kind '{kind}'"
+            Problem("DOC-001", {"kind": kind})
             for kind in required_kinds
             if kind not in present_kinds
         ]

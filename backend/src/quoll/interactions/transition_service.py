@@ -39,7 +39,7 @@ from quoll.interactions.models import (
 from quoll.interactions.notify import notify
 from quoll.interactions.requests import cancel_pending_requests
 from quoll.interactions.scope import InteractionScope, lock_interaction_scope
-from quoll.interactions.step_policy import transition_problems
+from quoll.interactions.step_policy import Problem, transition_problems
 from quoll.notifications import kinds
 from quoll.workflows.graph_policy import EdgeFacts, leads_to
 from quoll.workflows.models import Stage, Workflow, WorkflowTransition
@@ -260,7 +260,7 @@ async def _check_contract_rules(
             raise DomainRuleException(409, "Close product branches first")
 
 
-async def check_step(
+async def _step_problems(
     session: AsyncSession,
     interaction: Interaction,
     current: Stage | None,
@@ -269,9 +269,7 @@ async def check_step(
     approved: bool,
     branch_id: int | None = None,
     side_pointer_id: int | None = None,
-) -> None:
-    """правила шага по фактам; нарушено - 409 со всеми причинами сразу.
-    У ветки продукта поля и файлы - свои"""
+) -> list[Problem]:
     values, kinds = {}, set()
     if current is not None:
         values = await stage_values(
@@ -288,7 +286,7 @@ async def check_step(
             branch_id,
             side_pointer_id=side_pointer_id,
         )
-    problems = transition_problems(
+    return transition_problems(
         requires_approval=edge.requires_approval,
         approved=approved,
         forward=not edge.is_backward,
@@ -297,8 +295,67 @@ async def check_step(
         required_kinds=edge.required_document_kinds,
         present_kinds=kinds,
     )
+
+
+async def check_step(
+    session: AsyncSession,
+    interaction: Interaction,
+    current: Stage | None,
+    edge: WorkflowTransition,
+    *,
+    approved: bool,
+    branch_id: int | None = None,
+    side_pointer_id: int | None = None,
+) -> None:
+    """правила шага по фактам; нарушено - 409 со всеми причинами сразу.
+    У ветки продукта поля и файлы - свои"""
+    problems = await _step_problems(
+        session,
+        interaction,
+        current,
+        edge,
+        approved=approved,
+        branch_id=branch_id,
+        side_pointer_id=side_pointer_id,
+    )
     if problems:
-        raise DomainRuleException(409, "Step is not done: " + "; ".join(problems))
+        raise DomainRuleException(
+            409,
+            "Step is not done: " + "; ".join(p.code for p in problems),
+            code="APP-026",
+            items=[{"code": p.code, "params": p.params} for p in problems],
+        )
+
+
+async def transition_check(
+    session: AsyncSession, interaction: Interaction, to_stage_id: int
+) -> list[Problem]:
+    """только чтение, без блокировок и побочных эффектов - «можно ли пройти
+    по этому ребру прямо сейчас» для кнопки в интерфейсе (п.7 списка задач).
+
+    approved всегда False: одобренный переход руководитель проводит сам через
+    request_service, а не эту кнопку - значит до одобрения его и не пройти"""
+    current = (
+        await session.get(Stage, interaction.state_id) if interaction.state_id else None
+    )
+    target = await session.get(Stage, to_stage_id)
+    workflow_id = interaction.workflow_id or (target.workflow_id if target else None)
+    edge = (
+        await session.scalar(
+            select(WorkflowTransition).where(
+                WorkflowTransition.workflow_id == workflow_id,
+                WorkflowTransition.from_stage_id == (current.id if current else None),
+                WorkflowTransition.to_stage_id == to_stage_id,
+                WorkflowTransition.is_active.is_(True),
+            )
+        )
+        if target is not None
+        else None
+    )
+    if edge is None:
+        # тот же код, что у отказа реального перехода без активного ребра
+        return [Problem("APP-023")]
+    return await _step_problems(session, interaction, current, edge, approved=False)
 
 
 async def stage_values(

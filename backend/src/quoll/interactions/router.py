@@ -90,6 +90,7 @@ from quoll.interactions.schemas import (
     InteractionUpdate,
     PauseRequest,
     PersonRef,
+    ProblemRead,
     ReasonedRequest,
     ReopenRequest,
     RequestApprove,
@@ -104,6 +105,7 @@ from quoll.interactions.schemas import (
     StageCount,
     StageValuesRead,
     StageValuesWrite,
+    TransitionCheckRead,
     TransitionRequest,
 )
 from quoll.notifications import queries as notification_queries
@@ -322,6 +324,21 @@ async def assign_interaction(
         manager_id=body.manager_id,
         expected_owner_id=body.expected_owner_id,
         reason=body.reason,
+    )
+
+
+@interactions_router.get(
+    "/{id}/transitions/{to_stage_id}/check",
+    response_model=TransitionCheckRead,
+    summary="Check if a move to a stage is possible right now, without moving",
+)
+async def check_transition(
+    interaction: ReadableInteraction, to_stage_id: int, session: SessionDep
+):
+    problems = await transition_service.transition_check(session, interaction, to_stage_id)
+    return TransitionCheckRead(
+        ok=not problems,
+        items=[ProblemRead(code=p.code, params=p.params) for p in problems],
     )
 
 

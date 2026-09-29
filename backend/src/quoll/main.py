@@ -150,6 +150,8 @@ async def app_exception_handler(request: Request, exc: AppException):
         content["code"] = exc.code
     if exc.params is not None:
         content["params"] = exc.params
+    if exc.items is not None:
+        content["items"] = exc.items
     return JSONResponse(status_code=exc.status_code, content=content)
 
 
