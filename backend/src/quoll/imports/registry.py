@@ -17,6 +17,7 @@ from datetime import UTC, date, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
 
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.models import (
@@ -26,7 +27,7 @@ from quoll.auth.models import (
     RoleTransitionStatus,
 )
 from quoll.imports import analysis, normalize
-from quoll.imports.models import RowStatus
+from quoll.imports.models import ImportFile, RowStatus
 from quoll.workflows.graph_policy import EdgeFacts, leads_to
 
 # даты договора и паузы - по календарю заказчика (interactions/bindings.py)
@@ -75,6 +76,7 @@ class GroupPlan:
     contract_extended_at: date | None = None
     contacts_text: str | None = None
     contacts_target: str = "CATALOG"  # CATALOG / STEP:<stage_id>:<key> / SKIP (В12)
+    has_contract_file: bool = False  # файл CONTRACT есть, даже без номера (P1-6)
     comment: str | None = None
     pause_until: datetime | None = None
     agreement_open: bool = False
@@ -439,6 +441,20 @@ async def _build_group(session: AsyncSession, an, key: str, group: list) -> Grou
     plan.contract_valid_until = _date(_first(group, "contract_valid_until"))
     plan.contract_extended_until = _date(_first(group, "contract_extended_until"))
     plan.contract_extended_at = _date(_first(group, "contract_extended_at"))
+    contract_file = await session.scalar(
+        select(ImportFile).where(
+            ImportFile.row_id.in_([r.row.id for r in group]),
+            ImportFile.kind == "CONTRACT",
+        )
+    )
+    plan.has_contract_file = contract_file is not None
+    if (
+        contract_file is not None
+        and contract_file.contract_number
+        and plan.contract_number
+        and contract_file.contract_number != plan.contract_number
+    ):
+        first.add("IMP-178", "contract_number")
     plan.contacts_text = _first(group, "contacts")
     contacts_choice = next(
         (r.row.contacts_target for r in group if r.row.contacts_target), None
@@ -614,7 +630,11 @@ def _step_table(an, group: list, plan: GroupPlan) -> None:
         b for b in plan.branches if b.stage_id is not None and b.is_branch_stage
     ]
     bs = {b.stage_id for b in bs_branches}
-    has_contract = bool(plan.contract_number) or bool(plan.contract_signed_at)
+    has_contract = (
+        bool(plan.contract_number)
+        or bool(plan.contract_signed_at)
+        or plan.has_contract_file
+    )
 
     for b in plan.branches:
         if (

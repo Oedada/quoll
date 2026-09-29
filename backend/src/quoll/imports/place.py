@@ -136,13 +136,14 @@ async def apply_group(
             branch_start_id=an.snap.anchors.b0,
         )
 
+    # P1-6: _attach_contract сама решает, есть ли что прикладывать (номер
+    # или файл CONTRACT без номера в колонке - раньше такой файл терялся)
     document_ids: list[int] = []
-    if plan.contract_number or plan.contract_signed_at:
-        doc_id = await _attach_contract(
-            session, batch, an, interaction.id, plan, signed_at or earliest_at
-        )
-        if doc_id is not None:
-            document_ids.append(doc_id)
+    doc_id = await _attach_contract(
+        session, batch, an, interaction.id, plan, signed_at or earliest_at
+    )
+    if doc_id is not None:
+        document_ids.append(doc_id)
     if plan.contract_extended_until:
         await _extend_contract(session, batch, interaction, plan, signed_at)
 
@@ -324,6 +325,8 @@ async def _attach_contract(
     stage_id = plan.stage_id or an.snap.anchors.seal or an.snap.anchors.s0
     number = plan.contract_number
     if file_row is not None:
+        # файл главнее колонки при расхождении (§4.3, §19.7, P1-6, IMP-178)
+        number = file_row.contract_number or number
         doc = InteractionDocument(
             interaction_id=interaction_id,
             attachment_id=file_row.attachment_id,
@@ -332,10 +335,10 @@ async def _attach_contract(
             title=file_row.title or f"Договор №{number}" if number else "Договор",
             kind="CONTRACT",
             description=file_row.description,
-            contract_number=number or file_row.contract_number,
-            contract_signed_at=plan.contract_signed_at or file_row.contract_signed_at,
-            contract_valid_until=plan.contract_valid_until
-            or file_row.contract_valid_until,
+            contract_number=number,
+            contract_signed_at=file_row.contract_signed_at or plan.contract_signed_at,
+            contract_valid_until=file_row.contract_valid_until
+            or plan.contract_valid_until,
             status="ACTIVE",
         )
         session.add(doc)
