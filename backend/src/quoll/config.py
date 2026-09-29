@@ -3,6 +3,7 @@ from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     keycloak_root_url: str
+    keycloak_public_root_url: str
     keycloak_realm_name: str
     keycloak_client_id: str
     keycloak_client_secret: str

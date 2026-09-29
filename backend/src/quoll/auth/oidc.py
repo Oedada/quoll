@@ -54,7 +54,7 @@ def authorization_url(flow: LoginFlow) -> str:
         "code_challenge_method": "S256",
     }
     return (
-        f"{settings.keycloak_root_url}/realms/{keycloak_client.realm}"
+        f"{settings.keycloak_public_root_url}/realms/{keycloak_client.realm}"
         f"/protocol/openid-connect/auth?{urlencode(params)}"
     )
 
