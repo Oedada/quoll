@@ -13,7 +13,7 @@ from dataclasses import dataclass, field
 from sqlalchemy import exists, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from quoll.auth.models import Manager
+from quoll.auth.models import Manager, User
 from quoll.catalog.models import (
     CloseReason,
     Contact,
@@ -142,6 +142,8 @@ class Snapshot:
     # менеджеры маршрута партии (роль MANAGER), для реестра
     managers: list[Manager] = field(default_factory=list)
     managers_by_id: dict[str, Manager] = field(default_factory=dict)
+    # все пользователи - искать ФИО менеджера и отличать не-менеджера (IMP-167)
+    users: list[User] = field(default_factory=list)
     # занято по снимку - для лимита В3 (16.9), пополняется анализом группы
     manager_load: dict[str, int] = field(default_factory=dict)
     stages: dict[int, Stage] = field(default_factory=dict)
@@ -184,6 +186,7 @@ class Snapshot:
         managers = list(await session.scalars(select(Manager)))
         snap.managers = managers
         snap.managers_by_id = {m.id: m for m in managers}
+        snap.users = list(await session.scalars(select(User)))
         if batch is not None and batch.workflow_id is not None:
             stages = list(
                 await session.scalars(

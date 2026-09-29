@@ -21,6 +21,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from quoll.auth.models import (
     IdentitySyncStatus,
+    Manager,
     ManualWorkloadStatus,
     RoleTransitionStatus,
 )
@@ -258,45 +259,61 @@ def _resolve_branch_refs(an, ctx) -> tuple[Any, Any, Any] | None:
     return vendor_ref, product_ref, program_ref
 
 
+_NAME_TOKEN = re.compile(r"[A-Za-zА-Яа-яЁё\-]+\.?$")
+
+
+def _token_matches(token: str, full: str | None) -> bool:
+    """полное слово - целиком, «И.» - по первой букве (§4.4, P1-10)"""
+    if not full:
+        return False
+    if token.endswith("."):
+        initial = normalize.text_key(token[:-1])
+        return len(initial) == 1 and normalize.text_key(full)[:1] == initial
+    return normalize.text_key(full) == normalize.text_key(token)
+
+
 def _resolve_manager(an, text: str) -> tuple[str | None, list[dict], str | None]:
-    """§16.9: формат, поиск без регистра и «ё». Возвращает (id, кандидаты, ошибка)"""
+    """§16.9: формат, поиск без регистра и «ё». Возвращает (id, кандидаты, ошибка).
+
+    Ищет среди всех пользователей (не только менеджеров), чтобы отличить
+    «не найден» (IMP-004) от «найден, но не менеджер» (IMP-167, P1-10)"""
     text = text.strip()
     if "@" in text:
-        candidates = [
-            m for m in an.snap.managers if (m.email or "").lower() == text.lower()
+        matched = [
+            u for u in an.snap.users if (u.email or "").lower() == text.lower()
         ]
     else:
-        parts = [p for p in text.replace(".", ". ").split() if p]
-        if not parts:
+        tokens = [p for p in text.replace(".", ". ").split() if p]
+        if (
+            not tokens
+            or tokens[0].endswith(".")
+            or any(not _NAME_TOKEN.fullmatch(t) for t in tokens)
+        ):
             return None, [], "IMP-003"
-        last = normalize.text_key(parts[0])
-        rest = [p.rstrip(".") for p in parts[1:]]
-
-        def initial_ok(part: str, full: str) -> bool:
-            return (
-                bool(full)
-                and normalize.text_key(full)[:1] == normalize.text_key(part)[:1]
-            )
-
-        candidates = []
-        for m in an.snap.managers:
-            if normalize.text_key(m.last_name) != last:
-                continue
-            if (
+        last = normalize.text_key(tokens[0])
+        rest = tokens[1:]
+        matched = [
+            u
+            for u in an.snap.users
+            if normalize.text_key(u.last_name) == last
+            and (
                 not rest
-                or initial_ok(rest[0], m.first_name)
-                and (len(rest) == 1 or initial_ok(rest[1], m.patronymic))
-            ):
-                candidates.append(m)
-    if not candidates:
+                or _token_matches(rest[0], u.first_name)
+                and (len(rest) == 1 or _token_matches(rest[1], u.patronymic))
+            )
+        ]
+    if not matched:
         return None, [], "IMP-004"
-    if len(candidates) > 1:
+    managers = [u for u in matched if isinstance(u, Manager)]
+    if not managers:
+        return None, [], "IMP-167"
+    if len(managers) > 1:
         return (
             None,
-            [{"id": m.id, "name": _manager_name(m)} for m in candidates],
+            [{"id": m.id, "name": _manager_name(m)} for m in managers],
             "IMP-005",
         )
-    return candidates[0].id, [], None
+    return managers[0].id, [], None
 
 
 def _manager_name(m) -> str:
