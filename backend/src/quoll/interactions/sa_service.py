@@ -5,6 +5,7 @@ SUPPLEMENTARY_AGREEMENT. Открытие, отправка и применен�
 своих блокировок у ДС и действий нет - их прикрывает взаимодействие
 """
 
+import re
 from datetime import date
 from typing import Any
 
@@ -72,6 +73,7 @@ async def load(
     session: AsyncSession, interaction: Interaction, sa_id: int
 ) -> SupplementaryAgreement:
     sa = await session.get(SupplementaryAgreement, sa_id, populate_existing=True)
+    # нет кода в спеке для этого несоответствия
     if sa is None or sa.interaction_id != interaction.id:
         raise DomainRuleException(
             404, "Supplementary agreement is not in this interaction"
@@ -117,13 +119,18 @@ async def is_forward_exit(
 def require_draft(sa: SupplementaryAgreement) -> None:
     if sa.status != AgreementStatus.DRAFT:
         raise DomainRuleException(
-            409, f"Supplementary agreement is {sa.status}, only a draft is changed"
+            409,
+            f"Supplementary agreement is {sa.status}, only a draft is changed",
+            code="SA-001",
+            params={"status": sa.status},
         )
 
 
 def require_change(scope: InteractionScope) -> None:
     if not can_change(scope.actor, scope.ownership):
-        raise OperationForbiddenException("change agreements of this interaction")
+        raise OperationForbiddenException(
+            "change agreements of this interaction", code="APP-004"
+        )
 
 
 async def actions_of(session: AsyncSession, sa_id: int) -> list[AgreementAction]:
@@ -319,6 +326,52 @@ def _plain(value):
     return value.isoformat() if isinstance(value, date) else value
 
 
+# action_problem() и его хендлеры возвращают текст (используются и для SA-004,
+# где коды пунктов пока не нужны); для одиночного add_action код узнаём здесь
+# по шаблону текста, а не меняем сигнатуры всех хендлеров
+_PROBLEM_CODES: list[tuple[re.Pattern, str, list[str]]] = [
+    (re.compile(r"^branch (\d+) is excluded by this agreement$"), "SA-013", ["branch"]),
+    (
+        re.compile(r"^exclusion is the only action for branch (\d+)$"),
+        "SA-013",
+        ["branch"],
+    ),
+    (
+        re.compile(
+            r"^branch (\d+) of this (?:program and product|pair) is (?:open|live)$"
+        ),
+        "SA-011",
+        ["branch"],
+    ),
+    (re.compile(r"^resume or a new iteration, not both$"), "SA-012", []),
+    (re.compile(r"^branch (\d+) is closed$"), "SA-008", ["branch"]),
+    (
+        re.compile(r"^branch (\d+) has no license yet, fill it on step 5$"),
+        "SA-014",
+        ["branch"],
+    ),
+    (re.compile(r"^new term must be later than (.+)$"), "SA-015", ["date"]),
+    (re.compile(r"^term must be after signing$"), "SA-016", []),
+    (re.compile(r"^branch (\d+) is open$"), "SA-009", ["branch"]),
+    (
+        re.compile(r"^only the latest iteration \d+ of this pair is resumed$"),
+        "SA-010",
+        [],
+    ),
+    (re.compile(r"^branch (\d+) step is archived$"), "APP-025", ["branch"]),
+    (re.compile(r"^no current contract document$"), "SA-017", []),
+    (re.compile(r"is not in the catalog$"), "BR-004", []),
+    (re.compile(r"is not a product of program"), "BR-011", []),
+]
+
+
+def _problem_code(problem: str) -> tuple[str | None, dict | None]:
+    for pattern, code, keys in _PROBLEM_CODES:
+        if m := pattern.search(problem):
+            return code, (dict(zip(keys, m.groups())) if keys else None)
+    return None, None
+
+
 async def add_action(
     session: AsyncSession,
     *,
@@ -334,7 +387,8 @@ async def add_action(
     action = AgreementAction(sa_id=sa.id, **fields)
     others = await actions_of(session, sa.id)
     if problem := await action_problem(session, scope.interaction, action, others):
-        raise DomainRuleException(409, problem)
+        code, params = _problem_code(problem)
+        raise DomainRuleException(409, problem, code=code, params=params)
     session.add(action)
     await session.flush()
     sa_lifecycle.journal(
@@ -361,6 +415,7 @@ async def remove_action(
     sa = await load(session, scope.interaction, sa_id)
     require_draft(sa)
     action = await session.get(AgreementAction, action_id)
+    # нет кода в спеке для этого несоответствия
     if action is None or action.sa_id != sa.id:
         raise DomainRuleException(404, "Action is not in this agreement")
     await session.delete(action)
@@ -440,7 +495,9 @@ async def upload_scan(
     sa = await load(session, interaction, sa_id)
     step = await handler_stage(session, interaction.workflow_id)
     if step is None:
-        raise DomainRuleException(409, "Workflow has no supplementary agreement step")
+        raise DomainRuleException(
+            409, "Workflow has no supplementary agreement step", code="SA-021"
+        )
     return await upload(
         session,
         attachments,
@@ -558,7 +615,7 @@ async def apply(
     for action in actions:
         if action.type == ActionType.NEW_BRANCH:
             if start is None or start.id not in shared:
-                raise DomainRuleException(409, moved)
+                raise DomainRuleException(409, moved, code="SA-020")
             branch = await session.scalar(
                 select(Branch).where(
                     Branch.interaction_id == interaction.id,
@@ -614,10 +671,10 @@ async def apply(
             if stage.id not in shared or (
                 stage.archived_at is not None and not stage.is_terminal
             ):
-                raise DomainRuleException(409, moved)
+                raise DomainRuleException(409, moved, code="SA-020")
             if stage.is_terminal:
                 if start is None or start.id not in shared:
-                    raise DomainRuleException(409, moved)
+                    raise DomainRuleException(409, moved, code="SA-020")
                 license = {
                     "signed_at": _plain(branch.license_signed_at),
                     "term_years": branch.license_term_years,

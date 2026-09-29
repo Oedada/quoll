@@ -109,13 +109,16 @@ async def write_bound(
         level, column, kind = BINDINGS[bind]
         owner = await _owner(session, level, interaction_id, branch_id)
         if owner is None:
-            raise DomainRuleException(409, "Upload the contract before its details")
+            raise DomainRuleException(
+                409, "Upload the contract before its details", code="DOC-018"
+            )
         value = values[key]
         if column == "signed_at":
             await _mark_signed(session, owner, bool(value))
             continue
         value = _coerce(kind, value)
         if column == "transfer_status" and value not in set(TransferStatus):
+            # нет отдельного кода в спеке: значение из формы шага вне enum
             raise DomainRuleException(422, f"Unknown transfer status '{value}'")
         if getattr(owner, column) == value:
             continue
@@ -181,6 +184,8 @@ async def extension_locks(
                     409,
                     "License term was extended by an agreement; "
                     "add EXTEND_LICENSE to change it",
+                    code="SA-018",
+                    params={"what": "лицензии"},
                 )
         elif await session.scalar(
             select(history.id)
@@ -194,6 +199,8 @@ async def extension_locks(
                 409,
                 "Contract term was extended by an agreement; "
                 "add EXTEND_CONTRACT to change it",
+                code="SA-018",
+                params={"what": "договора"},
             )
 
 
@@ -204,7 +211,9 @@ async def _mark_signed(session: AsyncSession, interaction, signed: bool) -> None
 
     if not signed:
         if interaction.no_return_at is not None:
-            raise DomainRuleException(409, "Branches are open, contract stays signed")
+            raise DomainRuleException(
+                409, "Branches are open, contract stays signed", code="BR-016"
+            )
         interaction.signed_at = None
         return
     if interaction.signed_at is not None:
@@ -219,7 +228,9 @@ async def _mark_signed(session: AsyncSession, interaction, signed: bool) -> None
         )
         .limit(1)
     ):
-        raise DomainRuleException(409, "Approve at least one branch before signing")
+        raise DomainRuleException(
+            409, "Approve at least one branch before signing", code="BR-002"
+        )
     interaction.signed_at = datetime.now(BUSINESS_TZ)
 
 
@@ -228,7 +239,9 @@ def _derive_license(branch: Branch) -> None:
     signed, years = branch.license_signed_at, branch.license_term_years
     check_signed_date(signed)
     if years is not None and years <= 0:
-        raise DomainRuleException(422, "License term is a positive number of years")
+        raise DomainRuleException(
+            422, "License term is a positive number of years", code="BR-018"
+        )
     if signed is not None and years is not None:
         branch.license_until = _add_years(signed, int(years))
 
@@ -242,11 +255,15 @@ def _add_years(start: date, years: int) -> date:
 
 def check_signed_date(signed: date | None) -> None:
     if signed is not None and signed > datetime.now(BUSINESS_TZ).date():
-        raise DomainRuleException(422, "Signing date cannot be in the future")
+        raise DomainRuleException(
+            422, "Signing date cannot be in the future", code="DOC-019"
+        )
 
 
 def check_contract_dates(signed: date | None, valid_until: date | None) -> None:
     """системные проверки дат (О 6)"""
     check_signed_date(signed)
     if signed is not None and valid_until is not None and valid_until <= signed:
-        raise DomainRuleException(422, "Contract must be valid after its signing")
+        raise DomainRuleException(
+            422, "Contract must be valid after its signing", code="DOC-020"
+        )

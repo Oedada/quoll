@@ -107,9 +107,15 @@ async def lock_interaction_scope(
             actor = users[actor_id] if actor_id is not None else None
             denial = identity_denial(actor) if actor is not None else None
             if denial is not None:
-                raise IdentityDeniedException(*denial)
+                denial_status, denial_detail = denial
+                denial_code = {401: "AUTH-001", 403: "AUTH-002", 409: "AUTH-003"}[
+                    denial_status
+                ]
+                raise IdentityDeniedException(
+                    denial_status, denial_detail, code=denial_code
+                )
             if interaction.closed_at is not None and not allow_closed:
-                raise DomainRuleException(409, "Interaction is closed")
+                raise DomainRuleException(409, "Interaction is closed", code="APP-010")
             return InteractionScope(
                 interaction=interaction,
                 actor=actor,

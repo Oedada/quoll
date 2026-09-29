@@ -41,7 +41,9 @@ async def resolve(
     """стадия, ветка/прохождение места и проверка «текущий или пройденный»"""
     stage = await session.get(Stage, stage_id)
     if stage is None or stage.workflow_id != interaction.workflow_id:
-        raise DomainRuleException(400, "Stage belongs to another workflow")
+        raise DomainRuleException(
+            400, "Stage belongs to another workflow", code="APP-033"
+        )
     current = interaction.state_id
     pointer = branch = None
     if side_pointer_id is not None:
@@ -53,18 +55,22 @@ async def resolve(
     if branch_id is not None:
         branch = await session.get(Branch, branch_id)
         if branch is None or branch.interaction_id != interaction.id:
-            raise DomainRuleException(404, "Branch is not in this interaction")
+            raise DomainRuleException(
+                404, "Branch is not in this interaction", code="BR-006"
+            )
         if branch.state_id is None:
             raise DomainRuleException(
-                409, "Branch is a draft until the contract is signed"
+                409, "Branch is a draft until the contract is signed", code="BR-013"
             )
         current = branch.state_id
     if stage.is_branch_stage != (branch_id is not None):
-        raise DomainRuleException(400, "Branch stages are filled per branch")
+        raise DomainRuleException(
+            400, "Branch stages are filled per branch", code="BR-008"
+        )
     if stage_id != current and not await _visited(
         session, interaction.id, stage_id, branch_id, side_pointer_id
     ):
-        raise DomainRuleException(409, "Stage is not reached yet")
+        raise DomainRuleException(409, "Stage is not reached yet", code="STEP-006")
     return Place(stage, branch, pointer, current)
 
 

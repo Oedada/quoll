@@ -111,8 +111,9 @@ async def check_graph(
         full=full,
     )
     if problems:
+        # composite WF-001: пункты внутри problems - из graph_policy, без своих кодов
         raise DomainRuleException(
-            409, "Workflow graph is broken: " + "; ".join(problems)
+            409, "Workflow graph is broken: " + "; ".join(problems), code="WF-001"
         )
 
 
@@ -132,7 +133,7 @@ async def publish(session: AsyncSession, workflow_id: int, actor_id: str) -> Non
     """публикуется проходимый граф целиком: заявки не должны застрять"""
     workflow = await lock_workflow(session, workflow_id)
     if workflow.is_published:
-        raise DomainRuleException(409, "Workflow is already published")
+        raise DomainRuleException(409, "Workflow is already published", code="WF-023")
     await check_graph(session, workflow, full=True)
     workflow.is_published = True
     _journal(
@@ -151,7 +152,9 @@ async def delete_workflow(
     """только черновик: по опубликованному могли ехать заявки"""
     workflow = await lock_workflow(session, workflow_id)
     if workflow.is_published:
-        raise DomainRuleException(409, "Published workflow cannot be deleted")
+        raise DomainRuleException(
+            409, "Published workflow cannot be deleted", code="WF-017"
+        )
     _journal(
         session,
         actor_id,
@@ -182,10 +185,14 @@ async def create_stage(
             or parent.is_branch_stage != schema.is_branch_stage
         ):
             raise DomainRuleException(
-                400, "Parent is a main stage of the same workflow and level"
+                400,
+                "Parent is a main stage of the same workflow and level",
+                code="WF-036",
             )
         if parent.is_side:
-            raise DomainRuleException(400, "Side stage cannot have sub-steps")
+            raise DomainRuleException(
+                400, "Side stage cannot have sub-steps", code="WF-036"
+            )
     data = schema.model_dump()
     if schema.handler is not None and await session.scalar(
         select(Stage.id).where(
@@ -195,10 +202,14 @@ async def create_stage(
         )
     ):
         raise DomainRuleException(
-            409, f"Workflow already has a stage with handler {schema.handler}"
+            409,
+            f"Workflow already has a stage with handler {schema.handler}",
+            code="WF-028",
         )
     if schema.passive_after_days is not None and not schema.is_branch_stage:
-        raise DomainRuleException(400, "Only branch stages are long-term")
+        raise DomainRuleException(
+            400, "Only branch stages are long-term", code="WF-032"
+        )
     await _check_binds(
         session, schema.workflow_id, None, schema.is_branch_stage, data["fields"]
     )
@@ -229,7 +240,12 @@ async def _check_binds(
     binds = {f["bind"] for f in fields if f.get("bind")}
     wrong = {b for b in binds if b.startswith("branch.") != is_branch}
     if wrong:
-        raise DomainRuleException(400, f"Bind {sorted(wrong)} is for another level")
+        raise DomainRuleException(
+            400,
+            f"Bind {sorted(wrong)} is for another level",
+            code="WF-033",
+            params={"reason": f"поле для другого уровня: {', '.join(sorted(wrong))}"},
+        )
     others = await session.scalars(
         select(Stage.fields).where(
             Stage.workflow_id == workflow_id,
@@ -239,7 +255,12 @@ async def _check_binds(
     )
     taken = {f.get("bind") for other in others for f in other} & binds
     if taken:
-        raise DomainRuleException(409, f"Bind {sorted(taken)} is on another stage")
+        raise DomainRuleException(
+            409,
+            f"Bind {sorted(taken)} is on another stage",
+            code="WF-033",
+            params={"reason": f"уже занято другим шагом: {', '.join(sorted(taken))}"},
+        )
 
 
 async def _stage(session: AsyncSession, stage_id: int) -> Stage:
@@ -257,7 +278,9 @@ async def update_stage(
     await lock_workflow(session, stage.workflow_id)
     new = changes.model_dump(exclude_unset=True)
     if new.get("passive_after_days") is not None and not stage.is_branch_stage:
-        raise DomainRuleException(400, "Only branch stages are long-term")
+        raise DomainRuleException(
+            400, "Only branch stages are long-term", code="WF-032"
+        )
     if "fields" in new:
         await _check_binds(
             session, stage.workflow_id, stage.id, stage.is_branch_stage, new["fields"]
@@ -285,7 +308,9 @@ async def delete_stage(session: AsyncSession, stage_id: int, actor_id: str) -> N
     workflow = await lock_workflow(session, stage.workflow_id)
     if workflow.is_published:
         raise DomainRuleException(
-            409, "Stage of a published workflow is archived, not deleted"
+            409,
+            "Stage of a published workflow is archived, not deleted",
+            code="WF-021",
         )
     _journal(
         session,
@@ -309,12 +334,17 @@ async def _check_ends(
         if stage_id is None:
             continue
         stage = await _stage(session, stage_id)
+        # то же правило, что WF-002 проверяет по всему графу - здесь на лету
         if stage.workflow_id != workflow_id:
             raise DomainRuleException(
-                400, f"Stage '{stage_id}' belongs to another workflow"
+                400,
+                f"Stage '{stage_id}' belongs to another workflow",
+                code="WF-002",
             )
         if stage.archived_at is not None:
-            raise DomainRuleException(409, f"Stage '{stage_id}' is archived")
+            raise DomainRuleException(
+                409, f"Stage '{stage_id}' is archived", code="WF-002"
+            )
 
 
 async def _check_reject_to(session: AsyncSession, edge: WorkflowTransition) -> None:
@@ -328,7 +358,9 @@ async def _check_reject_to(session: AsyncSession, edge: WorkflowTransition) -> N
             source is not None and source.is_branch_stage != stage.is_branch_stage
         ):
             raise DomainRuleException(
-                400, "reject_to_stage_id must be a working stage of the same part"
+                400,
+                "reject_to_stage_id must be a working stage of the same part",
+                code="WF-014",
             )
 
 
@@ -336,10 +368,14 @@ def _check_rules(edge: WorkflowTransition) -> None:
     # то же держат CHECK-и, но здесь - с понятной причиной вместо 409
     if edge.requires_approval and edge.from_stage_id is None:
         raise DomainRuleException(
-            400, "Entry transition cannot require approval: it is the acceptance"
+            400,
+            "Entry transition cannot require approval: it is the acceptance",
+            code="WF-013",
         )
     if edge.reject_to_stage_id is not None and not edge.requires_approval:
-        raise DomainRuleException(400, "reject_to_stage_id needs requires_approval")
+        raise DomainRuleException(
+            400, "reject_to_stage_id needs requires_approval", code="WF-015"
+        )
 
 
 async def _check_kinds(session: AsyncSession, edge: WorkflowTransition) -> None:
@@ -353,7 +389,10 @@ async def _check_kinds(session: AsyncSession, edge: WorkflowTransition) -> None:
     )
     if wanted - known:
         raise DomainRuleException(
-            400, f"Unknown document kinds: {', '.join(sorted(wanted - known))}"
+            400,
+            f"Unknown document kinds: {', '.join(sorted(wanted - known))}",
+            code="WF-037",
+            params={"kinds": sorted(wanted - known)},
         )
 
 
@@ -442,7 +481,9 @@ async def delete_transition(
     workflow, edge = await _lock_edge(session, transition_id)
     if workflow.is_published:
         raise DomainRuleException(
-            409, "Transition of a published workflow is deactivated, not deleted"
+            409,
+            "Transition of a published workflow is deactivated, not deleted",
+            code="WF-022",
         )
     _journal(
         session,
@@ -464,7 +505,7 @@ async def change_start_stage(
     workflow = await lock_workflow(session, workflow_id)
     await _check_ends(session, workflow.id, [stage_id])
     if (await _stage(session, stage_id)).is_terminal:
-        raise DomainRuleException(400, "Start stage cannot be terminal")
+        raise DomainRuleException(400, "Start stage cannot be terminal", code="WF-004")
     current = (
         await session.scalars(
             select(WorkflowTransition).where(
@@ -598,7 +639,9 @@ async def archive_stage(
     workflow = await lock_workflow(session, stage.workflow_id)
     if not workflow.is_published:
         raise DomainRuleException(
-            409, "Stage of a draft workflow is deleted, not archived"
+            409,
+            "Stage of a draft workflow is deleted, not archived",
+            code="WF-020",
         )
     # UPDATE берёт строку стадии: переход в неё, начатый раньше, архивация
     # дождётся, начатый позже - увидит архив и откажет
@@ -611,17 +654,21 @@ async def archive_stage(
         )
     ).scalar_one_or_none()
     if archived is None:
-        raise DomainRuleException(409, "Stage is already archived")
+        raise DomainRuleException(409, "Stage is already archived", code="WF-019")
     await session.refresh(stage)
     if stage.handler == SUPPLEMENTARY_AGREEMENT and await _open_agreements(
         session, workflow.id
     ):
         raise DomainRuleException(
-            409, "Finish or cancel open supplementary agreements first"
+            409,
+            "Finish or cancel open supplementary agreements first",
+            code="WF-034",
         )
     if stage.is_side and await _active_side_pointers(session, stage.id):
         raise DomainRuleException(
-            409, "Side pointers stand on this stage, finish or cancel them first"
+            409,
+            "Side pointers stand on this stage, finish or cancel them first",
+            code="WF-035",
         )
 
     # ветки своих блокировок не имеют - берём их взаимодействия
@@ -660,6 +707,7 @@ async def archive_stage(
                 409,
                 "Relocation target must be an active stage of this workflow with "
                 "the same terminality and level; pass it explicitly",
+                code="WF-018",
             )
         await session.execute(
             update(Interaction)

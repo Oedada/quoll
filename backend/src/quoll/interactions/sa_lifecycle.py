@@ -128,7 +128,9 @@ async def open_for_pass(
         )
     )
     if unfinished is not None:
-        raise DomainRuleException(409, f"Agreement {unfinished.id} is not finished yet")
+        raise DomainRuleException(
+            409, f"Agreement {unfinished.id} is not finished yet", code="SA-002"
+        )
     sa = SupplementaryAgreement(
         interaction_id=interaction.id,
         side_pointer_id=pass_id,

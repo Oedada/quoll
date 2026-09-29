@@ -47,11 +47,15 @@ async def open_branch(
 ) -> Branch:
     branch = await session.get(Branch, branch_id, populate_existing=True)
     if branch is None or branch.interaction_id != scope.interaction.id:
-        raise DomainRuleException(404, "Branch is not in this interaction")
+        raise DomainRuleException(
+            404, "Branch is not in this interaction", code="BR-006"
+        )
     if branch.state_id is None:
-        raise DomainRuleException(409, "Branch is a draft until the contract is signed")
+        raise DomainRuleException(
+            409, "Branch is a draft until the contract is signed", code="BR-013"
+        )
     if branch.closed_at is not None:
-        raise DomainRuleException(409, "Branch is closed")
+        raise DomainRuleException(409, "Branch is closed", code="BR-001")
     return branch
 
 
@@ -68,10 +72,10 @@ async def move(
     await share_stage(session, to_stage_id)
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_change(scope.actor, scope.ownership):
-        raise OperationForbiddenException("move this interaction")
+        raise OperationForbiddenException("move this interaction", code="APP-004")
     branch = await open_branch(session, scope, branch_id)
     if branch.state_id != expected_state_id:
-        raise StaleStateException("Branch stage", branch.state_id)
+        raise StaleStateException("Branch stage", branch.state_id, code="APP-003")
     return await move_locked(
         session, scope, branch, to_stage_id=to_stage_id, comment=comment, approved=False
     )
@@ -89,16 +93,24 @@ async def move_locked(
     """ход ветки по ребру; его зовёт и одобрение аппрува"""
     interaction = scope.interaction
     if to_stage_id == branch.state_id:
-        raise DomainRuleException(409, "Branch is already on this stage")
+        raise DomainRuleException(
+            409, "Branch is already on this stage", code="APP-022"
+        )
     current = await session.get(Stage, branch.state_id)
     target = await lock_target_stage(session, to_stage_id)
     if target.workflow_id != interaction.workflow_id or not target.is_branch_stage:
-        raise DomainRuleException(400, "Branch moves along branch stages")
+        raise DomainRuleException(
+            400, "Branch moves along branch stages", code="BR-007"
+        )
     edge = await active_edge(session, interaction.workflow_id, current, target)
     if edge is None:
-        raise DomainRuleException(409, "No active transition between these stages")
+        raise DomainRuleException(
+            409, "No active transition between these stages", code="APP-023"
+        )
     if edge.is_backward and not comment:
-        raise DomainRuleException(422, "Backward transition needs a comment")
+        raise DomainRuleException(
+            422, "Backward transition needs a comment", code="APP-028"
+        )
     await check_step(
         session, interaction, current, edge, approved=approved, branch_id=branch.id
     )
@@ -146,7 +158,9 @@ async def return_locked(
         or not target.is_branch_stage
         or target.is_terminal
     ):
-        raise DomainRuleException(400, "Return goes to a working branch stage")
+        raise DomainRuleException(
+            400, "Return goes to a working branch stage", code="APP-035"
+        )
     return await _place(
         session,
         scope,
@@ -174,12 +188,14 @@ async def rollback(
     await share_stage(session, to_stage_id)
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_close(scope.actor, scope.ownership):
-        raise OperationForbiddenException("roll back this interaction")
+        raise OperationForbiddenException("roll back this interaction", code="APP-005")
     branch = await open_branch(session, scope, branch_id)
     if branch.state_id != expected_state_id:
-        raise StaleStateException("Branch stage", branch.state_id)
+        raise StaleStateException("Branch stage", branch.state_id, code="APP-003")
     if to_stage_id == branch.state_id:
-        raise DomainRuleException(409, "Branch is already on this stage")
+        raise DomainRuleException(
+            409, "Branch is already on this stage", code="APP-022"
+        )
     visited = await session.scalar(
         select(
             exists().where(
@@ -198,7 +214,7 @@ async def rollback(
     facts = [EdgeFacts(e.from_stage_id, e.to_stage_id) for e in edges]
     if not visited or not leads_to(facts, to_stage_id, branch.state_id):
         raise DomainRuleException(
-            409, "Rollback goes back to a stage the branch passed"
+            409, "Rollback goes back to a stage the branch passed", code="APP-018"
         )
     return await return_locked(
         session,
@@ -222,7 +238,7 @@ async def close(
     """руководитель владельца закрывает ветку сам; менеджер - просьбой"""
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_close(scope.actor, scope.ownership):
-        raise OperationForbiddenException("close this branch")
+        raise OperationForbiddenException("close this branch", code="APP-005")
     branch = await open_branch(session, scope, branch_id)
     return await close_locked(
         session, scope, branch, close_reason_id=close_reason_id, comment=comment
@@ -348,7 +364,7 @@ async def pause(
     """пауза одной ветки (10.2/16): слот КАМа не трогает - он у заявки"""
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_pause(scope.actor, scope.ownership):
-        raise OperationForbiddenException("pause this branch")
+        raise OperationForbiddenException("pause this branch", code="APP-004")
     branch = await open_branch(session, scope, branch_id)
     return await pause_locked(session, scope, branch, until=until, comment=comment)
 
@@ -365,7 +381,9 @@ async def pause_locked(
     вызывающего (у импорта - свои проверки, §19.2)"""
     actor_id = scope.actor.id if scope.actor else None
     if until is None and branch.pause_state == PauseState.PAUSED_MANUAL:
-        raise DomainRuleException(409, "Branch is already paused without a term")
+        raise DomainRuleException(
+            409, "Branch is already paused without a term", code="BR-014"
+        )
     if until is not None:
         check_pause_term(until)
     old = branch.pause_state
@@ -398,10 +416,10 @@ async def unpause(
 ) -> Branch:
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_pause(scope.actor, scope.ownership):
-        raise OperationForbiddenException("resume this branch")
+        raise OperationForbiddenException("resume this branch", code="APP-004")
     branch = await open_branch(session, scope, branch_id)
     if branch.pause_state == PauseState.ACTIVE:
-        raise DomainRuleException(409, "Branch is not paused")
+        raise DomainRuleException(409, "Branch is not paused", code="BR-015")
     resume_branch(session, branch, actor_id)
     await session.flush()
     await session.refresh(branch)

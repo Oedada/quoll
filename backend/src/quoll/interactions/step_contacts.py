@@ -29,7 +29,10 @@ async def _own(session: AsyncSession, contact_id: Any, university_id: int) -> Co
     )
     if contact is None or contact.university_id != university_id:
         raise DomainRuleException(
-            400, f"Contact '{contact_id}' is not of this university"
+            400,
+            f"Contact '{contact_id}' is not of this university",
+            code="STEP-007",
+            params={"contact": contact.full_name if contact else str(contact_id)},
         )
     return contact
 
