@@ -159,11 +159,11 @@ async def start(
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_change(scope.actor, scope.ownership):
         raise OperationForbiddenException("start a side pointer of this interaction")
-    entry = await _entry_stage(session, scope, stage_id)
+    entry = await entry_stage(session, scope, stage_id)
     return await start_locked(session, scope, entry, comment)
 
 
-async def _entry_stage(
+async def entry_stage(
     session: AsyncSession, scope: InteractionScope, stage_id: int
 ) -> Stage:
     """стадия входа доп. прохождения: структурные проверки, общие у ручного
@@ -244,7 +244,7 @@ async def start_locked(
     comment: str | None,
 ) -> SidePointer:
     """создание указателя под уже захваченной областью и проверенным входом
-    (`_entry_stage`) - его зовёт и импорт (§19.5). Право не проверяется - оно
+    (`entry_stage`) - его зовёт и импорт (§19.5). Право не проверяется - оно
     у обёртки (у импорта - право ручек /imports, В6)"""
     interaction = scope.interaction
     actor_id = scope.actor.id if scope.actor else None

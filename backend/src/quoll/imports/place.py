@@ -23,6 +23,7 @@ from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.catalog import service as catalog_service
 from quoll.catalog.models import CloseLevel, Contact
 from quoll.catalog.schemas import ContactPatch, ContactWrite
+from quoll.core.exceptions import DomainRuleException
 from quoll.imports import apply, normalize
 from quoll.imports.analysis import Analysis
 from quoll.imports.errors import import_error
@@ -558,8 +559,14 @@ async def _apply_contacts(
 
 async def _open_agreement(session, batch, scope, an: Analysis, plan: GroupPlan) -> None:
     agr_stage = an.snap.stages[an.snap.anchors.agr]
+    # P1-5: то же ребро/аппрув/точку-возврата и «одно активное» проверяет
+    # ручной старт (Д49); анализ (registry.py) видит только «подписана»
+    try:
+        entry = await side_pointer_service.entry_stage(session, scope, agr_stage.id)
+    except DomainRuleException as err:
+        raise import_error(409, "IMP-172", err.message) from err
     pointer = await side_pointer_service.start_locked(
-        session, scope, agr_stage, comment=f"import #{batch.id}"
+        session, scope, entry, comment=f"import #{batch.id}"
     )
     at = _midnight(plan.agreement_since)
     if at is not None:
