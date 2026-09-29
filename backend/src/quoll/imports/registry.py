@@ -279,9 +279,7 @@ def _resolve_manager(an, text: str) -> tuple[str | None, list[dict], str | None]
     «не найден» (IMP-004) от «найден, но не менеджер» (IMP-167, P1-10)"""
     text = text.strip()
     if "@" in text:
-        matched = [
-            u for u in an.snap.users if (u.email or "").lower() == text.lower()
-        ]
+        matched = [u for u in an.snap.users if (u.email or "").lower() == text.lower()]
     else:
         tokens = [p for p in text.replace(".", ". ").split() if p]
         if (
@@ -719,14 +717,14 @@ async def _compare_with_db(session: AsyncSession, an, plan: GroupPlan) -> None:
     if decision == "SKIP":
         plan.decision = "SKIP"
     elif decision == "REPLACE":
-        fingerprint = _fingerprint(interaction, state.branches)
+        current = fingerprint(interaction, state.branches)
         stored = next(
             (r.row.replace_target for r in plan.rows if r.row.replace_target), None
         )
         if (
             stored
             and stored.get("interaction_id") == interaction.id
-            and stored.get("fingerprint") == fingerprint
+            and stored.get("fingerprint") == current
         ):
             plan.decision = "REPLACE"
             plan.replace_target = stored
@@ -735,7 +733,7 @@ async def _compare_with_db(session: AsyncSession, an, plan: GroupPlan) -> None:
                 r.add("IMP-186", None)
 
 
-def _fingerprint(interaction, branches: list) -> str:
+def fingerprint(interaction, branches: list) -> str:
     payload = [
         interaction.state_id,
         interaction.owner_id,

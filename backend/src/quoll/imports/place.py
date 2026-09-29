@@ -27,7 +27,7 @@ from quoll.imports import apply, normalize
 from quoll.imports.analysis import Analysis
 from quoll.imports.errors import import_error
 from quoll.imports.models import ImportFile
-from quoll.imports.registry import BranchPlan, GroupPlan
+from quoll.imports.registry import BranchPlan, GroupPlan, fingerprint
 from quoll.interactions import (
     branch_service,
     contract_service,
@@ -250,6 +250,8 @@ async def _branch_row(
 
 
 async def _replace_old(session: AsyncSession, batch, plan: GroupPlan) -> int:
+    """P1-4/M17: отпечаток заявки сверяется под блокировкой, а не только
+    на анализе - между решением REPLACE и захватом заявку могли изменить"""
     target = plan.replace_target
     old_id = target["interaction_id"]
     scope_old = await lock_interaction_scope(
@@ -257,9 +259,15 @@ async def _replace_old(session: AsyncSession, batch, plan: GroupPlan) -> int:
         old_id,
         None,
         target_manager_ids=[plan.manager_id] if plan.manager_id else [],
+        # закрытую тоже нужно прочитать - иначе сверить отпечаток не с чем
         allow_closed=True,
     )
     old = scope_old.interaction
+    old_branches = list(
+        await session.scalars(select(Branch).where(Branch.interaction_id == old.id))
+    )
+    if fingerprint(old, old_branches) != target.get("fingerprint"):
+        raise import_error(409, "IMP-190", "Replace target changed since the decision")
     if old.state_id is None:
         await project_service.cancel_draft_locked(
             session,

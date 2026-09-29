@@ -505,7 +505,7 @@ async def patch_row(
 
 async def _replace_target(session: AsyncSession, batch: ImportBatch, group_key: str):
     """отпечаток заявки на решение REPLACE (§16.10, §21) - свежим анализом"""
-    from quoll.imports.registry import _fingerprint
+    from quoll.imports.registry import fingerprint
 
     an = await analysis.analyze(session, batch)
     plan = an.groups.get(group_key)
@@ -516,7 +516,7 @@ async def _replace_target(session: AsyncSession, batch: ImportBatch, group_key: 
         raise import_error(409, "IMP-011", "No interaction to replace")
     return {
         "interaction_id": state.interaction.id,
-        "fingerprint": _fingerprint(state.interaction, state.branches),
+        "fingerprint": fingerprint(state.interaction, state.branches),
     }
 
 
