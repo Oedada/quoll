@@ -277,7 +277,7 @@ async def _group_unit(
                         row.result = RowResult.SKIPPED
                         row.result_code = _skip_code(row)
                 else:
-                    await _apply_group(db, batch, an, fresh, group_key, rows)
+                    await _apply_group(db, batch, an, fresh, rows)
                 _progress(batch, len(rows))
         except Stopped:
             raise
@@ -291,10 +291,21 @@ async def _apply_group(
     batch: ImportBatch,
     an: analysis.Analysis,
     fresh: dict[int, analysis.RowCtx],
-    group_key: str,
     rows: list[ImportRow],
 ) -> None:
-    plan = an.groups.get(group_key)
+    """P1-2: план ищем по свежему group_key (из только что пересчитанного
+    fresh), а не по сохранённому на строке - за время между превью и
+    применением ключ вуза, созданного этой же партией, меняется с
+    «r:<row_id>» на «u:<id>» (В14, каталоги применяются раньше реестра)"""
+    fresh_key = next(
+        (
+            fresh[r.id].group_key
+            for r in rows
+            if r.id in fresh and fresh[r.id].group_key
+        ),
+        None,
+    )
+    plan = an.groups.get(fresh_key) if fresh_key else None
     try:
         async with db.begin_nested():
             # перепроверка (M3, M17): ошибка/конфликт или план потерян -> не применяется
