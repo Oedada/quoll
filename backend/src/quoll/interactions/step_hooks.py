@@ -38,10 +38,14 @@ async def check_leave(
 
         sa = await sa_service.open_of_pass(session, scope.interaction.id, pass_id)
         if sa is None:
-            raise DomainRuleException(409, "Agreement is not ready: it is not open")
-        if problems := await sa_service.problems(session, scope.interaction, sa):
             raise DomainRuleException(
-                409, "Agreement is not ready: " + "; ".join(problems)
+                409, "Agreement is not ready: it is not open", code="SA-003"
+            )
+        if problems := await sa_service.problems(session, scope.interaction, sa):
+            # composite SA-004: пункты внутри problems пока без своих кодов
+            # (как APP-026/WF-001, но структурирование - отдельная задача)
+            raise DomainRuleException(
+                409, "Agreement is not ready: " + "; ".join(problems), code="SA-004"
             )
 
 

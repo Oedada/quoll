@@ -24,13 +24,19 @@ async def check_reason(
     allow_system: bool = False,
 ) -> CloseReason:
     reason = await session.get(CloseReason, reason_id)
+    # нет кода в спеке: неверный уровень причины - ошибка запроса, а не пользователя
     if reason is None or reason.level != level:
         raise DomainRuleException(400, f"Close reason '{reason_id}' is not for {level}")
-    # «исключена допсоглашением» ставит только одобрение ДС (О 10)
+    # «исключена допсоглашением» ставит только одобрение ДС (О 10); нет кода в спеке
     if reason.is_system and not allow_system:
         raise DomainRuleException(400, f"Reason '{reason.code}' is set by the system")
     if reason.needs_comment and not comment:
-        raise DomainRuleException(422, f"Reason '{reason.code}' needs a comment")
+        raise DomainRuleException(
+            422,
+            f"Reason '{reason.code}' needs a comment",
+            code="APP-047",
+            params={"reason": reason.code},
+        )
     return reason
 
 

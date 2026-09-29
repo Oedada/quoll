@@ -37,10 +37,14 @@ async def _draft_scope(
 ) -> InteractionScope:
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_change(scope.actor, scope.ownership):
-        raise OperationForbiddenException("change branches of this interaction")
+        raise OperationForbiddenException(
+            "change branches of this interaction", code="APP-004"
+        )
     if scope.interaction.no_return_at is not None:
         raise DomainRuleException(
-            409, "Contract is signed, branches change by a supplementary agreement"
+            409,
+            "Contract is signed, branches change by a supplementary agreement",
+            code="BR-003",
         )
     return scope
 
@@ -51,12 +55,16 @@ async def check_pair(
     """программа из каталога, продукт - один из её продуктов"""
     program = await session.get(ItProgram, program_id)
     if program is None or not program.is_active:
-        raise DomainRuleException(400, f"Program '{program_id}' is not in the catalog")
+        raise DomainRuleException(
+            400, f"Program '{program_id}' is not in the catalog", code="BR-004"
+        )
     if product_id is not None and product_id not in {
         p.id for p in program.products if p.is_active
     }:
         raise DomainRuleException(
-            400, f"Product '{product_id}' is not a product of program '{program_id}'"
+            400,
+            f"Product '{product_id}' is not a product of program '{program_id}'",
+            code="BR-011",
         )
 
 
@@ -81,7 +89,9 @@ async def draft_branch(
         )
     )
     if taken:
-        raise DomainRuleException(409, "This program and product are already here")
+        raise DomainRuleException(
+            409, "This program and product are already here", code="BR-012"
+        )
     branch = Branch(
         interaction_id=interaction_id,
         program_id=program_id,
@@ -154,7 +164,9 @@ async def remove_branch(
 async def _draft(session: AsyncSession, interaction_id: int, branch_id: int) -> Branch:
     branch = await session.get(Branch, branch_id)
     if branch is None or branch.interaction_id != interaction_id:
-        raise DomainRuleException(404, "Branch is not in this interaction")
+        raise DomainRuleException(
+            404, "Branch is not in this interaction", code="BR-006"
+        )
     return branch
 
 
@@ -198,7 +210,9 @@ async def open_branches(
         )
     )
     if not approved:
-        raise DomainRuleException(409, "Approve at least one branch before signing")
+        raise DomainRuleException(
+            409, "Approve at least one branch before signing", code="BR-002"
+        )
     # ветка могла встать на начало раньше (ДС через доп. указатель на 4.1
     # применяет NEW_BRANCH сразу) - на начало ставим и пишем историю только
     # тем, у кого шага ещё нет (P2-4)
@@ -249,15 +263,17 @@ async def active_pass(
 ) -> SidePointer:
     """доп. прохождение, в которое пишут: завершённое - только чтение (Д41)"""
     pointer = await session.get(SidePointer, side_pointer_id, populate_existing=True)
+    # нет кода в спеке для этого несоответствия (аналог BR-006, но для доп. прохождения)
     if pointer is None or pointer.interaction_id != interaction_id:
         raise DomainRuleException(404, "Side pointer is not in this interaction")
     if pointer.status != SidePointerStatus.ACTIVE:
-        raise DomainRuleException(409, "Side pass is finished")
+        raise DomainRuleException(409, "Side pass is finished", code="APP-056")
     return pointer
 
 
 def check_side_target(stage: Stage, branch_id: int | None) -> None:
     """доп. прохождение заявки заполняет только доп. шаги и без веток"""
+    # нет кода в спеке для обоих случаев ниже
     if branch_id is not None:
         raise DomainRuleException(
             400, "Side pass of the interaction has no branch values"
@@ -426,6 +442,7 @@ async def seal_imported(
             )
         )
         if branch is None:
+            # внутренняя проверка целостности импорта, нет кода в спеке
             raise DomainRuleException(
                 409, f"Branch for program '{row.program_id}' is missing"
             )

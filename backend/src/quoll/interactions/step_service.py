@@ -40,7 +40,9 @@ async def set_values(
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     interaction = scope.interaction
     if not can_change(scope.actor, scope.ownership):
-        raise OperationForbiddenException("fill steps of this interaction")
+        raise OperationForbiddenException(
+            "fill steps of this interaction", code="APP-004"
+        )
     # у шага ветки - значения своей ветки, у шага договора - общие, у доп.
     # прохождения - свои
     place = await step_place.resolve(
@@ -52,7 +54,8 @@ async def set_values(
     )
     stage, current = place.stage, place.current
     if problems := value_problems(stage.fields, values):
-        raise DomainRuleException(422, "; ".join(problems))
+        # composite STEP-001: пункты внутри problems - из step_policy (вне области задачи)
+        raise DomainRuleException(422, "; ".join(problems), code="STEP-001")
     # контакты - сразу в справочник, в шаге остаётся ссылка
     values = await step_contacts.resolve(
         session, stage, interaction.university_id, values, actor_id
@@ -127,7 +130,7 @@ async def decide(
     """руководитель владельца решает по ждущей правке пройденного шага"""
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_close(scope.actor, scope.ownership):
-        raise OperationForbiddenException("decide on step values")
+        raise OperationForbiddenException("decide on step values", code="APP-005")
     if side_pointer_id is not None:
         await contract_service.active_pass(session, interaction_id, side_pointer_id)
     row = await session.scalar(
@@ -143,7 +146,9 @@ async def decide(
         .execution_options(populate_existing=True)
     )
     if row is None or row.pending_values is None:
-        raise DomainRuleException(409, "No step values wait for a decision")
+        raise DomainRuleException(
+            409, "No step values wait for a decision", code="STEP-005"
+        )
     author, pending = row.pending_by, row.pending_values
     row.pending_values = None
     row.pending_by = None

@@ -95,14 +95,18 @@ async def upload(
     repo = InteractionRepository(session)
     interaction = await repo.get(interaction_id)
     if not can_change(actor, await repo.ownership(interaction)):
-        raise OperationForbiddenException("attach documents to this interaction")
+        raise OperationForbiddenException(
+            "attach documents to this interaction", code="APP-004"
+        )
     await _check_stage(session, interaction.workflow_id, stage_id, branch_id)
 
     attachment = await attachments.upload_attachment(file)
     try:
         scope = await lock_interaction_scope(session, interaction_id, actor.id)
         if not can_change(scope.actor, scope.ownership):
-            raise OperationForbiddenException("attach documents to this interaction")
+            raise OperationForbiddenException(
+                "attach documents to this interaction", code="APP-004"
+            )
         pointer = None
         if side_pointer_id is not None:
             pointer = await contract_service.active_pass(
@@ -117,7 +121,9 @@ async def upload(
                 session, interaction_id, replaces_document_id
             )
             if previous.side_pointer_id != side_pointer_id:
-                raise DomainRuleException(400, "New version stays in its pass")
+                raise DomainRuleException(
+                    400, "New version stays in its pass", code="DOC-009"
+                )
             # версия живёт на стадии прежней или на её подшаге (Д6) - иначе
             # замена из текущего шага обошла бы аппрув правки пройденного
             stage = await session.get(Stage, stage_id)
@@ -128,6 +134,7 @@ async def upload(
                 raise DomainRuleException(
                     400,
                     "New version goes to the stage of the replaced one or its sub-step",
+                    code="DOC-009",
                 )
         await _check_agreement_scan(
             session, scope.interaction, stage_id, previous, supplementary_agreement_id
@@ -142,16 +149,22 @@ async def upload(
         # вид мог прийти и от заменяемой версии
         if pointer is not None and values.kind in CONTRACT_DOCUMENT_KINDS:
             raise DomainRuleException(
-                400, "Contract changes only through agreement actions"
+                400,
+                "Contract changes only through agreement actions",
+                code="SA-019",
             )
         current = scope.interaction.state_id
         if branch_id is not None:
             branch = await session.get(Branch, branch_id)
             if branch is None or branch.interaction_id != interaction_id:
-                raise DomainRuleException(404, "Branch is not in this interaction")
+                raise DomainRuleException(
+                    404, "Branch is not in this interaction", code="BR-006"
+                )
             if branch.state_id is None:
                 raise DomainRuleException(
-                    409, "Branch is a draft until the contract is signed"
+                    409,
+                    "Branch is a draft until the contract is signed",
+                    code="BR-013",
                 )
             current = branch.state_id
         # правка файла пройденного шага - с аппрувом руководителя (AS IS);
@@ -235,22 +248,31 @@ async def _check_agreement_scan(
     обычная загрузка на 4.1 - только после подписания"""
     if sa_id is not None:
         sa = await session.get(SupplementaryAgreement, sa_id, populate_existing=True)
+        # нет кода в спеке для этого несоответствия
         if sa is None or sa.interaction_id != interaction.id:
             raise DomainRuleException(
                 404, "Supplementary agreement is not in this interaction"
             )
         if sa.status != AgreementStatus.DRAFT:
             raise DomainRuleException(
-                409, f"Supplementary agreement is {sa.status}, only a draft is changed"
+                409,
+                f"Supplementary agreement is {sa.status}, only a draft is changed",
+                code="SA-001",
+                params={"status": sa.status},
             )
+        # нет кода в спеке: замена скана другого допсоглашения
         if previous is not None and previous.supplementary_agreement_id != sa_id:
             raise DomainRuleException(400, "Replace a scan of this agreement")
         if previous is None and await current_scan(session, sa_id) is not None:
-            raise DomainRuleException(409, "Agreement already has a scan, replace it")
+            raise DomainRuleException(
+                409, "Agreement already has a scan, replace it", code="SA-006"
+            )
         return
     if previous is not None and previous.supplementary_agreement_id is not None:
         raise DomainRuleException(
-            400, "Supplementary agreement scan is replaced through the agreement"
+            400,
+            "Supplementary agreement scan is replaced through the agreement",
+            code="SA-007",
         )
 
 
@@ -318,26 +340,35 @@ async def _document_values(
             meta=fields.meta,
         )
     if fields.kind is None:
-        raise DomainRuleException(422, "Document kind is required")
+        raise DomainRuleException(422, "Document kind is required", code="DOC-014")
+    # нет кода в спеке: код вида не найден в справочнике
     if not await session.scalar(
         select(exists().where(DocumentKind.code == fields.kind))
     ):
         raise DomainRuleException(400, f"Unknown document kind '{fields.kind}'")
     if fields.kind == "OTHER" and not fields.description:
-        raise DomainRuleException(422, "Describe a document of kind OTHER")
+        raise DomainRuleException(
+            422, "Describe a document of kind OTHER", code="DOC-015"
+        )
     if fields.kind == "SUPPLEMENTARY_AGREEMENT" and not for_agreement:
         raise DomainRuleException(
-            400, "Supplementary agreement scan is uploaded through the agreement"
+            400,
+            "Supplementary agreement scan is uploaded through the agreement",
+            code="SA-007",
         )
     if fields.kind in CONTRACT_KINDS and branch_id is not None:
         raise DomainRuleException(
-            400, "Contracts and supplementary agreements are not branch files"
+            400,
+            "Contracts and supplementary agreements are not branch files",
+            code="DOC-016",
         )
     has_contract_fields = any(
         (fields.contract_number, fields.contract_signed_at, fields.contract_valid_until)
     )
     if fields.kind != "CONTRACT" and has_contract_fields:
-        raise DomainRuleException(400, "Contract details belong to a contract")
+        raise DomainRuleException(
+            400, "Contract details belong to a contract", code="DOC-017"
+        )
     check_contract_dates(fields.contract_signed_at, fields.contract_valid_until)
     return fields
 
@@ -348,15 +379,26 @@ async def _check_stage(
     """только структура: стадия из воркфлоу этого взаимодействия и живая"""
     if workflow_id is None:
         raise DomainRuleException(
-            409, "Interaction has no workflow yet, no stages to attach to"
+            409,
+            "Interaction has no workflow yet, no stages to attach to",
+            code="DOC-006",
         )
     stage = await session.get(Stage, stage_id)
     if stage is None or stage.workflow_id != workflow_id:
-        raise DomainRuleException(400, "Stage belongs to another workflow")
+        raise DomainRuleException(
+            400, "Stage belongs to another workflow", code="APP-033"
+        )
     if stage.archived_at is not None:
-        raise DomainRuleException(409, f"Stage '{stage_id}' is archived")
+        raise DomainRuleException(
+            409,
+            f"Stage '{stage_id}' is archived",
+            code="APP-025",
+            params={"step": stage.name},
+        )
     if stage.is_branch_stage != (branch_id is not None):
-        raise DomainRuleException(400, "Files of branch stages belong to a branch")
+        raise DomainRuleException(
+            400, "Files of branch stages belong to a branch", code="BR-008"
+        )
 
 
 async def _check_replaceable(
@@ -365,7 +407,7 @@ async def _check_replaceable(
     previous = await session.get(InteractionDocument, document_id)
     if previous is None or previous.interaction_id != interaction_id:
         raise DomainRuleException(
-            409, "Replaced document belongs to another interaction"
+            409, "Replaced document belongs to another interaction", code="DOC-010"
         )
     successor = await session.scalar(
         select(InteractionDocument.id).where(
@@ -374,7 +416,9 @@ async def _check_replaceable(
     )
     if successor is not None:
         raise DomainRuleException(
-            409, f"Document is already replaced by '{successor}', replace that one"
+            409,
+            f"Document is already replaced by '{successor}', replace that one",
+            code="DOC-004",
         )
     return previous
 
@@ -421,7 +465,7 @@ async def delete_document(
     строку и возвращает None, в S3 обращаться не за чем"""
     found = await session.get(InteractionDocument, document_id)
     if found is None:
-        raise IdNotExistsException(InteractionDocument.__name__)
+        raise IdNotExistsException(InteractionDocument.__name__, code="DOC-003")
     # под захватом области: иначе параллельная замена раздвоила бы цепочку
     await lock_interaction_scope(session, found.interaction_id, actor_id)
     document = await session.get(
@@ -429,7 +473,7 @@ async def delete_document(
     )
     if document is None:
         # удалили параллельно, пока ждали блокировку
-        raise IdNotExistsException(InteractionDocument.__name__)
+        raise IdNotExistsException(InteractionDocument.__name__, code="DOC-003")
     attachment = (
         await session.get(Attachment, document.attachment_id)
         if document.attachment_id is not None
@@ -484,15 +528,20 @@ async def decide(
     """руководитель владельца одобряет или отклоняет файл на пройденный шаг"""
     found = await session.get(InteractionDocument, document_id)
     if found is None:
-        raise IdNotExistsException(InteractionDocument.__name__)
+        raise IdNotExistsException(InteractionDocument.__name__, code="DOC-003")
     scope = await lock_interaction_scope(session, found.interaction_id, actor_id)
     if not can_close(scope.actor, scope.ownership):
-        raise OperationForbiddenException("decide on this document")
+        raise OperationForbiddenException("decide on this document", code="APP-005")
     document = await session.get(
         InteractionDocument, document_id, populate_existing=True
     )
     if document.status != DocumentStatus.PENDING:
-        raise DomainRuleException(409, f"Document is already {document.status}")
+        raise DomainRuleException(
+            409,
+            f"Document is already {document.status}",
+            code="DOC-005",
+            params={"status": document.status},
+        )
     if document.side_pointer_id is not None:
         await contract_service.active_pass(
             session, document.interaction_id, document.side_pointer_id
@@ -547,7 +596,7 @@ async def check_attachment_readable(
     только админу: иначе он стал бы «шаблоном» для всех, как только от него
     отвязали документ"""
     if await session.get(Attachment, attachment_id) is None:
-        raise IdNotExistsException(Attachment.__name__)
+        raise IdNotExistsException(Attachment.__name__, code="DOC-003")
     document = await session.scalar(
         select(InteractionDocument).where(
             InteractionDocument.attachment_id == attachment_id
@@ -557,7 +606,7 @@ async def check_attachment_readable(
         repo = InteractionRepository(session)
         interaction = await repo.get(document.interaction_id)
         if not can_read(user, await repo.ownership(interaction)):
-            raise OperationForbiddenException("read this file")
+            raise OperationForbiddenException("read this file", code="DOC-002")
         return
     comment = await session.scalar(
         select(Comment)
@@ -568,15 +617,15 @@ async def check_attachment_readable(
         repo = InteractionRepository(session)
         interaction = await repo.get(comment.interaction_id)
         if not can_read(user, await repo.ownership(interaction)):
-            raise OperationForbiddenException("read this file")
+            raise OperationForbiddenException("read this file", code="DOC-002")
         if comment.deleted_at is not None and user.role != UserRole.ADMIN:
-            raise OperationForbiddenException("read this file")
+            raise OperationForbiddenException("read this file", code="DOC-002")
         return
     template = await session.scalar(
         select(exists().where(TransitionAttachment.attachment_id == attachment_id))
     )
     if not template and user.role != UserRole.ADMIN:
-        raise OperationForbiddenException("read this file")
+        raise OperationForbiddenException("read this file", code="DOC-002")
 
 
 async def is_interaction_file(session: AsyncSession, attachment_id: int) -> bool:

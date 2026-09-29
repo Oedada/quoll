@@ -1,10 +1,11 @@
 from collections.abc import Callable
 from typing import Annotated
 
-from fastapi import Depends, HTTPException, Path, status
+from fastapi import Depends, Path
 
 from quoll.auth.dependencies import CurrentUser
 from quoll.auth.models import User
+from quoll.core.exceptions import OperationForbiddenException
 from quoll.db import SessionDep
 from quoll.interactions.access_policy import (
     Ownership,
@@ -39,13 +40,6 @@ InteractionRepoDep = Annotated[InteractionRepository, Depends(get_interaction_re
 InteractionId = Annotated[int, Path(ge=1, description="Interaction ID")]
 
 
-def _forbidden(action: str) -> HTTPException:
-    return HTTPException(
-        status_code=status.HTTP_403_FORBIDDEN,
-        detail=f"Not allowed to {action} this interaction",
-    )
-
-
 Predicate = Callable[[User, Ownership], bool]
 
 
@@ -57,7 +51,9 @@ def _guarded(predicate: Predicate, action: str, *, details: bool = False):
     ) -> Interaction:
         interaction = await (repo.get_with_details(id) if details else repo.get(id))
         if not predicate(user, await repo.ownership(interaction)):
-            raise _forbidden(action)
+            raise OperationForbiddenException(
+                f"{action} this interaction", code="APP-004"
+            )
         return interaction
 
     return dependency

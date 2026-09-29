@@ -48,7 +48,12 @@ async def decide(
     if request is None:
         raise IdNotExistsException(WorkflowChangeRequest.__name__)
     if request.status != "PENDING":
-        raise DomainRuleException(409, f"Request is already {request.status}")
+        raise DomainRuleException(
+            409,
+            f"Request is already {request.status}",
+            code="APP-032",
+            params={"status": request.status},
+        )
     request.status = "APPROVED" if approve else "REJECTED"
     request.decided_by = actor_id
     request.decided_at = func.now()

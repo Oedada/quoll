@@ -65,7 +65,9 @@ async def _assert_university_free(session: AsyncSession, university_id: int) -> 
         )
     ):
         raise DomainRuleException(
-            409, "University already has an open interaction, add programs to it"
+            409,
+            "University already has an open interaction, add programs to it",
+            code="APP-041",
         )
 
 
@@ -134,24 +136,32 @@ async def assign_locked(
     interaction = scope.interaction
     actor_id = scope.actor.id if scope.actor else None
     if interaction.owner_id != expected_owner_id:
-        raise StaleStateException("Interaction owner", interaction.owner_id)
+        raise StaleStateException(
+            "Interaction owner", interaction.owner_id, code="APP-003"
+        )
 
     target = scope.managers.get(manager_id)
     if target is None:
-        raise DomainRuleException(400, f"User '{manager_id}' is not a manager")
+        raise DomainRuleException(
+            400, f"User '{manager_id}' is not a manager", code="ORG-012"
+        )
     if not by_import and not can_assign(scope.actor, scope.ownership, target):
-        raise OperationForbiddenException("assign this interaction")
+        raise OperationForbiddenException("assign this interaction", code="APP-005")
     if manager_id == interaction.owner_id:
         raise DomainRuleException(
-            400, "Interaction is already assigned to this manager"
+            400, "Interaction is already assigned to this manager", code="APP-006"
         )
 
     stage = await _stage_of(session, interaction)
     if stage is not None and stage.is_terminal:
-        raise DomainRuleException(409, "Closed interaction is reopened, not reassigned")
+        raise DomainRuleException(
+            409, "Closed interaction is reopened, not reassigned", code="APP-010"
+        )
     # G8: у владельца заявки всегда есть руководитель
     if target.superviser_id is None:
-        raise DomainRuleException(409, f"Manager '{manager_id}' has no supervisor")
+        raise DomainRuleException(
+            409, f"Manager '{manager_id}' has no supervisor", code="APP-016"
+        )
 
     # пассивная у нового владельца тоже пассивна - места не просит
     delta = int(counts_toward_capacity(stage, interaction.is_paused, interaction.slot))
@@ -161,7 +171,9 @@ async def assign_locked(
     interaction.owner_id = manager_id
     if previous is not None:
         interaction.last_owner_id = previous
-    await _hand_over(session, interaction.id, manager_id, reason, assigned_at=assigned_at)
+    await _hand_over(
+        session, interaction.id, manager_id, reason, assigned_at=assigned_at
+    )
     if announce:
         await _announce_owner(session, scope, previous)
     # у нового владельца свои просьбы - старые устарели
@@ -282,7 +294,11 @@ async def _hand_over(
     assigned_at - дата открываемой записи для импорта (В25); None - момент
     транзакции, как обычно"""
     await _release(session, interaction_id)
-    fields = {"interaction_id": interaction_id, "manager_id": manager_id, "reason": reason}
+    fields = {
+        "interaction_id": interaction_id,
+        "manager_id": manager_id,
+        "reason": reason,
+    }
     if assigned_at is not None:
         fields["assigned_at"] = assigned_at
     session.add(InteractionAssignment(**fields))
@@ -296,10 +312,12 @@ async def decline(
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     interaction = scope.interaction
     if interaction.owner_id != actor_id:
-        raise OperationForbiddenException("decline this interaction")
+        raise OperationForbiddenException("decline this interaction", code="APP-004")
     if interaction.state_id is not None:
         raise DomainRuleException(
-            409, "Accepted interaction is not declined, ask for a transfer"
+            409,
+            "Accepted interaction is not declined, ask for a transfer",
+            code="APP-008",
         )
     interaction.owner_id = None
     interaction.last_owner_id = actor_id
@@ -350,7 +368,9 @@ async def pause_locked(
     interaction = scope.interaction
     actor_id = scope.actor.id if scope.actor else None
     if until is None and interaction.pause_state == PauseState.PAUSED_MANUAL:
-        raise DomainRuleException(409, "Interaction is already paused without a term")
+        raise DomainRuleException(
+            409, "Interaction is already paused without a term", code="APP-014"
+        )
     if until is not None:
         check_pause_term(until)
 
@@ -386,9 +406,11 @@ async def unpause(
     scope, stage = await _pausable(session, interaction_id, actor_id)
     interaction = scope.interaction
     if not interaction.is_paused:
-        raise DomainRuleException(409, "Interaction is not paused")
+        raise DomainRuleException(409, "Interaction is not paused", code="APP-015")
     if scope.owner is None:
-        raise DomainRuleException(409, "Assign a manager before resuming")
+        raise DomainRuleException(
+            409, "Assign a manager before resuming", code="APP-009"
+        )
     # слот возвращается, только если стадия его занимает
     delta = int(counts_toward_capacity(stage, False, interaction.slot)) - int(
         counts_toward_capacity(stage, True, interaction.slot)
@@ -440,13 +462,17 @@ async def _pausable(
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     interaction = scope.interaction
     if not can_pause(scope.actor, scope.ownership):
-        raise OperationForbiddenException("pause this interaction")
+        raise OperationForbiddenException("pause this interaction", code="APP-004")
     stage = await _stage_of(session, interaction)
     # пауза управляет слотом, а у черновика его нет
     if stage is None:
-        raise DomainRuleException(409, "Draft without a stage cannot be paused")
+        raise DomainRuleException(
+            409, "Draft without a stage cannot be paused", code="APP-011"
+        )
     if stage.is_terminal:
-        raise DomainRuleException(409, "Closed interaction cannot be paused")
+        raise DomainRuleException(
+            409, "Closed interaction cannot be paused", code="APP-010"
+        )
     return scope, stage
 
 
@@ -461,7 +487,9 @@ async def update_settings(
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     interaction = scope.interaction
     if not can_close(scope.actor, scope.ownership):
-        raise OperationForbiddenException("change settings of this interaction")
+        raise OperationForbiddenException(
+            "change settings of this interaction", code="APP-005"
+        )
     old = {
         "stall_overrides": dict(interaction.stall_overrides),
         "warn_days": interaction.warn_days,
@@ -474,7 +502,9 @@ async def update_settings(
         )
         if foreign := set(overrides) - own:
             raise DomainRuleException(
-                400, f"Stages {sorted(foreign)} are not in this workflow"
+                400,
+                f"Stages {sorted(foreign)} are not in this workflow",
+                code="APP-033",
             )
         merged = dict(interaction.stall_overrides)
         for stage_id, days in overrides.items():
@@ -511,7 +541,7 @@ async def update_fields(
     """описательные поля: права проверил роутер, блокировка не нужна -
     на них не опирается ни одно правило"""
     if interaction.closed_at is not None:
-        raise DomainRuleException(409, "Interaction is closed")
+        raise DomainRuleException(409, "Interaction is closed", code="APP-010")
     fields = changes.model_dump(exclude_unset=True)
     old = {name: getattr(interaction, name) for name in fields}
     updated = await InteractionRepository(session).update(interaction.id, changes)
@@ -540,7 +570,7 @@ async def cancel_draft(
     Проверки - под блокировкой: черновик могли успеть поставить на стадию"""
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_cancel(scope.actor, scope.ownership):
-        raise OperationForbiddenException("cancel this interaction")
+        raise OperationForbiddenException("cancel this interaction", code="APP-005")
     return await cancel_draft_locked(
         session, scope, close_reason_id=close_reason_id, comment=comment
     )
@@ -560,7 +590,9 @@ async def cancel_draft_locked(
     interaction = scope.interaction
     actor_id = scope.actor.id if scope.actor else None
     if interaction.state_id is not None:
-        raise DomainRuleException(409, "Only a draft is cancelled, close the rest")
+        raise DomainRuleException(
+            409, "Only a draft is cancelled, close the rest", code="APP-013"
+        )
     reason = await check_reason(
         session,
         close_reason_id,
@@ -616,17 +648,23 @@ async def reopen(
     )
     interaction = scope.interaction
     if interaction.owner_id != expected_owner_id:
-        raise StaleStateException("Interaction owner", interaction.owner_id)
+        raise StaleStateException(
+            "Interaction owner", interaction.owner_id, code="APP-003"
+        )
     target = scope.managers.get(manager_id)
     if target is None:
-        raise DomainRuleException(400, f"User '{manager_id}' is not a manager")
+        raise DomainRuleException(
+            400, f"User '{manager_id}' is not a manager", code="ORG-012"
+        )
     # права те же, что у назначения: иначе чужую закрытую забирали бы перебором id
     if not can_assign(scope.actor, scope.ownership, target):
-        raise OperationForbiddenException("reopen this interaction")
+        raise OperationForbiddenException("reopen this interaction", code="APP-005")
 
     current = await _stage_of(session, interaction)
     if current is None or interaction.closed_at is None:
-        raise DomainRuleException(409, "Only a closed interaction is reopened")
+        raise DomainRuleException(
+            409, "Only a closed interaction is reopened", code="APP-017"
+        )
     await _assert_university_free(session, interaction.university_id)
     # флаги стадии неизменны (Р15) - проверяем до блокировки. Иначе запрос в
     # текущую закрытую стадию держал бы заявку на ней и ждал бы её саму, а
@@ -635,10 +673,14 @@ async def reopen(
     if requested is not None and (
         requested.is_terminal or requested.is_branch_stage or requested.is_side
     ):
-        raise DomainRuleException(400, "Interaction is reopened into a working stage")
+        raise DomainRuleException(
+            400, "Interaction is reopened into a working stage", code="APP-037"
+        )
     stage = await lock_target_stage(session, to_stage_id)
     if stage.workflow_id != interaction.workflow_id:
-        raise DomainRuleException(400, "Stage belongs to another workflow")
+        raise DomainRuleException(
+            400, "Stage belongs to another workflow", code="APP-033"
+        )
     edges = await session.scalars(
         select(WorkflowTransition).where(
             WorkflowTransition.workflow_id == stage.workflow_id,
@@ -647,15 +689,22 @@ async def reopen(
     )
     reachable = reachable_from_start(edge_facts(edges))
     if stage.id not in reachable:
-        raise DomainRuleException(409, "Stage is not reachable from the start")
+        raise DomainRuleException(
+            409, "Stage is not reachable from the start", code="APP-019"
+        )
     # только туда, где заявка уже была: иначе переоткрытие перескочило бы
     # аппрувы и обязательные файлы, а после подписания - вернуло бы в первую часть
     if not await reached_since_no_return(session, interaction.id, stage.id):
+        # {шаг} из APP-018 (граница необратимого перехода) не восстановлен здесь
         raise DomainRuleException(
-            409, "Reopen goes only to a stage passed after the point of no return"
+            409,
+            "Reopen goes only to a stage passed after the point of no return",
+            code="APP-018",
         )
     if target.superviser_id is None:
-        raise DomainRuleException(409, f"Manager '{manager_id}' has no supervisor")
+        raise DomainRuleException(
+            409, f"Manager '{manager_id}' has no supervisor", code="APP-016"
+        )
     await assert_can_take_new_work(
         # переоткрытая всегда активна - место считаем от нового вида слота
         session,

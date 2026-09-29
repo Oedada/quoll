@@ -337,9 +337,13 @@ async def link_attachment(
     )
 
     if await is_interaction_file(repo.session, attachment_id):
-        raise DomainRuleException(409, "Interaction file cannot become a template")
+        raise DomainRuleException(
+            409, "Interaction file cannot become a template", code="DOC-012"
+        )
     if await is_import_file(repo.session, attachment_id):
-        raise DomainRuleException(409, "Import file cannot become a template")
+        raise DomainRuleException(
+            409, "Import file cannot become a template", code="DOC-012"
+        )
     await repo.link_attachment(id, attachment_id)
     workflow_service.journal_template(
         repo.session, admin.id, id, attachment_id, linked=True

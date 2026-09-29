@@ -83,10 +83,12 @@ class Decision:
 async def _open_stage(session: AsyncSession, interaction: Interaction) -> Stage:
     """просят по заявке в работе: черновик удаляют, закрытую переоткрывают"""
     if interaction.state_id is None:
-        raise DomainRuleException(409, "Draft interaction has no requests")
+        raise DomainRuleException(
+            409, "Draft interaction has no requests", code="APP-011"
+        )
     stage = await session.get(Stage, interaction.state_id)
     if stage.is_terminal:
-        raise DomainRuleException(409, "Interaction is already closed")
+        raise DomainRuleException(409, "Interaction is already closed", code="APP-010")
     return stage
 
 
@@ -95,9 +97,13 @@ async def _check_close_target(
 ) -> Stage:
     stage = await session.get(Stage, stage_id)
     if stage is None or stage.workflow_id != interaction.workflow_id:
-        raise DomainRuleException(400, "Stage belongs to another workflow")
+        raise DomainRuleException(
+            400, "Stage belongs to another workflow", code="APP-033"
+        )
     if not stage.is_terminal or stage.is_branch_stage:
-        raise DomainRuleException(400, "Interaction is closed into a terminal stage")
+        raise DomainRuleException(
+            400, "Interaction is closed into a terminal stage", code="APP-034"
+        )
     return stage
 
 
@@ -115,6 +121,7 @@ async def create(
     branch_close_reason_id: int | None = None,
     side_pointer_id: int | None = None,
 ) -> InteractionRequest:
+    # нет кода в спеке для этого несоответствия
     if side_pointer_id is not None and (
         kind != RequestKind.TRANSITION or branch_id is not None
     ):
@@ -123,7 +130,9 @@ async def create(
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     interaction = scope.interaction
     if interaction.owner_id != actor_id:
-        raise OperationForbiddenException("request for someone else's interaction")
+        raise OperationForbiddenException(
+            "request for someone else's interaction", code="APP-004"
+        )
     current = await _open_stage(session, interaction)
     if side_pointer_id is not None:
         # доп. прохождение просит со своего шага, а не с шага заявки
@@ -136,7 +145,9 @@ async def create(
     # просьба уводит вперёд с шага обработчика (ДС) - он переходит в PENDING
     leaves_handler = False
     if branch_id is not None and kind == RequestKind.TRANSFER:
-        raise DomainRuleException(400, "A branch is not transferred on its own")
+        raise DomainRuleException(
+            400, "A branch is not transferred on its own", code="BR-017"
+        )
     if kind == RequestKind.CLOSE and branch_id is not None:
         await branch_service.open_branch(session, scope, branch_id)
         # обоснование менеджера и есть комментарий к причине
@@ -177,7 +188,12 @@ async def create(
     elif kind == RequestKind.CLOSE:
         stage = await _check_close_target(session, interaction, target_stage_id)
         if stage.archived_at is not None:
-            raise DomainRuleException(409, f"Stage '{stage.id}' is archived")
+            raise DomainRuleException(
+                409,
+                f"Stage '{stage.id}' is archived",
+                code="APP-025",
+                params={"step": stage.name},
+            )
         await check_reason(
             session, close_reason_id, interaction_level(interaction), reason
         )
@@ -189,7 +205,9 @@ async def create(
         target_manager_id is not None
         and await session.get(Manager, target_manager_id) is None
     ):
-        raise DomainRuleException(400, f"User '{target_manager_id}' is not a manager")
+        raise DomainRuleException(
+            400, f"User '{target_manager_id}' is not a manager", code="ORG-012"
+        )
 
     pending = await session.scalar(
         select(InteractionRequest.id).where(
@@ -202,7 +220,9 @@ async def create(
     )
     if pending is not None:
         raise DomainRuleException(
-            409, f"Request '{pending}' of this kind is already pending"
+            409,
+            f"Request '{pending}' of this kind is already pending",
+            code="APP-031",
         )
 
     request = InteractionRequest(
@@ -285,7 +305,9 @@ async def _approval_edge(
         )
     )
     if edge is None or not edge.requires_approval:
-        raise DomainRuleException(400, "No transition needing approval to this stage")
+        raise DomainRuleException(
+            400, "No transition needing approval to this stage", code="APP-030"
+        )
     return edge
 
 
@@ -333,9 +355,14 @@ async def _lock_for_decision(
     )
     request = await lock_row(session, InteractionRequest, request_id)
     if request.status != RequestStatus.PENDING:
-        raise DomainRuleException(409, f"Request is already {request.status}")
+        raise DomainRuleException(
+            409,
+            f"Request is already {request.status}",
+            code="APP-032",
+            params={"status": request.status},
+        )
     if not can_close(scope.actor, scope.ownership):
-        raise OperationForbiddenException("decide on this request")
+        raise OperationForbiddenException("decide on this request", code="APP-005")
     return scope, request
 
 
@@ -422,15 +449,22 @@ async def approve(
     # предварительно, без блокировок: чужому руководителю - 403, решённой -
     # 409, и Keycloak не дёргаем зря. Под блокировкой проверится ещё раз
     if found.status != RequestStatus.PENDING:
-        raise DomainRuleException(409, f"Request is already {found.status}")
+        raise DomainRuleException(
+            409,
+            f"Request is already {found.status}",
+            code="APP-032",
+            params={"status": found.status},
+        )
     repo = InteractionRepository(session)
     actor = await session.get(User, actor_id)
     ownership = await repo.ownership(await repo.get(found.interaction_id))
     if not can_close(actor, ownership):
-        raise OperationForbiddenException("decide on this request")
+        raise OperationForbiddenException("decide on this request", code="APP-005")
     if found.kind == RequestKind.TRANSFER:
         if target_manager_id is None:
-            raise DomainRuleException(422, "Transfer approval needs target_manager_id")
+            raise DomainRuleException(
+                422, "Transfer approval needs target_manager_id", code="APP-029"
+            )
         # до блокировок: поход в сеть под блокировкой держал бы строки
         await verify_target(target_manager_id, UserRole.MANAGER)
     shared = await _pre_share(session, found)
@@ -695,8 +729,15 @@ async def withdraw(session: AsyncSession, *, request_id: int, actor_id: str) -> 
             InteractionRequest, request_id, populate_existing=True
         )
         if request.requested_by != actor_id:
-            raise OperationForbiddenException("withdraw someone else's request")
-        raise DomainRuleException(409, f"Request is already {request.status}")
+            raise OperationForbiddenException(
+                "withdraw someone else's request", code="APP-004"
+            )
+        raise DomainRuleException(
+            409,
+            f"Request is already {request.status}",
+            code="APP-032",
+            params={"status": request.status},
+        )
     if scope is not None:
         await step_hooks.returned(
             session,

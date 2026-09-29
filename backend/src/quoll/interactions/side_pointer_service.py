@@ -124,7 +124,12 @@ async def load_active(
     if pointer is None or pointer.interaction_id != interaction_id:
         raise IdNotExistsException(SidePointer.__name__)
     if pointer.status != SidePointerStatus.ACTIVE:
-        raise DomainRuleException(409, f"Side pointer is {pointer.status}")
+        raise DomainRuleException(
+            409,
+            f"Side pointer is {pointer.status}",
+            code="APP-056",
+            params={"status": pointer.status},
+        )
     return pointer
 
 
@@ -158,7 +163,9 @@ async def start(
     await share_stage(session, stage_id)
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_change(scope.actor, scope.ownership):
-        raise OperationForbiddenException("start a side pointer of this interaction")
+        raise OperationForbiddenException(
+            "start a side pointer of this interaction", code="APP-004"
+        )
     entry = await entry_stage(session, scope, stage_id)
     return await start_locked(session, scope, entry, comment)
 
@@ -170,7 +177,9 @@ async def entry_stage(
     старта и импорта"""
     interaction = scope.interaction
     if interaction.state_id is None or interaction.closed_at is not None:
-        raise DomainRuleException(409, "Only an interaction in work has side pointers")
+        raise DomainRuleException(
+            409, "Only an interaction in work has side pointers", code="APP-051"
+        )
     workflow = await session.get(Workflow, interaction.workflow_id)
     if workflow is None or not workflow.is_published:
         raise WorkflowNotPublishedException(interaction.workflow_id)
@@ -182,11 +191,19 @@ async def entry_stage(
         )
     ).scalar_one_or_none()
     if entry is None or entry.workflow_id != interaction.workflow_id:
-        raise DomainRuleException(400, "Stage belongs to another workflow")
+        raise DomainRuleException(
+            400, "Stage belongs to another workflow", code="APP-033"
+        )
+    # нет кода в спеке для обеих проверок ниже
     if not entry.is_side:
         raise DomainRuleException(400, "Stage is not a side stage")
     if entry.archived_at is not None:
-        raise DomainRuleException(409, f"Stage '{stage_id}' is archived")
+        raise DomainRuleException(
+            409,
+            f"Stage '{stage_id}' is archived",
+            code="APP-025",
+            params={"step": entry.name},
+        )
     if entry.is_branch_stage:
         raise DomainRuleException(409, "Side steps of branches are not supported yet")
 
@@ -204,6 +221,7 @@ async def entry_stage(
             .order_by(WorkflowTransition.id)
         )
     )
+    # нет кода в спеке
     if not entry_edges:
         raise DomainRuleException(400, "Stage is not an entry of side steps")
     problems = []
@@ -221,18 +239,24 @@ async def entry_stage(
             continue
         break
     else:
+        # код заимствован бы из check_step (transition_service.py, вне области задачи)
         raise DomainRuleException(409, problems[0])
 
     active = await _active(session, interaction.id)
     if active is not None:
-        raise DomainRuleException(409, f"Side pointer {active.id} is already active")
+        raise DomainRuleException(
+            409, f"Side pointer {active.id} is already active", code="APP-052"
+        )
     points, all_passed = await _return_points(session, interaction, entry)
     if not points:
-        raise DomainRuleException(409, "Side steps have no way back to the main route")
+        raise DomainRuleException(
+            409, "Side steps have no way back to the main route", code="WF-030"
+        )
     if not all_passed:
         raise DomainRuleException(
             409,
             "Main route has not passed these steps yet, move the interaction itself",
+            code="APP-053",
         )
     return entry
 
@@ -297,10 +321,14 @@ async def move(
         await share_stage(session, stage_id)
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_change(scope.actor, scope.ownership):
-        raise OperationForbiddenException("move a side pointer of this interaction")
+        raise OperationForbiddenException(
+            "move a side pointer of this interaction", code="APP-004"
+        )
     pointer = await load_active(session, interaction_id, pointer_id)
     if pointer.stage_id != expected_state_id:
-        raise StaleStateException("Side pointer stage", pointer.stage_id)
+        raise StaleStateException(
+            "Side pointer stage", pointer.stage_id, code="APP-003"
+        )
     return await move_locked(
         session,
         scope,
@@ -326,16 +354,24 @@ async def move_locked(
     interaction = scope.interaction
     actor_id = scope.actor.id
     if to_stage_id == pointer.stage_id:
-        raise DomainRuleException(409, "Side pointer is already on this stage")
+        raise DomainRuleException(
+            409, "Side pointer is already on this stage", code="APP-022"
+        )
     current = await session.get(Stage, pointer.stage_id)
     target = await lock_target_stage(session, to_stage_id)
     if target.workflow_id != interaction.workflow_id:
-        raise DomainRuleException(400, "Stage belongs to another workflow")
+        raise DomainRuleException(
+            400, "Stage belongs to another workflow", code="APP-033"
+        )
     edge = await active_edge(session, interaction.workflow_id, current, target)
     if edge is None:
-        raise DomainRuleException(409, "No active transition between these stages")
+        raise DomainRuleException(
+            409, "No active transition between these stages", code="APP-023"
+        )
     if edge.is_backward and not comment:
-        raise DomainRuleException(422, "Backward transition needs a comment")
+        raise DomainRuleException(
+            422, "Backward transition needs a comment", code="APP-028"
+        )
     await check_step(
         session,
         interaction,
@@ -348,7 +384,9 @@ async def move_locked(
     if not target.is_side:
         if edge.is_backward:
             raise DomainRuleException(
-                409, "Side pointer leaves only forward; cancel it instead"
+                409,
+                "Side pointer leaves only forward; cancel it instead",
+                code="APP-055",
             )
         await step_hooks.leave(
             session, scope, current, edge, pointer.id, shared, actor_id, comment
@@ -450,7 +488,9 @@ async def cancel(
 ) -> SidePointer:
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     if not can_change(scope.actor, scope.ownership):
-        raise OperationForbiddenException("cancel a side pointer of this interaction")
+        raise OperationForbiddenException(
+            "cancel a side pointer of this interaction", code="APP-004"
+        )
     pointer = await load_active(session, interaction_id, pointer_id)
     return await cancel_locked(session, scope, pointer, comment or "cancelled")
 

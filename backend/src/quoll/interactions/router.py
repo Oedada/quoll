@@ -329,9 +329,11 @@ def _json_object(raw: str | None) -> dict:
     try:
         value = json.loads(raw)
     except json.JSONDecodeError as err:
-        raise DomainRuleException(422, "metadata must be a JSON object") from err
+        raise DomainRuleException(
+            422, "metadata must be a JSON object", code="APP-040"
+        ) from err
     if not isinstance(value, dict):
-        raise DomainRuleException(422, "metadata must be a JSON object")
+        raise DomainRuleException(422, "metadata must be a JSON object", code="APP-040")
     return value
 
 
@@ -856,7 +858,7 @@ async def move_branch(
     session: SessionDep,
 ):
     if body.expected_state_id is None:
-        raise DomainRuleException(422, "Branch always stands on a stage")
+        raise DomainRuleException(422, "Branch always stands on a stage", code="BR-010")
     return await branch_service.move(
         session,
         interaction_id=id,

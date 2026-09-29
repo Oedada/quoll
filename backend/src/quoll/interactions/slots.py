@@ -142,7 +142,9 @@ async def _owner_scope(
     scope = await lock_interaction_scope(session, interaction_id, actor_id)
     # только сам КАМ: руководитель слотами не управляет (Д19)
     if scope.interaction.owner_id != actor_id:
-        raise OperationForbiddenException("change the slot of this interaction")
+        raise OperationForbiddenException(
+            "change the slot of this interaction", code="APP-004"
+        )
     return scope
 
 
@@ -154,7 +156,7 @@ async def activate(
     scope = await _owner_scope(session, interaction_id, actor_id)
     interaction = scope.interaction
     if interaction.slot == SlotKind.ACTIVE:
-        raise DomainRuleException(409, "Interaction is already active")
+        raise DomainRuleException(409, "Interaction is already active", code="APP-048")
     stage = await session.get(Stage, interaction.state_id)
     # место - по новому виду слота; на паузе заявка его и так не занимает
     delta = int(
@@ -175,9 +177,15 @@ async def passivate(
     scope = await _owner_scope(session, interaction_id, actor_id)
     interaction = scope.interaction
     if interaction.slot == SlotKind.PASSIVE:
-        raise DomainRuleException(409, "Interaction is already passive")
+        raise DomainRuleException(409, "Interaction is already passive", code="APP-049")
     if problem := await passive_problem(session, interaction, idle=False):
-        raise DomainRuleException(409, f"Cannot be passive: {problem}")
+        # problem - внутренний текст причины; на фронт код без перевода в params
+        raise DomainRuleException(
+            409,
+            f"Cannot be passive: {problem}",
+            code="APP-050",
+            params={"reason": problem},
+        )
     await set_slot(session, interaction, SlotKind.PASSIVE, actor_id)
     await session.flush()
     await session.refresh(interaction)
