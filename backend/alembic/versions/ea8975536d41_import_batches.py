@@ -1,7 +1,7 @@
 """import batches
 
 Revision ID: ea8975536d41
-Revises: 57ea0170aa1e
+Revises: 092e8988e5c7
 Create Date: 2026-09-28 17:42:07.576013
 
 """
@@ -13,7 +13,7 @@ from sqlalchemy.dialects import postgresql
 
 # revision identifiers, used by Alembic.
 revision: str = 'ea8975536d41'
-down_revision: Union[str, Sequence[str], None] = '57ea0170aa1e'
+down_revision: Union[str, Sequence[str], None] = '092e8988e5c7'
 branch_labels: Union[str, Sequence[str], None] = None
 depends_on: Union[str, Sequence[str], None] = None
 
