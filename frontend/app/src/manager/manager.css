@@ -1,0 +1,21 @@
+.nav-item:hover {
+  background: var(--neutral-container-soft);
+}
+.nav-item.active {
+  background: var(--neutral-container-default);
+}
+.icon-btn:hover {
+  background: var(--neutral-container-soft);
+}
+.profile-block:hover {
+  background: var(--neutral-container-soft);
+}
+.popover-row:hover {
+  background: var(--neutral-container-muted);
+}
+.status-row:hover {
+  background: var(--neutral-container-soft);
+}
+.logout-row:hover {
+  background: var(--error-container-default);
+}

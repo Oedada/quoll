@@ -51,8 +51,14 @@ def demo_accounts() -> list[dict[str, str]]:
     if not settings.demo_mode:
         raise HTTPException(status_code=404, detail="Not Found")
     return [
-        {"username": username, "password": settings.demo_password, "role": role.value}
-        for username, role, _ in DEMO_ACCOUNTS
+        {"username": username, "password": password, "role": role.value}
+        for username, role, _, password in DEMO_ACCOUNTS
+    ] + [
+        {
+            "username": settings.app_admin_username,
+            "password": settings.app_admin_password,
+            "role": UserRole.ADMIN.value,
+        }
     ]
 
 

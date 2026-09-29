@@ -23,13 +23,13 @@ uv run uvicorn quoll.main:app --reload
 uv run python -m quoll.seed workflow
 ```
 
-Демо-режим для проверки: `DEMO_MODE=true` в `.env`. При старте заводится эталонный воркфлоу и учётки ролей — руководитель и два менеджера в его команде. Пароль у всех — `DEMO_PASSWORD` (по умолчанию `quoll-demo`); список отдаёт `GET /auth/demo-accounts` для кнопок «войти как».
+Демо-режим для проверки: `DEMO_MODE=true` в `.env`. При старте заводится эталонный воркфлоу и учётки ролей — руководитель и два менеджера в его команде. Список с логинами и паролями отдаёт `GET /auth/demo-accounts` для кнопок «войти как».
 
-| Логин | Роль |
-|---|---|
-| `admin` | администратор (`APP_ADMIN_PASSWORD`) |
-| `supervisor` | руководитель |
-| `manager1`, `manager2` | менеджеры (КАМ) |
+| Логин | Пароль | Роль |
+|---|---|---|
+| `superchel` | `vobla123` (`APP_ADMIN_PASSWORD`) | администратор |
+| `miniboss` | `kurkuma2017` | руководитель |
+| `microbro1`, `microbro2` | `bananchik` | менеджеры (КАМ) |
 
 Отчёты (`/api/v1/reports`, дизайн — `docs/reports-design.md`). Предпросмотр строится сразу, файл (xlsx, xls, pdf) — в фоне:
 `POST /exports` ставит задание в очередь, `GET /exports/{id}` отдаёт статус и место в очереди, `GET /exports/{id}/file` — готовый файл.

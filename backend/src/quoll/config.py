@@ -42,8 +42,6 @@ class Settings(BaseSettings):
     watcher_interval_seconds: int = 3600
     # демо для жюри: эталонный воркфлоу и учётки ролей при старте (О 30)
     demo_mode: bool = False
-    # общий пароль демо-учёток - публичный, в README
-    demo_password: str = "quoll-demo"
     org_queue_interval_seconds: int = 30
     reconciler_interval_seconds: int = 60
     # очередь выгрузок отчётов и чистка их файлов

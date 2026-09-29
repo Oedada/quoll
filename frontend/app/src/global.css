@@ -1,0 +1,26 @@
+/* базовый сброс - дословно повторяет <style> из helmet каждого .dc.html экрана */
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #fff;
+  font-family: Manrope, sans-serif;
+  color: #0e1117;
+  -webkit-font-smoothing: antialiased;
+}
+a {
+  color: var(--accent-default);
+  text-decoration: none;
+}
+a:hover {
+  color: var(--accent-hover);
+}
+* {
+  box-sizing: border-box;
+}
+input::placeholder {
+  color: var(--fg-muted);
+}
+#root {
+  height: 100%;
+}

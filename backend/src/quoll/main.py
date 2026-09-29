@@ -34,6 +34,7 @@ from quoll.notifications.listener import NotificationListener
 from quoll.org import org_router
 from quoll.reports import reports_router
 from quoll.reports.worker import ReportRunner
+from quoll.seed.notifications import ensure_demo_notifications
 from quoll.seed.workflow import ensure_reference_workflow
 from quoll.workflows import (
     change_requests_router,
@@ -56,6 +57,7 @@ async def _seed_demo(session_maker) -> None:
             if await ensure_reference_workflow(session):
                 logger.info("Reference workflow created")
             await ensure_demo_accounts(session, UserRepository(session))
+            await ensure_demo_notifications(session)
             await session.commit()
         except IntegrityError:
             # другой процесс успел раньше
@@ -222,8 +224,12 @@ async def root():
 
 
 # демо-страница из репозитория, main.py лежит в backend/src/quoll
-DEMO_PAGE = Path(__file__).resolve().parents[3] / "frontend" / "auth-demo.html"
-MKDOCS = Path(__file__).resolve().parents[3] / "mkdocs"
+_REPO_ROOT = Path(__file__).resolve().parents[3]
+DEMO_PAGE = _REPO_ROOT / "frontend" / "auth-demo.html"
+# в Docker-образе собранный mkdocs лежит в /app/mkdocs (см. backend/Dockerfile:
+# COPY site /app/mkdocs); при локальном запуске из репозитория той папки нет -
+# там то же самое лежит как site/ (git-трекаемый вывод mkdocs build)
+MKDOCS = _REPO_ROOT / "mkdocs" if (_REPO_ROOT / "mkdocs").is_dir() else _REPO_ROOT / "site"
 
 
 @app.get("/front")
