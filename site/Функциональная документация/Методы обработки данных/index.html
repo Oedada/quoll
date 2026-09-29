@@ -1,0 +1,1478 @@
+
+<!doctype html>
+<html lang="en" class="no-js">
+  <head>
+    
+      <meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1">
+      
+        <meta name="description" content="Документация проекта Quoll">
+      
+      
+      
+      
+        <link rel="prev" href="../%D0%9C%D0%BE%D0%B4%D0%B5%D0%BB%D1%8C%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85/">
+      
+      
+        <link rel="next" href="../%D0%98%D0%BD%D1%82%D0%B5%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B8%20%D0%B8%20JSON/">
+      
+      
+        
+      
+      
+      <link rel="icon" href="../../assets/images/favicon.png">
+      <meta name="generator" content="mkdocs-1.6.1, mkdocs-material-9.7.7">
+    
+    
+      
+        <title>Методы обработки данных - Quoll</title>
+      
+    
+    
+      <link rel="stylesheet" href="../../assets/stylesheets/main.ec1eaa64.min.css">
+      
+        
+        <link rel="stylesheet" href="../../assets/stylesheets/palette.ab4e12ef.min.css">
+      
+      
+
+
+    
+    
+      
+    
+    
+      
+        
+        
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+        <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=Roboto:300,300i,400,400i,700,700i%7CRoboto+Mono:400,400i,700,700i&display=fallback">
+        <style>:root{--md-text-font:"Roboto";--md-code-font:"Roboto Mono"}</style>
+      
+    
+    
+    <script>__md_scope=new URL("../..",location),__md_hash=e=>[...e].reduce(((e,_)=>(e<<5)-e+_.charCodeAt(0)),0),__md_get=(e,_=localStorage,t=__md_scope)=>JSON.parse(_.getItem(t.pathname+"."+e)),__md_set=(e,_,t=localStorage,a=__md_scope)=>{try{t.setItem(a.pathname+"."+e,JSON.stringify(_))}catch(e){}}</script>
+    
+      
+
+    
+    
+  </head>
+  
+  
+    
+    
+    
+    
+    
+    <body dir="ltr" data-md-color-scheme="default" data-md-color-primary="pink" data-md-color-accent="pink">
+  
+    
+    <input class="md-toggle" data-md-toggle="drawer" type="checkbox" id="__drawer" autocomplete="off">
+    <input class="md-toggle" data-md-toggle="search" type="checkbox" id="__search" autocomplete="off">
+    <label class="md-overlay" for="__drawer"></label>
+    <div data-md-component="skip">
+      
+        
+        <a href="#_1" class="md-skip">
+          Skip to content
+        </a>
+      
+    </div>
+    <div data-md-component="announce">
+      
+    </div>
+    
+    
+      
+
+  
+
+<header class="md-header md-header--shadow" data-md-component="header">
+  <nav class="md-header__inner md-grid" aria-label="Header">
+    <a href="../.." title="Quoll" class="md-header__button md-logo" aria-label="Quoll" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    <label class="md-header__button md-icon" for="__drawer">
+      
+      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M3 6h18v2H3zm0 5h18v2H3zm0 5h18v2H3z"/></svg>
+    </label>
+    <div class="md-header__title" data-md-component="header-title">
+      <div class="md-header__ellipsis">
+        <div class="md-header__topic">
+          <span class="md-ellipsis">
+            Quoll
+          </span>
+        </div>
+        <div class="md-header__topic" data-md-component="header-topic">
+          <span class="md-ellipsis">
+            
+              Методы обработки данных
+            
+          </span>
+        </div>
+      </div>
+    </div>
+    
+      
+    
+    
+    
+    
+      
+      
+        <label class="md-header__button md-icon" for="__search">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        </label>
+        <div class="md-search" data-md-component="search" role="dialog">
+  <label class="md-search__overlay" for="__search"></label>
+  <div class="md-search__inner" role="search">
+    <form class="md-search__form" name="search">
+      <input type="text" class="md-search__input" name="query" aria-label="Search" placeholder="Search" autocapitalize="off" autocorrect="off" autocomplete="off" spellcheck="false" data-md-component="search-query" required>
+      <label class="md-search__icon md-icon" for="__search">
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M9.5 3A6.5 6.5 0 0 1 16 9.5c0 1.61-.59 3.09-1.56 4.23l.27.27h.79l5 5-1.5 1.5-5-5v-.79l-.27-.27A6.52 6.52 0 0 1 9.5 16 6.5 6.5 0 0 1 3 9.5 6.5 6.5 0 0 1 9.5 3m0 2C7 5 5 7 5 9.5S7 14 9.5 14 14 12 14 9.5 12 5 9.5 5"/></svg>
+        
+        <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M20 11v2H8l5.5 5.5-1.42 1.42L4.16 12l7.92-7.92L13.5 5.5 8 11z"/></svg>
+      </label>
+      <nav class="md-search__options" aria-label="Search">
+        
+        <button type="reset" class="md-search__icon md-icon" title="Clear" aria-label="Clear" tabindex="-1">
+          
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/></svg>
+        </button>
+      </nav>
+      
+    </form>
+    <div class="md-search__output">
+      <div class="md-search__scrollwrap" tabindex="0" data-md-scrollfix>
+        <div class="md-search-result" data-md-component="search-result">
+          <div class="md-search-result__meta">
+            Initializing search
+          </div>
+          <ol class="md-search-result__list" role="presentation"></ol>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+      
+    
+    
+  </nav>
+  
+</header>
+    
+    <div class="md-container" data-md-component="container">
+      
+      
+        
+          
+        
+      
+      <main class="md-main" data-md-component="main">
+        <div class="md-main__inner md-grid">
+          
+            
+              
+              <div class="md-sidebar md-sidebar--primary" data-md-component="sidebar" data-md-type="navigation" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+
+
+<nav class="md-nav md-nav--primary" aria-label="Navigation" data-md-level="0">
+  <label class="md-nav__title" for="__drawer">
+    <a href="../.." title="Quoll" class="md-nav__button md-logo" aria-label="Quoll" data-md-component="logo">
+      
+  
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 8a3 3 0 0 0 3-3 3 3 0 0 0-3-3 3 3 0 0 0-3 3 3 3 0 0 0 3 3m0 3.54C9.64 9.35 6.5 8 3 8v11c3.5 0 6.64 1.35 9 3.54 2.36-2.19 5.5-3.54 9-3.54V8c-3.5 0-6.64 1.35-9 3.54"/></svg>
+
+    </a>
+    Quoll
+  </label>
+  
+  <ul class="md-nav__list" data-md-scrollfix>
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../.." class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Главная
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../installation/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Установка
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+    
+      
+      
+  
+  
+    
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--active md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_3" checked>
+        
+          
+          <label class="md-nav__link" for="__nav_3" id="__nav_3_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Функциональная документация
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_3_label" aria-expanded="true">
+          <label class="md-nav__title" for="__nav_3">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Функциональная документация
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../%D0%9D%D0%B0%D0%B7%D0%BD%D0%B0%D1%87%D0%B5%D0%BD%D0%B8%D0%B5%20%D0%B8%20%D0%B7%D0%B0%D0%B4%D0%B0%D1%87%D0%B0/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Назначение и задача
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../%D0%A0%D0%BE%D0%BB%D0%B8%20%D0%B8%20%D0%BF%D1%80%D0%B0%D0%B2%D0%B0/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Роли и права
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../Workflow/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Workflow
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../%D0%9C%D0%BE%D0%B4%D0%B5%D0%BB%D1%8C%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Модель данных
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+    
+  
+  
+  
+    <li class="md-nav__item md-nav__item--active">
+      
+      <input class="md-nav__toggle md-toggle" type="checkbox" id="__toc">
+      
+      
+        
+      
+      
+        <label class="md-nav__link md-nav__link--active" for="__toc">
+          
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Методы обработки данных
+  
+
+    
+  </span>
+  
+  
+
+          <span class="md-nav__icon md-icon"></span>
+        </label>
+      
+      <a href="./" class="md-nav__link md-nav__link--active">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Методы обработки данных
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+      
+        
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#xls-xlsx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Импорт каталогов (xls, xlsx)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Отчёт за период
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Показатели и диаграммы
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Застой, ранжирование, подсказка на шаге 0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Застой, ранжирование, подсказка на шаге 0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Застой
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ранжирование программ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#0_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Подсказка на шаге 0
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Сопоставление данных интеграций
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+      
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../%D0%98%D0%BD%D1%82%D0%B5%D0%B3%D1%80%D0%B0%D1%86%D0%B8%D0%B8%20%D0%B8%20JSON/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Интеграции и JSON
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../%D0%A2%D0%B5%D1%80%D0%BC%D0%B8%D0%BD%D1%8B%20%D0%B8%20%D1%81%D0%BE%D0%BA%D1%80%D0%B0%D1%89%D0%B5%D0%BD%D0%B8%D1%8F/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Термины и сокращения
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_4" >
+        
+          
+          <label class="md-nav__link" for="__nav_4" id="__nav_4_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Техническая документация
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_4_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_4">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Техническая документация
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A2%D0%B5%D1%85%D0%BD%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/%D0%90%D1%80%D1%85%D0%B8%D1%82%D0%B5%D0%BA%D1%82%D1%83%D1%80%D0%B0/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Архитектура
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A2%D0%B5%D1%85%D0%BD%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/%D0%A1%D1%82%D0%B5%D0%BA.%20%D0%9E%D0%B1%D0%BE%D1%81%D0%BD%D0%BE%D0%B2%D0%B0%D0%BD%D0%B8%D0%B5.%20%D0%91%D0%B8%D0%B1%D0%BB%D0%B8%D0%BE%D1%82%D0%B5%D0%BA%D0%B8/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Стек. Обоснование. Библиотеки
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A2%D0%B5%D1%85%D0%BD%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/API%20-%20Swagger%20UI/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    API - Swagger UI
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A2%D0%B5%D1%85%D0%BD%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/%D0%91%D0%B5%D0%B7%D0%BE%D0%BF%D0%B0%D1%81%D0%BD%D0%BE%D1%81%D1%82%D1%8C%20%D0%B8%20%D0%BF%D0%B5%D1%80%D1%81%D0%BE%D0%BD%D0%B0%D0%BB%D1%8C%D0%BD%D1%8B%D0%B5%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D0%B5/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Безопасность и персональные данные
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A2%D0%B5%D1%85%D0%BD%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/%D0%9F%D1%80%D0%BE%D0%B8%D0%B7%D0%B2%D0%BE%D0%B4%D0%B8%D1%82%D0%B5%D0%BB%D1%8C%D0%BD%D0%BE%D1%81%D1%82%D1%8C/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Производительность
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A2%D0%B5%D1%85%D0%BD%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/%D0%A1%D0%B1%D0%BE%D1%80%D0%BA%D0%B0.%20%D0%A3%D1%81%D1%82%D0%B0%D0%BD%D0%BE%D0%B2%D0%BA%D0%B0.%20%D0%97%D0%B0%D0%BF%D1%83%D1%81%D0%BA/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Сборка. Установка. Запуск
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A2%D0%B5%D1%85%D0%BD%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/%D0%A3%D1%81%D0%BB%D0%BE%D0%B2%D0%B8%D1%8F%20%D0%B8%20%D0%BE%D0%B3%D1%80%D0%B0%D0%BD%D0%B8%D1%87%D0%B5%D0%BD%D0%B8%D1%8F/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Условия и ограничения
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+      
+      
+  
+  
+  
+  
+    
+    
+    
+    
+    
+    <li class="md-nav__item md-nav__item--nested">
+      
+        
+        
+        <input class="md-nav__toggle md-toggle " type="checkbox" id="__nav_5" >
+        
+          
+          <label class="md-nav__link" for="__nav_5" id="__nav_5_label" tabindex="0">
+            
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Справочная документация
+  
+
+    
+  </span>
+  
+  
+
+            <span class="md-nav__icon md-icon"></span>
+          </label>
+        
+        <nav class="md-nav" data-md-level="1" aria-labelledby="__nav_5_label" aria-expanded="false">
+          <label class="md-nav__title" for="__nav_5">
+            <span class="md-nav__icon md-icon"></span>
+            
+  
+    Справочная документация
+  
+
+          </label>
+          <ul class="md-nav__list" data-md-scrollfix>
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A1%D0%BF%D1%80%D0%B0%D0%B2%D0%BE%D1%87%D0%BD%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/%D0%94%D0%B8%D0%B0%D0%B3%D1%80%D0%B0%D0%BC%D0%BC%D1%8B%20%D0%BF%D0%BE%D1%81%D0%BB%D0%B5%D0%B4%D0%BE%D0%B2%D0%B0%D1%82%D0%B5%D0%BB%D1%8C%D0%BD%D0%BE%D1%81%D1%82%D0%B5%D0%B9/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Диаграммы последовательностей
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A1%D0%BF%D1%80%D0%B0%D0%B2%D0%BE%D1%87%D0%BD%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/%D0%A4%D0%B8%D0%B7%D0%B8%D1%87%D0%B5%D1%81%D0%BA%D0%B8%D0%B5%20%D1%81%D1%85%D0%B5%D0%BC%D1%8B%20%D0%B1%D0%B0%D0%B7%D1%8B%20%D0%B4%D0%B0%D0%BD%D0%BD%D1%8B%D1%85/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Физические схемы базы данных
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A1%D0%BF%D1%80%D0%B0%D0%B2%D0%BE%D1%87%D0%BD%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/%D0%9A%D0%BE%D0%B4%D1%8B%20%D0%BE%D1%88%D0%B8%D0%B1%D0%BE%D0%BA/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Коды ошибок
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A1%D0%BF%D1%80%D0%B0%D0%B2%D0%BE%D1%87%D0%BD%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/%D0%9F%D1%80%D0%B8%D0%BC%D0%B5%D1%80%D1%8B%20JSON/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Примеры JSON
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A1%D0%BF%D1%80%D0%B0%D0%B2%D0%BE%D1%87%D0%BD%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/%D0%A0%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE%20%D0%B0%D0%B4%D0%BC%D0%B8%D0%BD%D0%B8%D1%81%D1%82%D1%80%D0%B0%D1%82%D0%BE%D1%80%D0%B0/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Руководство администратора
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+              
+                
+  
+  
+  
+  
+    <li class="md-nav__item">
+      <a href="../../%D0%A1%D0%BF%D1%80%D0%B0%D0%B2%D0%BE%D1%87%D0%BD%D0%B0%D1%8F%20%D0%B4%D0%BE%D0%BA%D1%83%D0%BC%D0%B5%D0%BD%D1%82%D0%B0%D1%86%D0%B8%D1%8F/%D0%A0%D1%83%D0%BA%D0%BE%D0%B2%D0%BE%D0%B4%D1%81%D1%82%D0%B2%D0%BE%20%D0%BF%D0%BE%D0%BB%D1%8C%D0%B7%D0%BE%D0%B2%D0%B0%D1%82%D0%B5%D0%BB%D1%8F/" class="md-nav__link">
+        
+  
+  
+  <span class="md-ellipsis">
+    
+  
+    Руководство пользователя
+  
+
+    
+  </span>
+  
+  
+
+      </a>
+    </li>
+  
+
+              
+            
+          </ul>
+        </nav>
+      
+    </li>
+  
+
+    
+  </ul>
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+            
+              
+              <div class="md-sidebar md-sidebar--secondary" data-md-component="sidebar" data-md-type="toc" >
+                <div class="md-sidebar__scrollwrap">
+                  <div class="md-sidebar__inner">
+                    
+
+<nav class="md-nav md-nav--secondary" aria-label="Table of contents">
+  
+  
+  
+    
+  
+  
+    <label class="md-nav__title" for="__toc">
+      <span class="md-nav__icon md-icon"></span>
+      Table of contents
+    </label>
+    <ul class="md-nav__list" data-md-component="toc" data-md-scrollfix>
+      
+        <li class="md-nav__item">
+  <a href="#xls-xlsx" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Импорт каталогов (xls, xlsx)
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_2" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Отчёт за период
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_3" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Показатели и диаграммы
+      
+    </span>
+  </a>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#0" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Застой, ранжирование, подсказка на шаге 0
+      
+    </span>
+  </a>
+  
+    <nav class="md-nav" aria-label="Застой, ранжирование, подсказка на шаге 0">
+      <ul class="md-nav__list">
+        
+          <li class="md-nav__item">
+  <a href="#_4" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Застой
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#_5" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Ранжирование программ
+      
+    </span>
+  </a>
+  
+</li>
+        
+          <li class="md-nav__item">
+  <a href="#0_1" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Подсказка на шаге 0
+      
+    </span>
+  </a>
+  
+</li>
+        
+      </ul>
+    </nav>
+  
+</li>
+      
+        <li class="md-nav__item">
+  <a href="#_6" class="md-nav__link">
+    <span class="md-ellipsis">
+      
+        Сопоставление данных интеграций
+      
+    </span>
+  </a>
+  
+</li>
+      
+    </ul>
+  
+</nav>
+                  </div>
+                </div>
+              </div>
+            
+          
+          
+            <div class="md-content" data-md-component="content">
+              
+              <article class="md-content__inner md-typeset">
+                
+                  
+
+
+
+<h1 id="_1">Методы обработки данных</h1>
+<h2 id="xls-xlsx">Импорт каталогов (xls, xlsx)</h2>
+<p>Вход. Один файл xlsx, xls, csv или json, листы в строгом порядке: Направления, Вендоры, Продукты, Программы, Специальности, Вузы, Специальности вузов, Контакты вузов, Реестр. Загружает администратор. Пример: demo-data.xlsx (раздел 14.3).</p>
+<ol>
+<li>Загрузка файла.</li>
+<li>Сопоставление: листы и колонки распознаются по названию и синонимам («Вендоры», «Поставщики» и др.).</li>
+<li>Разбор: списки в ячейке через «;» или «,»; даты ДД.ММ.ГГГГ или ГГГГ-ММ-ДД; телефоны очищаются от скобок и тире; пустые строки пропускаются.</li>
+<li>Сопоставление с базой: вендор по названию, продукт по названию и вендору, вуз по ИНН + КПП, программа по названию и направлению.</li>
+<li>Проверка (dry-run): отчёт по ошибкам по строкам (коды IMP в приложении А). Без записи в базу: исправьте файл и загрузите снова.</li>
+<li>Реестр: строка = ветка, несколько строк одного вуза = одна заявка. Строка задаёт шаг, лицензию и передачу (раздел 5.5).</li>
+<li>Запись: транзакция на весь импорт. Ошибки не ломают базу. Логируется в журнал действий.</li>
+</ol>
+<h2 id="_2">Отчёт за период</h2>
+<p>Вход. Период [A; B], по умолчанию: с 1 января текущего года по сегодня; фильтры: вузы, регионы, направления, программы, продукты, ответственные, статус.</p>
+<p>Алгоритм:</p>
+<ol>
+<li>Строка отчёта - ветка заявки. Единица счёта задаётся переключателем: «по веткам» (по умолчанию) или «по договорам» (одна строка на заявку).</li>
+<li>Срез на дату B строится по истории событий: статус заявки и веток, шаг, ответственный восстанавливаются на момент даты B. Прошлый период не меняется задним числом при дальнейшей работе.</li>
+<li>Шаг на дату B: для заявки - последний шаг перехода на дату B или раньше; для ветки - шаг последнего перехода ветки с отметками «пауза» и «идёт допсоглашение».</li>
+<li>Ответственный - это КАМ на дату B по истории назначений; если КАМ менялся в периоде - «ФИО (ранее был: ФИО)», если его нет - «КАМ не назначен».</li>
+<li>Фильтры: внутри фильтра - ИЛИ, между фильтрами - И, пустой - без ограничения. Статус - на дату B; по КАМу строка находится, если он вёл заявку хотя бы часть периода. Видимость - см. Раздел 3; права проверяются на сервере и при предпросмотре, и при выгрузке.</li>
+<li>Студенты, потоки и «Обучено преподавателей (LMS)» - это одно число на пару «вуз × программа», одинаковое у всех её веток; «Обучено преподавателей (КАМ)» - у каждой ветки своё.</li>
+</ol>
+<p>Выход. Предпросмотр первых 50 строк и счётчик строк; выгрузка xls, xlsx или pdf. Файл строится в фоне, скачивается автоматически и хранится 24 часа. Журнал выгрузки пишется в журнал действий.</p>
+<p>Граничные случаи:
+• Период за один день: A = B - срез на этот день.
+• Заявка без веток (на шагах 0–4) при единице счёта «по веткам» показывается одной строкой с пустыми полями программы и продукта.
+• Если заявка закрыта в периоде, её статус восстанавливается на дату B: если закрыта до даты B - «Закрыта» с причиной, если после - статус на тот момент.</p>
+<h2 id="_3">Показатели и диаграммы</h2>
+<p>Вход. Те же период [A; B] и фильтры, что и для отчёта.</p>
+<p>Алгоритм:
+1. Плитки и диаграммы Д1–Д7 пересчитываются по тем же отфильтрованным строкам среза.
+2. Время - это медиана в днях, время на паузе исключается.
+3. Линии порогов: общий порог застоя на Д2, лимит заявок КАМа на Д3.
+4. Студенты и потоки это суммы по уникальным парам «вуз × программа»; между собой они не складываются.
+5. Смена фильтров пересчитывает всё без перезагрузки за ≤ 1 секунду.</p>
+<table>
+<thead>
+<tr>
+<th>Показател<br>ь /<br>диаграмма</th>
+<th>На какой вопрос<br>отвечает</th>
+<th>Как считается</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>В работе</td>
+<td>Сколько работы идёт?</td>
+<td>Снимок: заявки на шагах 1–4 + ветки на шагах 5–8, включая<br>стоящие на паузе; без закрытых и «Ждёт принятия»</td>
+</tr>
+<tr>
+<td>Новых за<br>период</td>
+<td>Сколько заявок появилось?</td>
+<td>Заявки, созданные в [A; B]</td>
+</tr>
+<tr>
+<td>Закрыто за<br>период</td>
+<td>Сколько закрыли и с каким<br>итогом?</td>
+<td>По единице счёта; два числа — «Завершено» / «Отказ»</td>
+</tr>
+<tr>
+<td>Длительност<br>ь внедрения,<br>дней</td>
+<td>Как быстро ветка доходит<br>до обучения<br>преподавателей?</td>
+<td>Медиана по веткам, вошедшим в шаг 7 в [A; B]: от старта ветки до<br>входа в шаг 7, без пауз; ветки из импорта не входят.</td>
+</tr>
+<tr>
+<td>Зависли</td>
+<td>Сколько работы стоит?</td>
+<td>Снимок: застой на дату B (6.4.1), кроме тех заявок, что на паузе</td>
+</tr>
+<tr>
+<td>Студентов,<br>потоков</td>
+<td>Сколько учатся по нашим<br>программам?</td>
+<td>Суммы по уникальным парам, текущие значения</td>
+</tr>
+<tr>
+<td>Д1</td>
+<td>Где сейчас работа?</td>
+<td>Снимок по шагам workflow: «в работе» / «пауза», закрытые идет<br>отдельным столбцом. Шаг 4.1 это не столбец; допустима плитка<br>«Идёт допсоглашение: N заявок»</td>
+</tr>
+<tr>
+<td>Д2</td>
+<td>Сколько длится шаг?</td>
+<td>Медиана дней на шаге по выходам из шага в [A; B], без пауз; n у<br>столбца; линия общего порога застоя. Ещё не вышедшие не<br>входят - их показывает плитка «Зависли»</td>
+</tr>
+<tr>
+<td>Д3</td>
+<td>Кто перегружен?<br>(руководитель,<br>администратор)</td>
+<td>Снимок: активные заявки по ответственным - «до подписания» /<br>«после» / «пауза»; линия - лимит заявок КАМа с подписью «пауза<br>в лимит не входит»</td>
+</tr>
+<tr>
+<td>Д4</td>
+<td>Что подписывают по<br>месяцам?</td>
+<td>Ветки по месяцу подписания в [A; B]: дата договора, если её нет -<br>переход из 4 в ветки(5-8) ; для ветки из допсоглашения требуется<br>его одобрение. Топ-5 направлений или продуктов + «прочие»</td>
+</tr>
+<tr>
+<td>Д5</td>
+<td>От чего отказываются?</td>
+<td>Итог «Отказ» в [A; B] по продуктам: закрытие заявки / исключение<br>допсоглашением / закрытие ветки. Закрытая заявка - закрытие<br>каждому продукту своих веток</td>
+</tr>
+<tr>
+<td>Д6</td>
+<td>Какие программы<br>востребованы?</td>
+<td>По убыванию: студенты, потоки (по уникальным парам) или число<br>вузов с веткой программы</td>
+</tr>
+<tr>
+<td>Д7</td>
+<td>Почему закрывают?</td>
+<td>Закрытия в [A; B] по причинам из справочника администратора,<br>по единице счёта</td>
+</tr>
+</tbody>
+</table>
+<p>Выход. Плитки и Д1–Д7 на экране; если нет данных - «По выбранному периоду и фильтрам ничего не найдено». Выгрузка: если в png - одна диаграмма с подписью; если в pdf - шапка как у отчёта, плитки и все диаграммы, A4 альбомная. Перед выгрузкой можно выбрать диаграммы и их вид.</p>
+<p>Граничные случаи:
+• Если две ветки одной программы в вузе по 120 студентов - их в сумме 120, а не 240.
+• Если заявка закрыта после подписания - она считается только своими ветками; если в Д5 ветка без продукта - она в столбце «без продукта».
+• Ветка берёт дату из поля «Подписание лицензии»; если оно пусто - в Д4 она не попадает.</p>
+<h2 id="0">Застой, ранжирование, подсказка на шаге 0</h2>
+<h3 id="_4">Застой</h3>
+<p>Вход. Заявка (до подписания) или ветка (после подписания), дата начала отсчёта, порог.</p>
+<p>Алгоритм:
+1. Порог - свой у заявки, если его задал руководитель, иначе общий от администратора, по умолчанию 14 дней. У ветки — порог её заявки.
+2. В застое, если «сегодня − начало отсчёта» &gt; порога; дни календарные. Сброс отсчёта, пауза и уведомления описаны в разделе 4.4.</p>
+<p>Выход. Признак «в застое» и одно уведомление КАМу и руководителю (раздел 4.4). «Зависли» - тот же расчёт на дату B.</p>
+<p>Граничные случаи:
+• Ветки считаются отдельно; допсоглашение их застой не сбрасывает.
+• На паузе отсчёт останавливается; при снятии паузы отсчёт продолжается (или начинается заново, см. 4.4).</p>
+<h3 id="_5">Ранжирование программ</h3>
+<p>Вход. Все активные программы из справочника.</p>
+<p>Алгоритм:
+1. Программы сортируются по ручному приоритету (1 - наивысший, 2, 3...; без приоритета - в конце).
+2. При равенстве приоритетов - по числу обучающихся студентов (из статистики LMS по уникальным парам «вуз × программа»).
+3. При равенстве студентов - по алфавиту названия программы.</p>
+<p>Выход. Упорядоченный список программ в каталоге, при выборе на шаге 0 и в выгрузке И2 для сайта (раздел 7.1).</p>
+<h3 id="0_1">Подсказка на шаге 0</h3>
+<p>Вход. Выбранный вуз на шаге 0 создания заявки.</p>
+<p>Алгоритм:
+1. Из справочника специальностей вуза берутся специальности с тегами ИТ-направлений.
+2. Для каждой программы CRM считает число совпавших специальностей вуза с её направлением.
+3. Программы сортируются по этому числу по убыванию; при равенстве — по ручному приоритету, затем по названию (раздел 6.4.2). Рядом - совпавшие специальности.
+4. Всё считается в CRM по справочнику, без ИИ и выхода в интернет.</p>
+<p>Выход. Подсказка на экране шага 0; на заявку не влияет и в ней не сохраняется.</p>
+<p>Граничные случаи:
+• Специальность с несколькими направлениями засчитывается программам каждого из них.
+• Если у вуза нет специальностей в справочнике - подсказка не показывается, на экране выходит «Нет данных о специальностях вуза».</p>
+<h2 id="_6">Сопоставление данных интеграций</h2>
+<p>Вход. Данные LMS по паре «вуз × программа»: студенты, потоки, обученные преподаватели. С сайта приходят записи людей на курсы: номер заказа, курс, поток. Форматы и расписание обмена находятся в разделе 7.</p>
+<p>Алгоритм:
+1. Вуз: внутренний ID CRM из выгрузки для LMS -&gt; «ИНН + КПП» -&gt; только ИНН, если вуз с ним в CRM один.
+2. Программа: внутренний ID CRM -&gt; у LMS ID курса, у сайта название курса после нормализации (регистр, кавычки, пробелы) -&gt; сопоставления, которые запомнил администратор.
+3. Дубли: ключ LMS - пара «вуз × программа», сайта - номер заказа. Если те же данные - «без изменений»; если изменились - обновление, старые и новые числа пишутся в журнал; если две записи одной пары в файле - обе неоднозначны.
+4. Данные LMS:
+  – у вуза есть незакрытая ветка программы -&gt; обновляется статистика пары;
+  – нет незакрытой заявки -&gt; статистика сохраняется, всем руководителям - запрос «создать заявку»; подтвердивший становится автором заявки;
+  – заявка есть, программы в ней нет -&gt; руководителю ответственного КАМа отправляется запрос «добавить программу»: до подписания ветка добавляется в состав черновиком, после - только допсоглашением.
+  На пару есть одно ждущее предложение, отклонённое повторно не создаётся.
+5. Не найдено или неоднозначно -&gt; очередь у администратора: «Сопоставить» (сопоставление запоминается и дальше применяется само) или «Отклонить». Бизнес-данные администратор не правит.
+6. Записи с сайта заявку не создают - вуза в записи нет. ФИО и телефон отбрасываются при приёме; из email сразу считается отпечаток (хэш с секретным ключом), сам email не хранится; уникальных обучающихся = число разных отпечатков.</p>
+<p>Выход. Статистика пары одна на все ветки программы в вузе; записи с сайта; запросы руководителям; очередь несопоставленных; итог обмена по кодам (приложение А). В журнале лежат только ID и ключи, без ФИО, телефона и email.</p>
+<p>Граничные случаи:
+• Если пришёл только ИНН, а вузов с ним несколько, или ID и «ИНН + КПП» указывают на разные вузы: запись в очередь; статистика разных вузов не суммируется.
+• Обученные преподаватели: LMS пишет только своё значение и не трогает значение КАМа; если поля нет, прежнее сохраняется; в отчёте видны оба.
+• Обмен никогда не меняет шаг заявки или ветки.
+• Если заглушка недоступна - данные не меняются, видны время последнего обмена и кнопка «Повторить».</p>
+
+
+
+
+
+
+
+
+
+
+
+
+                
+              </article>
+            </div>
+          
+          
+<script>var target=document.getElementById(location.hash.slice(1));target&&target.name&&(target.checked=target.name.startsWith("__tabbed_"))</script>
+        </div>
+        
+      </main>
+      
+        <footer class="md-footer">
+  
+  <div class="md-footer-meta md-typeset">
+    <div class="md-footer-meta__inner md-grid">
+      <div class="md-copyright">
+  
+  
+    Made with
+    <a href="https://squidfunk.github.io/mkdocs-material/" target="_blank" rel="noopener">
+      Material for MkDocs
+    </a>
+  
+</div>
+      
+    </div>
+  </div>
+</footer>
+      
+    </div>
+    <div class="md-dialog" data-md-component="dialog">
+      <div class="md-dialog__inner md-typeset"></div>
+    </div>
+    
+    
+    
+      
+      
+      <script id="__config" type="application/json">{"annotate": null, "base": "../..", "features": [], "search": "../../assets/javascripts/workers/search.2c215733.min.js", "tags": null, "translations": {"clipboard.copied": "Copied to clipboard", "clipboard.copy": "Copy to clipboard", "search.result.more.one": "1 more on this page", "search.result.more.other": "# more on this page", "search.result.none": "No matching documents", "search.result.one": "1 matching document", "search.result.other": "# matching documents", "search.result.placeholder": "Type to start searching", "search.result.term.missing": "Missing", "select.version": "Select version"}, "version": null}</script>
+    
+    
+      <script src="../../assets/javascripts/bundle.d7400e89.min.js"></script>
+      
+    
+  </body>
+</html>
