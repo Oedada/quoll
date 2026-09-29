@@ -28,9 +28,9 @@ docker compose -f backend/docker-compose.yml up -d
 
 ## Структура
 
-backend - FastAPI-приложение (модульный монолит, src-layout)
+backend — FastAPI-приложение (модульный монолит, src-layout)
 
-docs - требования, дизайн-документы, схема БД
+docs — требования, дизайн-документы, схема БД
 
 
 
