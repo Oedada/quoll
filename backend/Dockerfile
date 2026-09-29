@@ -26,6 +26,8 @@ COPY backend/alembic.ini /app/backend/alembic.ini
 COPY backend/alembic /app/backend/alembic
 # статику фронта отдаёт сам FastAPI через /front
 COPY frontend /app/frontend
+# mkdocs
+COPY site /app/mkdocs
 
 EXPOSE 8000
 
