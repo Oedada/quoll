@@ -5,6 +5,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, JSONResponse
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
@@ -222,8 +223,16 @@ async def root():
 
 # демо-страница из репозитория, main.py лежит в backend/src/quoll
 DEMO_PAGE = Path(__file__).resolve().parents[3] / "frontend" / "auth-demo.html"
+MKDOCS = Path(__file__).resolve().parents[3] / "mkdocs"
 
 
 @app.get("/front")
 async def frontend():
     return FileResponse(DEMO_PAGE)
+
+
+app.mount(
+    "/mkdocs",
+    StaticFiles(directory=MKDOCS, html=True),
+    name="mkdocs",
+)
