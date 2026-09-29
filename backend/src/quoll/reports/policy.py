@@ -11,6 +11,7 @@ from enum import StrEnum
 from typing import Any
 
 from quoll.core.exceptions import AppException
+from quoll.core.people import person
 from quoll.interactions.bindings import BUSINESS_TZ
 from quoll.reports import labels
 
@@ -535,9 +536,9 @@ def _assemble(facts, i, branch, kind, row_status, people, row_moves) -> Row:
         product=facts.products.get(product_id),
         status=row_status,
         responsible_id=who,
-        responsible_name=labels.person(facts.people.get(who)),
+        responsible_name=person(facts.people.get(who)),
         earlier_id=earlier,
-        earlier_name=labels.person(facts.people.get(earlier)) if earlier else None,
+        earlier_name=person(facts.people.get(earlier)) if earlier else None,
         teachers_kam=branch.teachers_trained if branch else None,
         transfer_status=branch.transfer_status if branch else None,
         license_until=(

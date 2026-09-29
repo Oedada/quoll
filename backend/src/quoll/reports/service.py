@@ -11,6 +11,7 @@ from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import User
 from quoll.core.exceptions import IdNotExistsException, StorageException
+from quoll.core.people import person
 from quoll.core.system_defaults import SystemDefaults
 from quoll.interactions.bindings import BUSINESS_TZ
 from quoll.reports import labels, policy, repository
@@ -144,7 +145,7 @@ async def options(session_maker: async_sessionmaker, actor_id: str) -> dict:
         ],
         "responsible": sorted(
             (
-                {"id": k, "name": labels.person(p), "is_active": p.is_active}
+                {"id": k, "name": person(p), "is_active": p.is_active}
                 for k, p in found["people"].items()
             ),
             key=lambda o: o["name"],

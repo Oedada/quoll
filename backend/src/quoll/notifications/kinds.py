@@ -214,6 +214,27 @@ INTEGRATION_PROPOSAL_ADD = _kind(
     "LMS: добавить программу в заявку",
     "{university}, программа «{program}»: {reason}",
 )
+COMMENT_REPLY = _kind(
+    "COMMENT_REPLY",
+    Severity.INFO,
+    [Role.USER],
+    "Ответ на комментарий",
+    "{interaction}, шаг «{stage}»: {text}",
+)
+COMMENT_TO_OWNER = _kind(
+    "COMMENT_TO_OWNER",
+    Severity.INFO,
+    [Role.OWNER],
+    "Новый комментарий от руководителя",
+    "{interaction}, шаг «{stage}»: {text}",
+)
+COMMENT_TO_SUPERVISOR = _kind(
+    "COMMENT_TO_SUPERVISOR",
+    Severity.INFO,
+    [Role.OWNER_SUPERVISOR],
+    "Новый комментарий от менеджера",
+    "{interaction}, шаг «{stage}»: {text}",
+)
 # ADD_PROGRAM одобрен после подписания (Р5): ветку заводит КАМ через ДС 4.1
 INTEGRATION_PROPOSAL_SIGN_NEEDED = _kind(
     "INTEGRATION_PROPOSAL_SIGN_NEEDED",

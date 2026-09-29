@@ -12,6 +12,7 @@ from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import Manager, User, UserRole
 from quoll.catalog.models import CloseReason, ItDirection, ItProgram, Product
+from quoll.core.people import person
 from quoll.core.system_defaults import SystemDefaults
 from quoll.integrations.models import LmsStats
 from quoll.interactions.access_policy import readable_filter
@@ -593,7 +594,7 @@ async def filter_names(session: AsyncSession, params) -> dict[str, list[str]]:
         )
     found["product_ids"] = products
     people = await _people(session, set(params.responsible_ids))
-    found["responsible_ids"] = sorted(labels.person(p) for p in people.values())
+    found["responsible_ids"] = sorted(person(p) for p in people.values())
     stage_ids = [s for s in params.statuses if isinstance(s, int)]
     statuses = [
         labels.SPECIAL_STATUSES[s] for s in params.statuses if isinstance(s, str)

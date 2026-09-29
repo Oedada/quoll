@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import async_sessionmaker
 
 from quoll.attachments.s3 import S3StorageService
 from quoll.auth.identity_policy import is_incapacitated
+from quoll.core.people import person
 from quoll.core.system_defaults import SystemDefaults
 from quoll.interactions.bindings import BUSINESS_TZ
 from quoll.reports import labels, policy, render, repository
@@ -147,7 +148,7 @@ class ReportRunner:
                 (title, ", ".join(names.get(key, [])) or labels.ALL)
                 for key, title in labels.FILTERS.items()
             ),
-            author=f"{labels.person(actor)}, {labels.ROLES[actor.role.value]}",
+            author=f"{person(actor)}, {labels.ROLES[actor.role.value]}",
             formed_at=datetime.now(BUSINESS_TZ).strftime("%d.%m.%Y %H:%M"),
             row_count=len(rows),
         )

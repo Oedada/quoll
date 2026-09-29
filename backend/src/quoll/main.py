@@ -14,6 +14,7 @@ from quoll.auth import auth_router, users_router
 from quoll.auth.bootstrap import ensure_admin_account, ensure_demo_accounts
 from quoll.auth.repositories import UserRepository
 from quoll.catalog import catalog_router
+from quoll.comments.router import comments_router
 from quoll.config import settings
 from quoll.core import AppException
 from quoll.core.worker import Workers
@@ -194,6 +195,7 @@ app.include_router(stages_router)
 app.include_router(transitions_router)
 app.include_router(change_requests_router)
 app.include_router(attachments_router)
+app.include_router(comments_router)
 app.include_router(interactions_router)
 app.include_router(requests_router)
 app.include_router(documents_router)

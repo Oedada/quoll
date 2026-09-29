@@ -20,6 +20,7 @@ from quoll.catalog.models import (
     ItProgram,
     Product,
 )
+from quoll.core.people import person
 from quoll.integrations.models import (
     IntegrationRun,
     LmsStats,
@@ -291,7 +292,7 @@ def _full(refs, i: Interaction, universities, branches, extra: _Extra) -> dict:
         },
         "university": _university(universities[i.university_id], True),
         "responsible": (
-            {"id": owner.id, "name": labels.person(owner)} if owner else None
+            {"id": owner.id, "name": person(owner)} if owner else None
         ),
         "step": _step(refs, i.state_id),
         "pause": _pause(i.pause_state, i.paused_until),

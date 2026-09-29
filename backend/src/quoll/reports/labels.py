@@ -60,14 +60,6 @@ ROLES = {"manager": "КАМ", "superviser": "Руководитель", "admin":
 NO_PRODUCT = "Без продукта"
 
 
-def person(p) -> str:
-    """фамилия и инициалы; без отчества - только инициал имени"""
-    if p is None:
-        return DASH
-    initials = " ".join(f"{part[0]}." for part in (p.first_name, p.patronymic) if part)
-    return f"{p.last_name} {initials}".strip()
-
-
 def responsible(name: str, earlier: str | None) -> str:
     return f"{name} (ранее: {earlier})" if earlier else name
 

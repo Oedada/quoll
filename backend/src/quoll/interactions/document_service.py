@@ -22,6 +22,7 @@ from quoll.auth.audit import record
 from quoll.auth.audit_models import AuditEventType, TargetType
 from quoll.auth.models import User, UserRole
 from quoll.catalog.models import DocumentKind
+from quoll.comments.models import Comment, CommentAttachment
 from quoll.core.exceptions import (
     DomainRuleException,
     IdNotExistsException,
@@ -524,9 +525,10 @@ async def decide(
 async def check_attachment_readable(
     session: AsyncSession, user: User, attachment_id: int
 ) -> None:
-    """файл заявки - по её политике чтения, шаблон ребра - любому вошедшему,
-    ни к чему не привязанный - только админу: иначе он стал бы «шаблоном» для
-    всех, как только от него отвязали документ"""
+    """файл заявки - по её политике чтения, файл удалённого комментария -
+    только админу, шаблон ребра - любому вошедшему, ни к чему не привязанный -
+    только админу: иначе он стал бы «шаблоном» для всех, как только от него
+    отвязали документ"""
     if await session.get(Attachment, attachment_id) is None:
         raise IdNotExistsException(Attachment.__name__)
     document = await session.scalar(
@@ -540,6 +542,19 @@ async def check_attachment_readable(
         if not can_read(user, await repo.ownership(interaction)):
             raise OperationForbiddenException("read this file")
         return
+    comment = await session.scalar(
+        select(Comment)
+        .join(CommentAttachment, CommentAttachment.comment_id == Comment.id)
+        .where(CommentAttachment.attachment_id == attachment_id)
+    )
+    if comment is not None:
+        repo = InteractionRepository(session)
+        interaction = await repo.get(comment.interaction_id)
+        if not can_read(user, await repo.ownership(interaction)):
+            raise OperationForbiddenException("read this file")
+        if comment.deleted_at is not None and user.role != UserRole.ADMIN:
+            raise OperationForbiddenException("read this file")
+        return
     template = await session.scalar(
         select(exists().where(TransitionAttachment.attachment_id == attachment_id))
     )
@@ -547,9 +562,16 @@ async def check_attachment_readable(
         raise OperationForbiddenException("read this file")
 
 
-async def is_interaction_document(session: AsyncSession, attachment_id: int) -> bool:
+async def is_interaction_file(session: AsyncSession, attachment_id: int) -> bool:
+    """документ заявки или файл комментария - не тронуть общим удалением
+    вложений и не сделать шаблоном ребра"""
+    is_document = await session.scalar(
+        select(exists().where(InteractionDocument.attachment_id == attachment_id))
+    )
+    if is_document:
+        return True
     return bool(
         await session.scalar(
-            select(exists().where(InteractionDocument.attachment_id == attachment_id))
+            select(exists().where(CommentAttachment.attachment_id == attachment_id))
         )
     )
