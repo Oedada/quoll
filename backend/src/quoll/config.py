@@ -49,10 +49,13 @@ class Settings(BaseSettings):
     report_worker_interval_seconds: int = 2
     report_cleanup_interval_seconds: int = 3600
     # процессов рендера отчётов в одном процессе приложения - под число CPU
-    report_render_processes: int = 2
-    # по умолчанию у движка 5 + 10: предпросмотр держит два соединения
-    db_pool_size: int = 20
-    db_max_overflow: int = 10
+    report_render_processes: int = 4
+    # пул соединений БД: base + overflow = max на один воркер Uvicorn
+    # формула: pool_size × uvicorn_workers + воркеры + listener < pg max_connections
+    db_pool_size: int = 40
+    db_max_overflow: int = 20
+    # разрешённые CORS-источники, через запятую в .env
+    cors_origins: list[str] = ["http://localhost:8000"]
 
     # интеграции-заглушки (integrations-plan.md)
     # ключ HMAC для отпечатка email в В1
