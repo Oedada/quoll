@@ -165,8 +165,16 @@ async def listing(
     order: list[Any],
     limit: int,
     offset: int,
+    ids: list[int] | None = None,
 ) -> list[Base]:
-    """фильтр до limit - иначе страница врала бы"""
+    """фильтр до limit - иначе страница врала бы.
+
+    ids - получить ровно эти записи, без страницы: остальные фильтры и
+    limit/offset не применяются (иначе список длиннее лимита обрезался бы)
+    """
+    if ids is not None:
+        stmt = select(model).where(model.id.in_(ids)).order_by(*order)
+        return list(await session.scalars(stmt))
     stmt = select(model).where(*filters).order_by(*order).limit(limit).offset(offset)
     return list(await session.scalars(stmt))
 

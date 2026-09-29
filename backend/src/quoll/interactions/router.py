@@ -1118,12 +1118,17 @@ async def list_requests(
     user: CurrentUser,
     session: SessionDep,
     status_filter: Annotated[RequestStatus | None, Query(alias="status")] = None,
+    interaction_id: Annotated[
+        int | None, Query(ge=1, description="Filter by interaction")
+    ] = None,
     limit: int = Query(
         default=SystemDefaults.DEFAULT_PAGE_SIZE, ge=1, le=SystemDefaults.MAX_PAGE_SIZE
     ),
     offset: int = Query(default=0, ge=0),
 ):
-    return await request_service.visible(session, user, status_filter, limit, offset)
+    return await request_service.visible(
+        session, user, status_filter, limit, offset, interaction_id=interaction_id
+    )
 
 
 @requests_router.post("/{id}/approve", response_model=RequestRead)

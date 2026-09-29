@@ -70,6 +70,11 @@ catalog_router = APIRouter(
 Limit = Annotated[int, Query(ge=1, le=SystemDefaults.MAX_PAGE_SIZE)]
 Offset = Annotated[int, Query(ge=0)]
 Search = Annotated[str | None, Query(max_length=255, description="part of the name")]
+# получить ровно эти записи одним запросом, без постраничного обхода каталога
+Ids = Annotated[
+    list[int] | None,
+    Query(max_length=500, description="Fetch exactly these ids, ignores other filters"),
+]
 # приоритеты курсов расставляют менеджеры и админ (Q19), руководитель - нет
 Prioritizer = Annotated[User, Depends(require_roles(UserRole.MANAGER, UserRole.ADMIN))]
 
@@ -113,7 +118,11 @@ def _crud(path: str, model, target: TargetType, write, patch, read) -> None:
 
 @catalog_router.get("/directions", response_model=list[DirectionRead])
 async def list_directions(
-    session: SessionDep, q: Search = None, limit: Limit = 50, offset: Offset = 0
+    session: SessionDep,
+    q: Search = None,
+    limit: Limit = 50,
+    offset: Offset = 0,
+    ids: Ids = None,
 ):
     return await service.listing(
         session,
@@ -122,6 +131,7 @@ async def list_directions(
         [ItDirection.name],
         limit,
         offset,
+        ids=ids,
     )
 
 
@@ -147,6 +157,7 @@ async def list_products(
     is_active: bool | None = None,
     limit: Limit = 50,
     offset: Offset = 0,
+    ids: Ids = None,
 ):
     filters = _like(Product.name, q)
     if vendor_id is not None:
@@ -156,7 +167,7 @@ async def list_products(
     if is_active is not None:
         filters.append(Product.is_active.is_(is_active))
     order = [Product.name, Product.id]
-    return await service.listing(session, Product, filters, order, limit, offset)
+    return await service.listing(session, Product, filters, order, limit, offset, ids=ids)
 
 
 @catalog_router.get("/programs", response_model=list[ProgramRead])
@@ -168,6 +179,7 @@ async def list_programs(
     is_active: bool | None = None,
     limit: Limit = 50,
     offset: Offset = 0,
+    ids: Ids = None,
 ):
     filters = _like(ItProgram.name, q)
     if direction_id is not None:
@@ -178,7 +190,9 @@ async def list_programs(
         filters.append(ItProgram.is_active.is_(is_active))
     # 1 - самая востребованная, без приоритета - в конце (К 2.4)
     order = [ItProgram.priority.asc().nulls_last(), ItProgram.name, ItProgram.id]
-    return await service.listing(session, ItProgram, filters, order, limit, offset)
+    return await service.listing(
+        session, ItProgram, filters, order, limit, offset, ids=ids
+    )
 
 
 @catalog_router.get("/programs/suggest", response_model=list[ProgramSuggestion])
@@ -251,6 +265,7 @@ async def list_universities(
     inn: str | None = None,
     limit: Limit = 50,
     offset: Offset = 0,
+    ids: Ids = None,
 ):
     filters = []
     if q:
@@ -262,7 +277,9 @@ async def list_universities(
     if inn is not None:
         filters.append(University.inn == inn)
     order = [University.short_name, University.id]
-    return await service.listing(session, University, filters, order, limit, offset)
+    return await service.listing(
+        session, University, filters, order, limit, offset, ids=ids
+    )
 
 
 @catalog_router.get("/regions", response_model=list[str])
@@ -272,11 +289,15 @@ async def list_regions():
 
 @catalog_router.get("/vendors", response_model=list[VendorRead])
 async def list_vendors(
-    session: SessionDep, q: Search = None, limit: Limit = 50, offset: Offset = 0
+    session: SessionDep,
+    q: Search = None,
+    limit: Limit = 50,
+    offset: Offset = 0,
+    ids: Ids = None,
 ):
     order = [Vendor.name, Vendor.id]
     return await service.listing(
-        session, Vendor, _like(Vendor.name, q), order, limit, offset
+        session, Vendor, _like(Vendor.name, q), order, limit, offset, ids=ids
     )
 
 

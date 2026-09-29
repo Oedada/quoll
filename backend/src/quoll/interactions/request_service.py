@@ -722,6 +722,7 @@ async def visible(
     status: RequestStatus | None,
     limit: int,
     offset: int,
+    interaction_id: int | None = None,
 ) -> list[InteractionRequest]:
     """руководитель - по заявкам своей команды, менеджер - свои, админ - все"""
     stmt = select(InteractionRequest)
@@ -733,6 +734,8 @@ async def visible(
         stmt = stmt.where(InteractionRequest.interaction_id.in_(owned))
     if status is not None:
         stmt = stmt.where(InteractionRequest.status == status)
+    if interaction_id is not None:
+        stmt = stmt.where(InteractionRequest.interaction_id == interaction_id)
     stmt = (
         stmt.order_by(
             InteractionRequest.created_at.desc(), InteractionRequest.id.desc()
