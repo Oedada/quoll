@@ -74,6 +74,7 @@ class GroupPlan:
     contract_extended_until: date | None = None
     contract_extended_at: date | None = None
     contacts_text: str | None = None
+    contacts_target: str = "CATALOG"  # CATALOG / STEP:<stage_id>:<key> / SKIP (В12)
     comment: str | None = None
     pause_until: datetime | None = None
     agreement_open: bool = False
@@ -430,6 +431,11 @@ async def _build_group(session: AsyncSession, an, key: str, group: list) -> Grou
     plan.contract_extended_until = _date(_first(group, "contract_extended_until"))
     plan.contract_extended_at = _date(_first(group, "contract_extended_at"))
     plan.contacts_text = _first(group, "contacts")
+    contacts_choice = next(
+        (r.row.contacts_target for r in group if r.row.contacts_target), None
+    )
+    if contacts_choice:
+        plan.contacts_target = contacts_choice
     plan.comment = _first(group, "comment")
     plan.agreement_open = bool(_first(group, "agreement_open"))
     plan.agreement_since = _date(_first(group, "agreement_since"))

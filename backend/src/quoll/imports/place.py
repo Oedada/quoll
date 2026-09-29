@@ -514,9 +514,10 @@ def _split_contacts(text: str) -> list[tuple[str, str | None, str | None]]:
 async def _apply_contacts(
     session, an: Analysis, university_id: int, plan: GroupPlan
 ) -> None:
-    """§19.9 - только вариант CATALOG: ссылка в поле шага не пишется,
-    динамических полей шага импорт не знает (см. докстринг модуля)"""
-    if not plan.contacts_text:
+    """§19.9, В12 - CATALOG и SKIP; STEP:<stage_id>:<key> не реализован
+    (ссылка в поле шага не пишется, динамических полей шага импорт не знает,
+    см. докстринг модуля) - трактуется как CATALOG, а не молча теряется"""
+    if not plan.contacts_text or plan.contacts_target == "SKIP":
         return
     known = await an.snap.contacts("university", university_id)
     for name, phone, email in _split_contacts(plan.contacts_text):
