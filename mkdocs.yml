@@ -1,0 +1,12 @@
+site_name: Quoll
+site_description: Документация проекта Quoll
+
+theme:
+  name: material
+  palette:
+    primary: pink
+    accent: pink
+
+nav:
+  - Главная: index.md
+  - Установка: installation.md
