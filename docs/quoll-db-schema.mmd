@@ -1,4 +1,4 @@
-%% схема БД quoll: dev @ 979d542, alembic head 335bc12c61ff
+%% схема БД quoll: dev @ b278d39, alembic head ea8975536d41
 %% собрано из метаданных SQLAlchemy, сверено alembic check на свежей базе
 %% обозначения: "-> таблица ON DELETE", null - допускает NULL, default - серверное значение; CHECK и индексы - комментарии после таблицы
 %% вне метаданных: enum userrole (manager, superviser, admin);
@@ -136,6 +136,87 @@ erDiagram
         timestamptz created_at "default now()"
         timestamptz updated_at "default now()"
     }
+    import_batches {
+        bigint id PK
+        string created_by FK "-> users SET NULL; null"
+        text filename
+        string file_format
+        string status "default DRAFT"
+        int workflow_id FK "-> workflows RESTRICT; null"
+        jsonb replace_stages "default '{}'::jsonb"
+        jsonb summary "default '{}'::jsonb"
+        int version "default 0"
+        string worker_id "null"
+        int lease_version "default 0"
+        timestamptz lease_until "null"
+        timestamptz next_attempt_at "null"
+        int idp_retries "default 0"
+        timestamptz created_at "default now()"
+        timestamptz updated_at "default now()"
+        timestamptz apply_started_at "null"
+        timestamptz applied_at "null"
+        timestamptz expires_at
+    }
+    %% import_batches: CHECK chk_import_batch_format: file_format IN ('XLSX', 'XLS', 'CSV', 'JSON')
+    %% import_batches: CHECK chk_import_batch_lease: status = 'APPLYING' OR (lease_until IS NULL AND worker_id IS NULL)
+    %% import_batches: CHECK chk_import_batch_status: status IN ('DRAFT', 'APPLYING', 'APPLIED')
+    %% import_batches: INDEX ix_import_batches_status (status, id)
+    import_files {
+        bigint id PK
+        bigint row_id FK "-> import_rows CASCADE"
+        int attachment_id FK "-> attachments CASCADE; null"
+        bigint document_id FK "-> interaction_documents CASCADE; null"
+        string kind
+        int stage_id FK "-> stages RESTRICT; null"
+        string title "null"
+        text description "null"
+        string contract_number "null"
+        date contract_signed_at "null"
+        date contract_valid_until "null"
+        timestamptz created_at "default now()"
+    }
+    %% import_files: CHECK chk_import_file_target: attachment_id IS NOT NULL OR document_id IS NOT NULL
+    %% import_files: INDEX ix_import_files_attachment_id (attachment_id)
+    %% import_files: INDEX ix_import_files_row_id (row_id)
+    import_rows {
+        bigint id PK
+        bigint batch_id FK "-> import_batches CASCADE"
+        bigint sheet_id FK "-> import_sheets CASCADE"
+        int number
+        text data
+        string status
+        jsonb issues "default '[]'::jsonb"
+        jsonb targets "default '[]'::jsonb"
+        string group_key "null"
+        string decision "null"
+        jsonb replace_target "null"
+        string manager_choice "null"
+        string contacts_target "null"
+        boolean excluded "default false"
+        string digest "default"
+        string result "null"
+        jsonb result_ids "null"
+        string result_code "null"
+        int attempts "default 0"
+    }
+    %% import_rows: UNIQUE uq_import_rows_sheet_id_number (sheet_id, number)
+    %% import_rows: INDEX ix_import_rows_batch_group (batch_id, group_key)
+    %% import_rows: INDEX ix_import_rows_batch_result (batch_id, result)
+    %% import_rows: INDEX ix_import_rows_batch_status (batch_id, status)
+    import_sheets {
+        bigint id PK
+        bigint batch_id FK "-> import_batches CASCADE"
+        int number
+        text name
+        string kind "null"
+        int header_row
+        text headers
+        jsonb mapping "default '{}'::jsonb"
+        jsonb notes "default '{}'::jsonb"
+        jsonb issues "default '[]'::jsonb"
+    }
+    %% import_sheets: UNIQUE uq_import_sheets_batch_id_number (batch_id, number)
+    %% import_sheets: INDEX ix_import_sheets_batch_id (batch_id)
     integration_mappings {
         string kind
         string external_key
@@ -217,7 +298,7 @@ erDiagram
     interaction_documents {
         bigint id PK
         int interaction_id FK "-> interaction_documents SET NULL (replaces_document_id); -> interactions CASCADE"
-        int attachment_id FK,UK "-> attachments CASCADE"
+        int attachment_id FK,UK "-> attachments CASCADE; null"
         int stage_id FK "-> stages RESTRICT"
         string uploaded_by FK "-> users SET NULL; null"
         bigint replaces_document_id FK "-> interaction_documents SET NULL (replaces_document_id); null"
@@ -235,6 +316,7 @@ erDiagram
         timestamptz created_at "default now()"
     }
     %% interaction_documents: CHECK chk_document_contract_fields: kind = 'CONTRACT' OR (contract_number IS NULL AND contract_signed_at IS NULL AND contract_valid_until IS NULL)
+    %% interaction_documents: CHECK chk_document_file_or_contract: attachment_id IS NOT NULL OR kind = 'CONTRACT'
     %% interaction_documents: CHECK chk_document_other_described: kind <> 'OTHER' OR description IS NOT NULL
     %% interaction_documents: CHECK chk_document_sa_scan: (supplementary_agreement_id IS NOT NULL) = (kind = 'SUPPLEMENTARY_AGREEMENT')
     %% interaction_documents: CHECK chk_document_status: status IN ('ACTIVE', 'PENDING', 'REJECTED')
@@ -745,6 +827,15 @@ erDiagram
     users |o--o{ comments : "deleted_by"
     universities |o--o{ contacts : "university_id"
     vendors |o--o{ contacts : "vendor_id"
+    users |o--o{ import_batches : "created_by"
+    workflows |o--o{ import_batches : "workflow_id"
+    import_rows ||--o{ import_files : "row_id"
+    attachments |o--o{ import_files : "attachment_id"
+    interaction_documents |o--o{ import_files : "document_id"
+    stages |o--o{ import_files : "stage_id"
+    import_batches ||--o{ import_rows : "batch_id"
+    import_sheets ||--o{ import_rows : "sheet_id"
+    import_batches ||--o{ import_sheets : "batch_id"
     users |o--o{ integration_mappings : "created_by"
     universities ||--o{ integration_proposals : "university_id"
     it_programs ||--o{ integration_proposals : "program_id"
@@ -757,7 +848,7 @@ erDiagram
     users |o--o{ interaction_assignments : "manager_id"
     interaction_documents ||--o{ interaction_documents : "interaction_id"
     interactions ||--o{ interaction_documents : "interaction_id"
-    attachments ||--o| interaction_documents : "attachment_id"
+    attachments |o--o| interaction_documents : "attachment_id"
     stages ||--o{ interaction_documents : "stage_id"
     users |o--o{ interaction_documents : "uploaded_by"
     interaction_documents |o--o{ interaction_documents : "replaces_document_id"
