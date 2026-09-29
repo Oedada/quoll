@@ -9,7 +9,7 @@ FastAPI + SQLAlchemy 2.0 (async) + PostgreSQL, Keycloak для авториза�
 ## Быстрый старт
 
 ```bash
-git clone -b dev https://github.com/Oedada/quoll.git
+git clone https://github.com/Oedada/quoll.git
 cd quoll
 cp backend/example.env backend/.env
 sed -i "s/^SESSION_SECRET_KEY=.*/SESSION_SECRET_KEY=$(python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())")/" backend/.env
