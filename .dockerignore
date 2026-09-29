@@ -1,0 +1,14 @@
+.git
+.gitignore
+.design-sync
+docs
+backend/.venv
+backend/.pytest_cache
+backend/tests
+backend/egrul_lookup.py
+**/__pycache__
+**/*.pyc
+**/*.pyo
+*.egg-info
+.env
+.envrc
