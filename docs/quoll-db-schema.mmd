@@ -1,4 +1,4 @@
-%% схема БД quoll: dev @ b1fdc0f, alembic head 092e8988e5c7
+%% схема БД quoll: dev @ 979d542, alembic head 335bc12c61ff
 %% собрано из метаданных SQLAlchemy, сверено alembic check на свежей базе
 %% обозначения: "-> таблица ON DELETE", null - допускает NULL, default - серверное значение; CHECK и индексы - комментарии после таблицы
 %% вне метаданных: enum userrole (manager, superviser, admin);
@@ -88,6 +88,30 @@ erDiagram
     }
     %% close_reasons: CHECK chk_close_reason_level: level IN ('INTERACTION_BEFORE_SIGNING', 'INTERACTION_AFTER_SIGNING', 'BRANCH')
     %% close_reasons: CHECK chk_close_reason_outcome: outcome IN ('DONE', 'REFUSED')
+    comment_attachments {
+        bigint comment_id PK,FK "-> comments CASCADE"
+        int attachment_id PK,FK,UK "-> attachments CASCADE"
+    }
+    comments {
+        bigint id PK
+        int interaction_id FK "-> interactions CASCADE"
+        int stage_id FK "-> stages RESTRICT"
+        bigint branch_id FK "-> branches CASCADE; null"
+        bigint side_pointer_id FK "-> side_pointers CASCADE; null"
+        string author_id FK "-> users SET NULL; null"
+        string author_name
+        bigint reply_to_id FK "-> comments NO ACTION; null"
+        text text
+        timestamptz edited_at "null"
+        timestamptz deleted_at "null"
+        string deleted_by FK "-> users SET NULL; null"
+        timestamptz created_at "default now()"
+    }
+    %% comments: CHECK chk_comment_deleted_by: deleted_by IS NULL OR deleted_at IS NOT NULL
+    %% comments: CHECK chk_comment_place: branch_id IS NULL OR side_pointer_id IS NULL
+    %% comments: CHECK chk_comment_text: length(btrim(text)) BETWEEN 1 AND 4000
+    %% comments: INDEX ix_comments_interaction (interaction_id, id)
+    %% comments: INDEX ix_comments_reply_to (reply_to_id)
     contacts {
         int university_id FK "-> universities CASCADE; null"
         int vendor_id FK "-> vendors CASCADE; null"
@@ -710,6 +734,15 @@ erDiagram
     stages |o--o{ branches : "state_id"
     close_reasons |o--o{ branches : "close_reason_id"
     users |o--o{ branches : "added_by"
+    comments ||--o{ comment_attachments : "comment_id"
+    attachments ||--o| comment_attachments : "attachment_id"
+    interactions ||--o{ comments : "interaction_id"
+    stages ||--o{ comments : "stage_id"
+    branches |o--o{ comments : "branch_id"
+    side_pointers |o--o{ comments : "side_pointer_id"
+    users |o--o{ comments : "author_id"
+    comments |o--o{ comments : "reply_to_id"
+    users |o--o{ comments : "deleted_by"
     universities |o--o{ contacts : "university_id"
     vendors |o--o{ contacts : "vendor_id"
     users |o--o{ integration_mappings : "created_by"
